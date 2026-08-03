@@ -1,0 +1,157 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Ion v0</title>
+  <style>
+    body {
+      font: 14px -apple-system, system-ui, sans-serif;
+      padding: 32px;
+      background: #0a0a0c;
+      color: #e6e6ea;
+    }
+    h1 {
+      font-size: 18px;
+      letter-spacing: 0.02em;
+      color: oklch(0.70 0.17 245);
+      margin: 0 0 24px;
+    }
+    button {
+      padding: 8px 14px;
+      border: 1px solid #2a2a30;
+      border-radius: 6px;
+      background: #16161a;
+      color: #e6e6ea;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:hover { border-color: oklch(0.70 0.17 245); }
+    pre {
+      margin-top: 16px;
+      padding: 12px;
+      background: #16161a;
+      border: 1px solid #2a2a30;
+      border-radius: 6px;
+      min-height: 24px;
+    }
+  </style>
+</head>
+<body>
+  <h1>ion v0 — webview alive</h1>
+  <button id="ping">Send ping → MS</button>
+  <pre id="out">(no replies yet)</pre>
+
+  <h1 style="margin-top:32px">tier 1 checks</h1>
+  <pre id="storage">localStorage: ?</pre>
+  <p>
+    External link (should open in browser, not navigate webview):
+    <a href="https://example.com" target="_blank">example.com</a>
+  </p>
+  <p>Right-click → "Inspect Element" should appear (DevTools enabled).</p>
+  <p>Close window via red dot → process should exit cleanly (no leak).</p>
+
+  <h1 style="margin-top:32px">command (Tauri-style await)</h1>
+  <p>
+    <button id="add">await ion.call("addNumbers", {a:3, b:5})</button>
+    <pre id="addResult">(no result)</pre>
+  </p>
+
+  <h1 style="margin-top:32px">content protection</h1>
+  <p>
+    <button id="protect-on">Protect (screen capture → black)</button>
+    <button id="protect-off">Unprotect</button>
+  </p>
+
+  <h1 style="margin-top:32px">deep link</h1>
+  <p>Run from terminal: <code>open iondemo://cube/abc?from=test</code></p>
+  <pre id="deeplink">(no deep link received yet)</pre>
+
+  <!-- The file:// demo can't ESM-import sibling modules under WKWebView's CORS
+       policy. Production apps served over http(s) (Vite/Expo dev server, real
+       hosting) do `import { call, invoke, on } from "@metascriptlang/ion"`.
+       Here we inline the same logic directly against window.__ion__ so the
+       demo has zero external dependencies and runs from a bundled .app. -->
+  <script>
+    // Same shape as @metascriptlang/ion exports. Production apps import these
+    // from the npm package; here we inline the ~25 lines.
+    const _h = new Map();
+    const _p = new Map();
+    let _id = 0;
+    window.__ion__.setReceiver((name, payload) => {
+      if (name === '__response') {
+        try {
+          const m = JSON.parse(payload);
+          const p = _p.get(m.id);
+          if (!p) return;
+          _p.delete(m.id);
+          if (m.error) p.reject(new Error(m.error));
+          else p.resolve(m.value);
+        } catch {}
+        return;
+      }
+      const h = _h.get(name);
+      if (h) h(payload);
+    });
+    function invoke(name, payload = '') { window.__ion__.post(name, payload); }
+    function on(name, handler) { _h.set(name, handler); }
+    function call(name, args = null) {
+      return new Promise((resolve, reject) => {
+        const id = String(++_id);
+        _p.set(id, { resolve, reject });
+        window.__ion__.post('__call', JSON.stringify({ id, name, args }));
+      });
+    }
+
+    const out = document.getElementById('out');
+    document.getElementById('ping').addEventListener('click', () => {
+      const payload = 'hello@' + new Date().toISOString();
+      invoke('ping', payload);
+      out.textContent = 'sent ping: ' + payload;
+    });
+    on('pong', (p) => {
+      out.textContent = 'received pong: ' + p;
+    });
+    on('deeplink', (url) => {
+      document.getElementById('deeplink').textContent = 'got: ' + url;
+    });
+
+    document.getElementById('add').addEventListener('click', async () => {
+      try {
+        const sum = await call('addNumbers', { a: 3, b: 5 });
+        document.getElementById('addResult').textContent = `sum = ${sum}`;
+      } catch (e) {
+        document.getElementById('addResult').textContent = `error: ${e.message}`;
+      }
+    });
+
+    document.getElementById('protect-on').addEventListener('click', () => invoke('protect', 'on'));
+    document.getElementById('protect-off').addEventListener('click', () => invoke('protect', 'off'));
+
+    // Auto-probe after 500ms.
+    setTimeout(async () => {
+      console.log('auto-probe: ipc alive');
+      invoke('ping', 'autoprobe');
+      const sum = await call('addNumbers', { a: 100, b: 23 });
+      console.log('auto-call addNumbers result:', sum);
+      // Adversarial: try to bypass __ion__ and call native directly without
+      // the invoke_key — should be rejected by the bridge.
+      try {
+        window.webkit.messageHandlers.ion.postMessage({
+          name: 'evil', payload: 'no-key',
+        });
+      } catch (e) {}
+    }, 500);
+
+    // Persistent store probe — writes once, reads on every load.
+    const storage = document.getElementById('storage');
+    const prev = localStorage.getItem('ion-firstSeen');
+    if (prev) {
+      storage.textContent = 'localStorage persisted ✓ — first seen ' + prev;
+    } else {
+      const now = new Date().toISOString();
+      localStorage.setItem('ion-firstSeen', now);
+      storage.textContent = 'localStorage seeded now (' + now + ') — restart to verify persistence';
+    }
+  </script>
+</body>
+</html>

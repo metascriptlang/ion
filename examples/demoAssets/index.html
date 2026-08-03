@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ion custom-protocol demo</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+	<h1>ion:// custom-protocol demo</h1>
+	<p class="origin">origin: <code id="origin"></code></p>
+</header>
+
+<section>
+	<h2>1. pushState — would throw SecurityError on file://</h2>
+	<nav>
+		<button data-route="/">/</button>
+		<button data-route="/c/cube-42">/c/cube-42</button>
+		<button data-route="/c/cube-42/forks">/c/cube-42/forks</button>
+		<button data-route="/settings">/settings</button>
+	</nav>
+	<p>current URL: <code id="url"></code></p>
+	<p class="hint">Click — URL changes, no page reload, no console error.</p>
+</section>
+
+<section>
+	<h2>2. localStorage — proper-origin scoping</h2>
+	<p>counter: <code id="counter">0</code></p>
+	<p>
+		<button id="inc">+1</button>
+		<button id="reset">reset</button>
+	</p>
+	<p class="hint">Value persists across reloads (scoped to demo://localhost).</p>
+</section>
+
+<section>
+	<h2>3. Asset autodetect MIME</h2>
+	<p>If css and js loaded with correct Content-Type, this page is styled and interactive — meaning <code>ionMimeForPath()</code> identified <code>.css</code> and <code>.js</code> correctly.</p>
+</section>
+
+<script src="/app.js"></script>
+</body>
+</html>

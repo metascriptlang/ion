@@ -1,0 +1,20 @@
+# Build output
+out/
+*.o
+*.a
+*.dSYM/
+
+# Packaged artifacts
+*.app/
+*.dmg
+*.deb
+*.exe
+*.flatpak
+
+# web/ TypeScript build output (generated from web/src)
+web/dist/
+node_modules/
+
+# OS / editor
+.DS_Store
+*.swp
