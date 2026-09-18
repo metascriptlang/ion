@@ -61,24 +61,37 @@ recorded here so nobody re-introduces them:
 
 ### P0 — Publish readiness (blocks making this a repo)
 
-1. **`git init`** — there is no `.git`. ~8.7k LOC with zero history.
-2. **`.gitignore`** — none exists. Must cover `out/` (28 MB), `*.o`, and decide
-   on `vendor/webview2/` (2.6 MB — argues for keeping: version is pinned at
-   1.0.2849.39 and the build depends on exact headers).
-3. **Strip personal paths** — three files leak absolute `/Users/<user>/…` paths:
-   - `TODO.md` (was: a link into `~/.claude/plans/`) — removed in this rewrite.
-   - `examples/protocolDemo.ms` → `~/myapp/vendor/ion/…`
-   - `CLAUDE.md` → `/Users/<user>/metascript/recompiler/bun/..` (in the linker
-     replay snippet; arguably fine as a local-dev note, but it names the host).
-4. **Fix `build.ms`** — `entry: "./src/main.ms"` points at a file that doesn't
-   exist. Should be `./src/index.ms`. Version still `0.0.1`.
-5. **Delete stale duplicates** — root `cli/main.ms` (2026-05-15) is superseded by
-   `src/cli/index.ms` but still on disk and divergent. Stray zero-byte `a.o` at
-   repo root.
-6. **Answer "how does a stranger build this?"** — the build depends on
+Done:
+
+1. ~~**`git init`**~~ — done. `origin` → `git@github.com:metascriptlang/ion.git`.
+2. ~~**`.gitignore`**~~ — covers `out/`, `*.o`, `web/dist/`, packaged artifacts.
+   `vendor/webview2/` is deliberately kept: version pinned at 1.0.2849.39 and the
+   Windows build depends on those exact headers.
+3. ~~**Strip personal paths**~~ — no `/Users/<user>` references remain.
+4. ~~**Fix `build.ms`**~~ — `entry` → `./src/index.ms`; `files` widened to include
+   `.c/.h/.m/.cpp/.hpp` + `vendor/webview2` + `scripts` + `assets`, without which
+   a published package cannot build. Version still `0.0.1`.
+5. ~~**De-MyApp the source**~~ — `src/`, `examples/`, `scripts/`, `assets/` no
+   longer mention MyApp / example / example. The one real defect was
+   `macos/update/install.m`, which hardcoded *"MyApp needs to install an
+   update"* into the osascript admin prompt shown to **every** ion app's users;
+   it now derives the app name and destination from `destAppPath`.
+   `assets/app.entitlements` → `assets/app.entitlements`.
+
+Remaining:
+
+6. **Delete stale duplicate** — root `cli/main.ms` (2026-05-15) is superseded by
+   `src/cli/index.ms` but still on disk and divergent.
+7. **Historical docs still name MyApp** — `CHANGELOG.md` (5), and
+   `CUSTOM-PROTOCOL.md` (5). These are records of what happened, so rewriting
+   them is a judgement call rather than a cleanup.
+8. **Answer "how does a stranger build this?"** — the build depends on
    `~/metascript/recompiler` being present and containing the fixes listed under
    *Cross-references* below. Without a public/pinned recompiler, a clone is not
    buildable. This is the real gate on going public, not code quality.
+9. **`vendor/webview2/runtime/x64/WebView2Loader.dll`** — a prebuilt Microsoft
+   binary committed into an MIT repo. Confirm the SDK licence permits
+   redistribution, or fetch it at build time instead.
 
 ### P1 — Doc truth
 
