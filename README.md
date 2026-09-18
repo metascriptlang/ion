@@ -24,6 +24,22 @@ Designed as a thin glue layer — most of ion is platform-native code (Cocoa + W
 
 ## Quick start
 
+### Generate an Xcode project from MetaScript
+
+The generator proof of concept evaluates a typed `Project.ms` manifest with
+Raiser, resolves plugins and target dependencies, and emits a deterministic
+macOS Xcode project:
+
+```bash
+export MSC=/absolute/path/to/source-built/msc
+$MSC build tooling/generator/cli.ms --cc=clang --output=bin/ion-generate
+./bin/ion-generate examples/generator/Project.ms /private/tmp/ion-generated
+```
+
+The output directory must not exist. See
+[docs/PROJECT-GENERATOR.md](docs/PROJECT-GENERATOR.md) for the manifest API,
+architecture, verification command and current POC boundaries.
+
 ### Build the demo
 
 ```bash
