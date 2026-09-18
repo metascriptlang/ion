@@ -17,8 +17,8 @@ evaluators_before=$(find /private/tmp -maxdepth 1 -name 'ion-generator.*' | wc -
 ./bin/ion-generate examples/generator/Project.ms "$results/second" > "$results/second.log" 2>&1
 test "$(find /private/tmp -maxdepth 1 -name 'ion-generator.*' | wc -l)" = "$evaluators_before"
 cmp "$results/first/graph.json" "$results/second/graph.json"
-cmp "$results/first/IonStudio.xcodeproj/project.pbxproj" "$results/second/IonStudio.xcodeproj/project.pbxproj"
-plutil -lint "$results/first/IonStudio.xcodeproj/project.pbxproj"
+cmp "$results/first/IonGenerator.xcodeproj/project.pbxproj" "$results/second/IonGenerator.xcodeproj/project.pbxproj"
+plutil -lint "$results/first/IonGenerator.xcodeproj/project.pbxproj"
 
 if ./bin/ion-generate tooling/generator/tests/Invalid.ms "$results/invalid" > "$results/invalid.out" 2> "$results/invalid.err"; then
 	printf 'FAIL: invalid manifest returned success\n' >&2
@@ -32,11 +32,11 @@ if ./bin/ion-generate examples/generator/Project.ms "$results/first" > "$results
 	exit 1
 fi
 cmp "$results/first/graph.json" "$results/second/graph.json"
-cmp "$results/first/IonStudio.xcodeproj/project.pbxproj" "$results/second/IonStudio.xcodeproj/project.pbxproj"
+cmp "$results/first/IonGenerator.xcodeproj/project.pbxproj" "$results/second/IonGenerator.xcodeproj/project.pbxproj"
 
-xcodebuild -project "$results/first/IonStudio.xcodeproj" -target IonStudio -configuration Debug -jobs 1 \
+xcodebuild -project "$results/first/IonGenerator.xcodeproj" -target IonGenerator -configuration Debug -jobs 1 \
 	SYMROOT="$results/products" OBJROOT="$results/objects" build > "$results/xcodebuild.log" 2>&1
-for app in IonStudio IonPreview; do
+for app in IonGenerator IonPreview; do
 	bundle="$results/products/Debug/$app.app"
 	test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$bundle/Contents/Info.plist")" = "dev.ion.$app"
 	test "$(ION_GENERATOR_SMOKE=1 "$bundle/Contents/MacOS/$app")" = "Ion Generator window created"
