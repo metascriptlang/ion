@@ -253,7 +253,7 @@ Recompiler currently swallows linker stderr on failure (prints only
 cross-compile dies at the link step, retrieve the actual error by replaying
 the link command yourself:
 ```bash
-zig cc -iquote/Users/<user>/metascript/recompiler/bun/.. @out/debug/_link.rsp \
+zig cc -iquote"$(dirname "$(which ms)")/.." @out/debug/_link.rsp \
        -o /tmp/dbg.exe -lm 2>&1 | tail -30
 ```
 `_link.rsp` is the response file the recompiler wrote alongside the output
