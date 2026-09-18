@@ -37,7 +37,7 @@
 @compile("./platform/common/mime.c");
 @compile("./platform/common/protoReg.c");
 
-@platform("macos") {
+when (macos) {
 	@compile("./platform/macos/state.m", "-fobjc-arc");
 	@compile("./platform/macos/core/lifecycle.m", "-fobjc-arc");
 	@compile("./platform/macos/core/window.m", "-fobjc-arc");
@@ -72,7 +72,7 @@
 	@passL("-framework Security");
 }
 
-@platform("linux") {
+when (linux) {
 	// Phase 2: WebKitGTK webview + bootstrap + IPC + nav + custom URI scheme.
 	// Phase 3 wires libayatana-appindicator3 (tray) + libnotify + GtkFileChooser.
 	// Phase 4 wires X11 XGrabKey global hotkey. Phase 5 packages as AppImage.
@@ -115,7 +115,7 @@
 	@passL("-lX11");
 }
 
-@platform("windows") {
+when (windows) {
 	// Phase 2: Win32 host window + WebView2 child + IPC plumbing. Phase 3
 	// replaces the chrome/* stubs with real Shell_NotifyIcon + Toast WinRT
 	// + IFileOpenDialog impls. Phase 4 wires global hotkey via RegisterHotKey.
