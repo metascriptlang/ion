@@ -17,11 +17,11 @@ A manifest is an ordinary checked MetaScript module with one named export:
 import { Project, Target } from "../../tooling/generator/description";
 import { bundlePrefix } from "../../tooling/generator/plugins";
 
-const studio = Target.app("IonStudio", "main.ms");
+const app = Target.app("IonGenerator", "main.ms");
 
 export const project: Project = {
-	name: "IonStudio",
-	targets: [{ ...studio, dependencies: ["IonPreview"] }, { ...studio, name: "IonPreview" }],
+	name: "IonGenerator",
+	targets: [{ ...app, dependencies: ["IonPreview"] }, { ...app, name: "IonPreview" }],
 	plugins: [bundlePrefix("dev.ion")],
 };
 ```
@@ -107,7 +107,7 @@ The output path must not exist. A successful generation writes:
 ```text
 /private/tmp/ion-generated/
   graph.json
-  IonStudio.xcodeproj/project.pbxproj
+  IonGenerator.xcodeproj/project.pbxproj
 ```
 
 The generated build phase records the absolute compiler and source-root paths,
@@ -115,8 +115,8 @@ then compiles each target entry with MetaScript. Build and smoke the example:
 
 ```bash
 xcodebuild \
-  -project /private/tmp/ion-generated/IonStudio.xcodeproj \
-  -target IonStudio \
+  -project /private/tmp/ion-generated/IonGenerator.xcodeproj \
+  -target IonGenerator \
   -configuration Debug \
   -jobs 1 \
   SYMROOT=/private/tmp/ion-products \
@@ -124,10 +124,10 @@ xcodebuild \
   build
 
 ION_GENERATOR_SMOKE=1 \
-  /private/tmp/ion-products/Debug/IonStudio.app/Contents/MacOS/IonStudio
+  /private/tmp/ion-products/Debug/IonGenerator.app/Contents/MacOS/IonGenerator
 ```
 
-`IonStudio` depends on `IonPreview`, so building the `IonStudio` target also
+`IonGenerator` depends on `IonPreview`, so building the `IonGenerator` target also
 builds `IonPreview.app`. The smoke process prints `Ion Generator window
 created`, closes the window and returns zero.
 
@@ -142,7 +142,7 @@ tests through Raiser, evaluates the manifest in two fresh processes, compares
 the graph and PBX outputs byte-for-byte, checks no evaluator directory is left
 behind, runs `plutil`, checks an invalid manifest returns nonzero with its
 diagnostic on stderr and without creating output, proves an existing output
-directory is not modified, builds the `IonStudio` target and its dependency
+directory is not modified, builds the `IonGenerator` target and its dependency
 with `xcodebuild`, and smoke-runs both apps with their plugin bundle
 identifiers.
 
