@@ -125,11 +125,19 @@ int ionUpdateReplaceApp(const char *srcAppPath, const char *destAppPath) {
 		@"/bin/rm -rf %@ && /usr/bin/ditto %@ %@", dst, src, dst];
 	NSString *body = appleScriptEscape(cmd);
 
+	NSString *destPath = @(destAppPath);
+	NSString *appName  = [[destPath lastPathComponent] stringByDeletingPathExtension];
+	NSString *destDir  = [destPath stringByDeletingLastPathComponent];
+	if (appName.length == 0) appName = @"This application";
+	if (destDir.length == 0) destDir = @"/Applications";
+	NSString *prompt = appleScriptEscape([NSString stringWithFormat:
+		@"%@ needs to install an update to %@.", appName, destDir]);
+
 	NSString *script = [NSString stringWithFormat:
 		@"do shell script \"%@\" "
 		 "with administrator privileges "
-		 "with prompt \"MyApp needs to install an update to /Applications.\"",
-		body];
+		 "with prompt \"%@\"",
+		body, prompt];
 
 	NSAppleScript *as = [[NSAppleScript alloc] initWithSource:script];
 	NSDictionary *errInfo = nil;
