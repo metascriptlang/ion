@@ -49,7 +49,7 @@ static void buildBusIdentity(void) {
     }
     // DBus name char-set is stricter than file paths — replace any chars
     // outside [A-Za-z0-9_.] with `_` so apps with hyphens/dots in their
-    // exe name (MyApp-aarch64, ion.app, etc.) still get a valid name.
+    // exe name (my-app-aarch64, ion.app, etc.) still get a valid name.
     for (char *p = s_busName; *p != '\0'; p++) {
         char c = *p;
         if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')

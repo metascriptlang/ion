@@ -75,7 +75,7 @@ export function compareSemver(a: string, b: string): int32 {
 	// Same core: a release version (no pre-release) > any pre-release
 	// (semver §11.4.1). Within both having pre-release: lexicographic on
 	// the raw tag string — covers `beta.1 < beta.2` and `alpha < beta`
-	// correctly for the typical MyApp release cadence.
+	// correctly for a typical release cadence.
 	if (pa.prerelease === "" && pb.prerelease === "") return 0 as int32;
 	if (pa.prerelease === "") return 1 as int32;
 	if (pb.prerelease === "") return -1 as int32;

@@ -5,9 +5,9 @@
 // Linux: libsecret talks to org.freedesktop.secrets — GNOME Keyring / KWallet
 //        / gnome-keyring-daemon depending on the user's DE. Flatpak builds
 //        need `--talk-name=org.freedesktop.secrets` finish-arg.
-// Windows: still a no-op stub — Phase 5+ wires CredWriteW / CredReadW
-//        (Windows Credential Manager). Until then consumers should fall back
-//        to their own file store.
+// Windows: Credential Manager via CredWriteW / CredReadW / CredDeleteW
+//        (advapi32). Values are capped by the blob size limit — see
+//        platform/windows/security/keychain.c for the practical ceiling.
 //
 // Usage:
 //   const ok = setSecret("com.example.app", "session", token);

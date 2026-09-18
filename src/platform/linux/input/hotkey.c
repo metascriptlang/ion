@@ -10,7 +10,7 @@
 // way. Under pure Wayland (no XWayland), `GDK_IS_X11_DISPLAY` returns
 // FALSE → we refuse with -1, matching Carbon's "OS refused" path. The
 // portable alternative is `org.freedesktop.portal.GlobalShortcuts` (GNOME
-// 45+, KDE 6+) — deferred, most MyApp target distros default to X11
+// 45+, KDE 6+) — deferred, most target distros still default to X11
 // or X11+XWayland.
 //
 // Slot table fixed at 16, mirroring macOS. Hit → "hotkey" IPC with payload

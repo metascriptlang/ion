@@ -17,8 +17,8 @@
 //
 // Blob size cap: Win docs say 512 bytes for v1, 5*512 = 2560 bytes practical;
 // we use a 4 KB receive buffer for ionKeychainGet which covers any token or
-// API key sized payload. Larger values truncate silently — MyApp secrets
-// are tokens / session IDs, not file contents.
+// API key sized payload. Larger values truncate silently — this store is
+// meant for tokens / session IDs, not file contents.
 
 #include "../../bridge.h"
 #include "../utf8.h"
