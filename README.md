@@ -31,12 +31,13 @@ Raiser, resolves plugins and target dependencies, and emits a deterministic
 macOS Xcode project:
 
 ```bash
-export MSC=/absolute/path/to/source-built/msc
-$MSC build tooling/generator/cli.ms --cc=clang --output=bin/ion-generate
-./bin/ion-generate examples/generator/project.ms /private/tmp/ion-generated
+tooling/generator/ion-generate examples/generator/project.ms /private/tmp/ion-generated
 ```
 
-The output directory must not exist. See
+Nothing is built first: the wrapper runs the generator through `msc run
+--target=raiser`. With no arguments it takes `project.ms` from the current
+directory and writes to `out/xcode` beside it. Set `MSC` to pick a compiler
+other than the `msc` on `PATH`. The output directory must not exist. See
 [docs/PROJECT-GENERATOR.md](docs/PROJECT-GENERATOR.md) for the manifest API,
 architecture, verification command and current POC boundaries.
 

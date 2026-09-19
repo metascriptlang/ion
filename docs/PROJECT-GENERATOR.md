@@ -55,9 +55,11 @@ project.ms
 `resolve.ms` validates names, duplicate targets, missing dependencies, cycles
 and bundle identities. `xcode.ms` is the platform emitter. `generate.ms`
 validates filesystem inputs, renders everything before writing and refuses to
-touch an existing output directory. `cli.ms` is native orchestration that
-creates a temporary evaluator module and explicitly invokes
-`msc run --target=raiser` for the manifest, resolver, plugins and emitter.
+touch an existing output directory; missing parent directories of the output
+are created. `cli.ms` is the orchestration entry point: it creates a temporary
+evaluator module and invokes `msc run --target=raiser` for the manifest,
+resolver, plugins and emitter. `ion-generate` is a shell wrapper that runs
+`cli.ms` itself through Raiser, so the generator ships no compiled binary.
 
 A plugin is a `Plugin { name, contribute }` value. `contribute` receives an
 owned snapshot of the target list and returns `BundleId { target, value }`
@@ -94,15 +96,15 @@ Validation stops at the first error. `ion-generate` prints it on stderr as
 
 ## Build and run
 
-Use a source-built Recompiler containing the required Raiser contracts:
-
 ```bash
-export MSC=/absolute/path/to/msc
-$MSC build tooling/generator/cli.ms --cc=clang --output=bin/ion-generate
-./bin/ion-generate examples/generator/project.ms /private/tmp/ion-generated
+tooling/generator/ion-generate examples/generator/project.ms /private/tmp/ion-generated
 ```
 
-The output path must not exist. A successful generation writes:
+Both arguments are optional: the manifest defaults to `project.ms` in the
+current directory and the output to `out/xcode` beside the manifest. The
+compiler is the `msc` on `PATH` unless `MSC` names another one. The wrapper
+passes its inputs to `cli.ms` as `ION_GENERATE_MANIFEST`, `ION_GENERATE_OUTPUT`
+and `ION_GENERATE_ROOT`. The output path must not exist. A successful generation writes:
 
 ```text
 /private/tmp/ion-generated/
@@ -137,7 +139,7 @@ created`, closes the window and returns zero.
 MSC=/absolute/path/to/msc bash tooling/generator/tests/run.sh
 ```
 
-The gate builds the native orchestration CLI, runs resolver and plugin-isolation
+The gate runs resolver and plugin-isolation
 tests through Raiser, evaluates the manifest in two fresh processes, compares
 the graph and PBX outputs byte-for-byte, checks no evaluator directory is left
 behind, runs `plutil`, checks an invalid manifest returns nonzero with its
@@ -160,8 +162,10 @@ a consumer gate, not a substitute for compiler verification.
   and subprocess operations; there is no capability sandbox.
 - Evaluation starts a fresh Raiser process for each generation. There is no
   persistent evaluator, hot reload or manifest cache.
-- `ion-generate` is a separate proof-of-concept binary and is not wired into the
-  existing `bin/ion` packaging CLI.
+- `ion-generate` is a separate shell entry point and is not wired into the
+  existing `bin/ion` CLI as `ion generate`. A package cannot declare a command
+  yet; that is the workspace compiler card
+  `2026-09-20-package-declares-a-cli`.
 - Generated apps are unsigned development products. Signing, notarization,
   assets and distribution packaging remain in Ion's existing packaging layer.
 - The generated project embeds absolute source and compiler paths. Regenerate
