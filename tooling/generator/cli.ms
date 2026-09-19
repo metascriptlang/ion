@@ -28,7 +28,7 @@ function evaluate(runner: string, source: string, compiler: string): Result<stri
 }
 
 function run(args: string[]): Result<string, string> {
-	if (args.length != 3) return Result.err("usage: ion-generate <Project.ms> <new-output-directory>");
+	if (args.length != 3) return Result.err("usage: ion-generate <project.ms> <new-output-directory>");
 	const manifest = try existingFile(args[1], "manifest does not exist: " + args[1]);
 	const generator = try existingFile(dirname(realpath(args[0])) + "/../tooling/generator/generate.ms", "generator sources do not exist next to " + args[0]);
 	const compiler = try existingFile(env.get("MSC"), "MSC must name the source-built compiler");

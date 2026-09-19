@@ -13,21 +13,21 @@ test "$(<"$results/resolve.log")" = "resolve: 19 assertions passed"
 test "$(<"$results/isolation.log")" = "plugin isolation: passed"
 
 evaluators_before=$(find /private/tmp -maxdepth 1 -name 'ion-generator.*' | wc -l)
-./bin/ion-generate examples/generator/Project.ms "$results/first" > "$results/first.log" 2>&1
-./bin/ion-generate examples/generator/Project.ms "$results/second" > "$results/second.log" 2>&1
+./bin/ion-generate examples/generator/project.ms "$results/first" > "$results/first.log" 2>&1
+./bin/ion-generate examples/generator/project.ms "$results/second" > "$results/second.log" 2>&1
 test "$(find /private/tmp -maxdepth 1 -name 'ion-generator.*' | wc -l)" = "$evaluators_before"
 cmp "$results/first/graph.json" "$results/second/graph.json"
 cmp "$results/first/IonGenerator.xcodeproj/project.pbxproj" "$results/second/IonGenerator.xcodeproj/project.pbxproj"
 plutil -lint "$results/first/IonGenerator.xcodeproj/project.pbxproj"
 
-if ./bin/ion-generate tooling/generator/tests/Invalid.ms "$results/invalid" > "$results/invalid.out" 2> "$results/invalid.err"; then
+if ./bin/ion-generate tooling/generator/tests/invalid.ms "$results/invalid" > "$results/invalid.out" 2> "$results/invalid.err"; then
 	printf 'FAIL: invalid manifest returned success\n' >&2
 	exit 1
 fi
 test ! -e "$results/invalid"
 test ! -s "$results/invalid.out"
 rg -q "^ion generate: the target 'Duplicate' is declared multiple times$" "$results/invalid.err"
-if ./bin/ion-generate examples/generator/Project.ms "$results/first" > "$results/existing.log" 2>&1; then
+if ./bin/ion-generate examples/generator/project.ms "$results/first" > "$results/existing.log" 2>&1; then
 	printf 'FAIL: existing output was overwritten\n' >&2
 	exit 1
 fi
