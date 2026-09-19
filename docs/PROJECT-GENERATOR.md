@@ -35,12 +35,12 @@ The API deliberately uses normal language features:
 - a named struct holding a closure for plugins.
 
 Macros, decorators and a generator-specific keyword are not part of the
-surface. The complete runnable example is `examples/generator/Project.ms`.
+surface. The complete runnable example is `examples/generator/project.ms`.
 
 ## Pipeline
 
 ```text
-Project.ms
+project.ms
   → checked multi-module MetaScript
   → Raiser evaluation
   → Project
@@ -99,7 +99,7 @@ Use a source-built Recompiler containing the required Raiser contracts:
 ```bash
 export MSC=/absolute/path/to/msc
 $MSC build tooling/generator/cli.ms --cc=clang --output=bin/ion-generate
-./bin/ion-generate examples/generator/Project.ms /private/tmp/ion-generated
+./bin/ion-generate examples/generator/project.ms /private/tmp/ion-generated
 ```
 
 The output path must not exist. A successful generation writes:
