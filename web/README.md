@@ -5,8 +5,6 @@ Typed JS↔MS IPC for [ion](https://github.com/metascript/ion) webview apps.
 ## Install
 
 ```bash
-bun add @metascriptlang/ion
-# or
 npm install @metascriptlang/ion
 ```
 
@@ -54,8 +52,8 @@ so they cannot reach the IPC.
 ## Build from source
 
 ```bash
-bun install
-bun run build
+npm install
+npm run build
 # → dist/index.js + dist/index.d.ts
 ```
 
