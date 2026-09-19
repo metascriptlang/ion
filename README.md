@@ -46,11 +46,11 @@ architecture, verification command and current POC boundaries.
 cd vendor/ion  # or ~/metascript/ion in older checkouts
 
 # Run from source (dev mode)
-bun ~/metascript/recompiler/bun/run.ts run examples/helloWebview.ms
+msc run examples/helloWebview.ms
 
 # Or the custom URI scheme demo — opens demo://localhost/index.html,
 # proves pushState + localStorage + proper origin work
-bun ~/metascript/recompiler/bun/run.ts run examples/protocolDemo.ms
+msc run examples/protocolDemo.ms
 
 # Or build a release binary via the ion CLI
 ./bin/ion build examples/helloWebview.ms
@@ -98,7 +98,7 @@ CLI library written in MetaScript, also in this repo. To rebuild the CLI after
 editing `cli/main.ms`:
 
 ```bash
-bun ~/metascript/recompiler/bun/run.ts build cli/main.ms --release --strip
+msc build cli/main.ms --release --strip
 cp out/release/main bin/ion
 ```
 
@@ -285,7 +285,7 @@ If you ship arbitrary user-installable code in your webview (plugins, third-part
 Requires `zig` (`brew install zig`) — `zig cc` is the cross-compiler. No xwin, no extra toolchain installs.
 
 ```bash
-bun ~/metascript/recompiler/bun/run.ts build examples/helloWebview.ms --os=windows -f
+msc build examples/helloWebview.ms --os=windows -f
 # → helloWebview.exe (~9.9 MB)
 ```
 
