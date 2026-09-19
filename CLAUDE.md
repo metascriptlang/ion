@@ -212,12 +212,12 @@ Never silently work around a compiler bug — always trace to the bug tracker. F
 
 ### Build the example (macOS host, native)
 ```bash
-bun ~/metascript/recompiler/bun/run.ts build examples/helloWebview.ms -f
+msc build examples/helloWebview.ms -f
 ```
 
 ### Cross-compile for Windows (from macOS)
 ```bash
-bun ~/metascript/recompiler/bun/run.ts build examples/helloWebview.ms --os=windows -f
+msc build examples/helloWebview.ms --os=windows -f
 # → /tmp/helloWebview.exe (~11.6 MB). Test by copying into a Parallels shared
 # folder and double-clicking, or `prlctl exec <vm> -- <path>` via the
 # Parallels CLI.
@@ -236,7 +236,7 @@ Inside a Linux VM (Ubuntu / Parallels arm64 used during Phase 5):
 ```bash
 sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libnotify-dev \
                         libayatana-appindicator3-dev libsecret-1-dev
-bun ~/metascript/recompiler/bun/run.ts build examples/helloWebview.ms -f
+msc build examples/helloWebview.ms -f
 ```
 Do **not** run this with `--os=linux` from a Mac — `platform/linux/state.c`'s
 GTK includes can't be resolved on a Mac host even with zig cc.
