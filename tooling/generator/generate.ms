@@ -3,6 +3,17 @@ import { resolve } from "./resolve";
 import { xcodeProject } from "./xcode";
 import { exists, isFile, mkdir, writeFile, realpath } from "std/fs";
 
+function makeDirectories(path: string): Result<string, string> {
+	let built = "";
+	for (const segment of path.split("/")) {
+		if (segment == "") continue;
+		built += "/" + segment;
+		if (exists(built)) continue;
+		if (!mkdir(built).ok) return Result.err("cannot create output: " + built);
+	}
+	return Result.ok(path);
+}
+
 export function generate(project: Project, root: string, output: string, compiler: string): Result<string, string> {
 	const resolved = project.resolve();
 	if (!resolved.ok) return Result.err(resolved.error);
@@ -16,7 +27,7 @@ export function generate(project: Project, root: string, output: string, compile
 	const rendered = xcodeProject(graph, sourceRoot, compiler);
 	if (!rendered.ok) return Result.err(rendered.error);
 	if (exists(output)) return Result.err("output already exists: " + output);
-	if (!mkdir(output).ok) return Result.err("cannot create output: " + output);
+	try makeDirectories(output);
 	const projectPath = output + "/" + graph.name + ".xcodeproj";
 	if (!mkdir(projectPath).ok) return Result.err("cannot create project: " + projectPath);
 	if (!writeFile(projectPath + "/project.pbxproj", rendered.value).ok) return Result.err("cannot write project");
