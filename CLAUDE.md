@@ -29,10 +29,6 @@ Parallels VM around 2026-05-18/19; macOS is the daily driver (MyApp).
 Native LOC: macOS 1715 · Windows 2119 · Linux 1508 · shared C 1392.
 MetaScript LOC: 2016 across 20 modules.
 
-**This repo is not under version control** — no `.git`, no `.gitignore`. That,
-plus the hard dependency on a local `~/metascript/recompiler` checkout, is what
-blocks publishing. See TODO.md → *P0 — Publish readiness*.
-
 What's implemented on macOS (full v0):
 - Window + WKWebView shell on SDL3
 - Bidirectional IPC (low-level event + Tauri-style `command()` Promise)
