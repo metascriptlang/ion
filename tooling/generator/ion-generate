@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+compiler=${MSC:-$(command -v msc || true)}
+if [ -z "$compiler" ]; then
+	printf 'ion generate: no msc on PATH; set MSC to the compiler\n' >&2
+	exit 1
+fi
+
+export ION_GENERATE_ROOT="$root"
+export MSC="$compiler"
+if [ "$#" -ge 1 ]; then export ION_GENERATE_MANIFEST="$1"; fi
+if [ "$#" -ge 2 ]; then export ION_GENERATE_OUTPUT="$2"; fi
+
+exec "$compiler" run "$root/tooling/generator/cli.ms" --target=raiser
