@@ -168,23 +168,15 @@ The MS recompiler drops `@compile`/`@passC`/`@passL` directives from re-export-o
 
 If you split `ipc.ms` further or change which file holds the bridge directives, **also update the @compile/@passC/@passL block at the top of the new home**. Symptom of getting this wrong: `undefined symbol: _ionXxx` linker errors despite bridge.m existing on disk.
 
-(Possibly a real recompiler bug — directives should be processed regardless of body content. Not yet filed; pattern works around it.)
+This is a compiler bug, reproduced 2026-09-19 on `msc` v0.2.55 (build `1db91c44`) with a five-file probe: the same `@compile` links when its module has a body and fails with `undefined symbol` when the module only re-exports. Filed as the compiler card `2026-09-19-directive-in-reexport-only-module` in the workspace compiler inbox; `src/ipc.ms` stays the home of the directives until that card closes.
 
-## MS Compiler Bug Workarounds
+## Function values in containers — the old "Bug 5" no longer reproduces
 
-See `the MetaScript compiler bug tracker` for the full bug tracker. Patterns ion uses to work around them:
+`command.ms` and `ipc.ms` still carry the shapes that once dodged it: parallel arrays `_cmdNames` + `_cmdFns` instead of a `Map<string, Command>`, `const fn = arr[i]; fn(args);` instead of `arr[i](args)`, and a standalone `dispatchCall(payload)` instead of an inline `listen` callback with an early `return;`.
 
-### Bug 5 — Function values in containers
+Measured 2026-09-19 on `msc` v0.2.55 (build `1db91c44`), C and JS backends, single module and across two modules: a module-level `Map<string, Command>` filled with named functions and lambdas and called through `get`, `arr[i](args)` inside a C-style `for`, and an inline `(name, payload) => { if (…) return; … }` handler all run and print the same on both backends. Not measured: `--gc=orc`, leak accounting, and `command.ms` itself rewritten onto the `Map`.
 
-`Map<string, FunctionType>` codegens broken entry structs. `arr[i](…)` indexed-call codegens to non-callable `msClosure`. Lambda `return;` inside `listen()` callbacks trips return-type inference.
-
-Workarounds in this codebase:
-- **Parallel arrays** instead of map: `_cmdNames: string[]` + `_cmdFns: Command[]` in `command.ms`. Linear scan by name.
-- **Pre-extract function value to local** before calling: `const fn = arr[i]; fn(args);` instead of `arr[i](args)`.
-- **Standalone helper function** (not inline lambda) when early-return needed: `dispatchCall(payload)` extracted from inline `listen` callback.
-- **For-of iteration** works correctly: `for (const h of handlers) h(name, payload)`.
-
-When MS Bug 5 is fixed, can collapse `_cmdNames` + `_cmdFns` parallel arrays back into one `Map<string, Command>`.
+New code uses the direct forms. Collapsing `_cmdNames` + `_cmdFns` into one `Map<string, Command>` is open work, proven by ion's own tests when it is done.
 
 ## Build & Test
 
