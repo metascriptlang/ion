@@ -114,6 +114,15 @@ Remaining:
 - **Toast WinRT** — current Windows notification is a balloon tip (renders via
   the Toast/Action Center pipeline on Win10/11 anyway). Proper
   `ToastNotificationManager` needs an AUMID from a Start Menu shortcut.
+- **Windows cross-build link, red 2026-09-20** (`msc` build `bce99dbf`):
+  `runLoop` in `src/ipc.ms` reads `ionInputType/X/Y/P1/P2`, which only
+  `macos/webview/poll.m` defines, so dead-code elimination no longer hides the
+  render-surface gap and `--os=windows` fails at link. Linux not run.
+
+Windows behaviour that is not a bug: a 1–2 s white flash on the first launch of
+a session (WebView2 process spawn + COM init; a splash screen is the answer),
+and the GUI subsystem detaching `stdout`/`stderr` from the launching terminal
+(`app.exe > log.txt 2>&1` while debugging).
 
 ### P3 — Test coverage
 
