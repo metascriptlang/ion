@@ -50,8 +50,9 @@ recorded here so nobody re-introduces them:
   `macos/core/renderSurface.m` shipped, with a 203-line design doc.
 - ⚠️ **"OTA not implemented"** — client is real; only the *install* step is
   macOS-only.
-- ⚠️ **`command-builder/`** — referenced by README, **does not exist**. The CLI
-  now lives at `src/cli/index.ms` (347 LOC) with tests in `src/cli/test/`.
+- ⚠️ **`command-builder/`** — referenced by README, **does not exist**. That CLI
+  library now lives at `src/cli/index.ms` (347 LOC) with tests in `src/cli/test/`;
+  `cli/main.ms` is the `ion` CLI built on it.
 - ⚠️ **`bin/ion`** — referenced by README as the shipped CLI binary; **no `bin/`
   directory on disk**. Every `./bin/ion …` line in the README is currently
   unrunnable.
@@ -78,13 +79,11 @@ Done:
 
 Remaining:
 
-6. **Delete stale duplicate** — root `cli/main.ms` (2026-05-15) is superseded by
-   `src/cli/index.ms` but still on disk and divergent.
-7. **Answer "how does a stranger build this?"** — the build depends on
+6. **Answer "how does a stranger build this?"** — the build depends on
    `~/metascript/recompiler` being present and containing the fixes listed under
    *Cross-references* below. Without a public/pinned recompiler, a clone is not
    buildable. This is the real gate on going public, not code quality.
-8. **`vendor/webview2/runtime/x64/WebView2Loader.dll`** — a prebuilt Microsoft
+7. **`vendor/webview2/runtime/x64/WebView2Loader.dll`** — a prebuilt Microsoft
    binary committed into an MIT repo. Confirm the SDK licence permits
    redistribution, or fetch it at build time instead.
 
