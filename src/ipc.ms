@@ -138,8 +138,8 @@ when (windows) {
 	@compile("./platform/windows/security/keychain.c");
 	@compile("./platform/windows/update/install.c");
 	// WebView2 SDK headers — vendored under vendor/webview2/include/.
-	// Path is resolved relative to the build CWD (ion/ project root).
-	@passC("-I./vendor/webview2/include");
+	// Path is resolved relative to this module's directory (src/).
+	@passC("-I../vendor/webview2/include");
 	// Win32 link libs — Win32 API + COM + bcrypt (consumed by common/randombytes.c).
 	@passL("-luser32");
 	@passL("-lgdi32");
