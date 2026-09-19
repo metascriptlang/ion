@@ -71,25 +71,20 @@ Done:
 4. ~~**Fix `build.ms`**~~ — `entry` → `./src/index.ms`; `files` widened to include
    `.c/.h/.m/.cpp/.hpp` + `vendor/webview2` + `scripts` + `assets`, without which
    a published package cannot build. Version still `0.0.1`.
-5. ~~**De-MyApp the source**~~ — `src/`, `examples/`, `scripts/`, `assets/` no
-   longer mention MyApp / example / example. The one real defect was
-   `macos/update/install.m`, which hardcoded *"MyApp needs to install an
-   update"* into the osascript admin prompt shown to **every** ion app's users;
-   it now derives the app name and destination from `destAppPath`.
-   `assets/app.entitlements` → `assets/app.entitlements`.
+5. ~~**De-brand the source**~~ — no file names the original consumer app. The
+   one real defect was `macos/update/install.m`, which hardcoded the consumer's
+   name into the osascript admin prompt shown to **every** ion app's users; it
+   now derives the app name and destination from `destAppPath`.
 
 Remaining:
 
 6. **Delete stale duplicate** — root `cli/main.ms` (2026-05-15) is superseded by
    `src/cli/index.ms` but still on disk and divergent.
-7. **Historical docs still name MyApp** — `CHANGELOG.md` (5), and
-   `CUSTOM-PROTOCOL.md` (5). These are records of what happened, so rewriting
-   them is a judgement call rather than a cleanup.
-8. **Answer "how does a stranger build this?"** — the build depends on
+7. **Answer "how does a stranger build this?"** — the build depends on
    `~/metascript/recompiler` being present and containing the fixes listed under
    *Cross-references* below. Without a public/pinned recompiler, a clone is not
    buildable. This is the real gate on going public, not code quality.
-9. **`vendor/webview2/runtime/x64/WebView2Loader.dll`** — a prebuilt Microsoft
+8. **`vendor/webview2/runtime/x64/WebView2Loader.dll`** — a prebuilt Microsoft
    binary committed into an MIT repo. Confirm the SDK licence permits
    redistribution, or fetch it at build time instead.
 
