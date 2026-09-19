@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'b=$(git -C \"$CLAUDE_PROJECT_DIR\" symbolic-ref -q --short HEAD); f=\"$HOME/metascript/.wt/${b#wt/}.md\"; if [ \"${b#wt/}\" != \"$b\" ] && [ -f \"$f\" ]; then echo \"Card of this worktree, $f:\"; cat \"$f\"; fi; n=$(find \"$HOME/metascript/.inbox/ion\" -name \"*.md\" 2>/dev/null | wc -l | tr -d \" \"); if [ \"$n\" != 0 ]; then echo \"$n note(s) in ~/metascript/.inbox/ion/ - read them before other work\"; fi; exit 0'"
+          }
+        ]
+      }
+    ]
+  }
+}
