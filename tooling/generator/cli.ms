@@ -1,4 +1,4 @@
-import { argv, env, exit, execFileCapture, cwd } from "std/process";
+import { env, exit, execFileCapture, cwd } from "std/process";
 import { dirname, realpath, isFile, writeFile, remove, rmdir } from "std/fs";
 import { relative } from "std/fs/path";
 import { writeStderr } from "std/io";
@@ -27,12 +27,22 @@ function evaluate(runner: string, source: string, compiler: string): Result<stri
 	return Result.ok(result.value.trim());
 }
 
-function run(args: string[]): Result<string, string> {
-	if (args.length != 3) return Result.err("usage: ion-generate <project.ms> <new-output-directory>");
-	const manifest = try existingFile(args[1], "manifest does not exist: " + args[1]);
-	const generator = try existingFile(dirname(realpath(args[0])) + "/../tooling/generator/generate.ms", "generator sources do not exist next to " + args[0]);
-	const compiler = try existingFile(env.get("MSC"), "MSC must name the source-built compiler");
-	const output = args[2].startsWith("/") ? args[2] : cwd() + "/" + args[2];
+function absolute(path: string): string {
+	return path.startsWith("/") ? path : cwd() + "/" + path;
+}
+
+function setting(name: string, fallback: string): string {
+	const value = env.get(name);
+	return value == "" ? fallback : value;
+}
+
+function run(): Result<string, string> {
+	const manifestPath = setting("ION_GENERATE_MANIFEST", "project.ms");
+	const manifest = try existingFile(absolute(manifestPath), "manifest does not exist: " + manifestPath);
+	const root = env.get("ION_GENERATE_ROOT");
+	const generator = try existingFile(root + "/tooling/generator/generate.ms", "generator sources do not exist under " + root);
+	const compiler = try existingFile(env.get("MSC"), "MSC must name the compiler");
+	const output = absolute(setting("ION_GENERATE_OUTPUT", dirname(manifest) + "/out/xcode"));
 	const temporary = execFileCapture("/usr/bin/mktemp", ["-d", "/private/tmp/ion-generator.XXXXXX"]);
 	if (!temporary.ok) return Result.err("cannot create evaluator directory");
 	const directory = temporary.value.trim();
@@ -42,7 +52,7 @@ function run(args: string[]): Result<string, string> {
 	return evaluated;
 }
 
-const result = run(argv);
+const result = run();
 if (result.ok) {
 	console.log(result.value);
 } else {
