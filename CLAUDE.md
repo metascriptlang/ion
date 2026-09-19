@@ -190,16 +190,6 @@ Workarounds in this codebase:
 
 When MS Bug 5 is fixed, can collapse `_cmdNames` + `_cmdFns` parallel arrays back into one `Map<string, Command>`.
 
-## Co-Evolution Policy
-
-When hitting a MetaScript / runtime limitation:
-1. Stop ion work
-2. Reproduce minimally in `/tmp/ms-probe/`
-3. Add to `the MetaScript compiler bug tracker` with status + MyApp/ion impact
-4. Either fix in `~/metascript/recompiler/` if blocking and tractable, or document workaround at the parked site
-
-Never silently work around a compiler bug — always trace to the bug tracker. Future-you needs to know the workaround can be removed.
-
 ## Build & Test
 
 ### Build matrix — where each target builds
@@ -288,7 +278,6 @@ When editing ion:
 - **Read [README.md](./README.md) first** for user-facing context.
 - **Don't reintroduce GPU surface / void integration** — explicitly out of scope for v0.
 - **Don't add Tauri-style features** MyApp doesn't need (capability ACL, isolation iframe, plugins, FS scope) without explicit user direction. Ion stays thin on purpose.
-- **When MS bug bites, file/document before working around** — see Co-Evolution Policy above. Never silently degrade code style.
 - **Keep files focused** — most src/*.ms is <100 lines. Split if a file approaches 200.
 - **Manual-smoke-test after structural changes** using the script above. Until automated tests land, this is the safety net.
 - **Brainstorm in Vietnamese** if the user does. Code, READMEs, and this file default to English.
