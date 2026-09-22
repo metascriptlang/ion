@@ -41,7 +41,7 @@ Measured 2026-09-20 on `msc` v0.2.55 (build `bce99dbf`): `msc check src/index.ms
 
 ## Git
 
-Ion follows the arc model of `~/.claude/CLAUDE.md` and lands with the plain-git recipe of `~/metascript/CLAUDE.md` §Arcs, using the gate above. The SessionStart hook prints the card of a `wt/<name>` branch and counts the notes in `~/metascript/.inbox/ion/`; read them first.
+Ion follows the worktree playbook enabled by `~/metascript/CLAUDE.md` and uses `~/nerdtools/claude/tools/wt.sh` with the gate above. Shared session context prints the active card and counts `~/metascript/.inbox/ion/`; read those notes first.
 
 ## Boundaries
 
