@@ -187,7 +187,9 @@ The gate runs resolver and plugin-isolation checks, fresh-process graph/PBX
 determinism, `plutil`, invalid-manifest and overwrite refusal, and the macOS
 dependency-app build and launch. `tooling/generator/tests/ios.py` adds actual
 simulator Debug/Release launch, ad-hoc signature verification, unsigned device
-build, Mach-O/Info.plist minimum agreement, spaced source/product/build paths,
+build, Mach-O/Info.plist minimum agreement, the iPhone and iPad orientation
+lists (portrait, upside-down portrait, both landscapes) with no Xcode
+orientation warning on the device build, spaced source/product/build paths,
 native source/header/archive edits, compiler failure recovery, and rejected
 Xcode environments. It creates and deletes its own simulator and retains logs
 and a screenshot under the printed results directory. Xcode, Python 3 and an
@@ -207,6 +209,12 @@ The gate initially found two stale `navpolicy.ms` expectations that allowed
 `file://`. The unchanged arc-base sources at `33b9e98` reproduced both failures;
 the tests now expect the block already required by `navpolicy.h` and implemented
 by `navpolicy.c`. No navigation runtime behavior changed.
+
+Measured 2026-09-23 on code/test tree `b6dc014`, same toolchain: the command
+above exited 0 with the orientation pin. Without the emitter change the pin
+fails on the missing `UISupportedInterfaceOrientations~iphone` key and the
+device build warns "All interface orientations must be supported unless the app
+requires full screen."
 
 The Recompiler candidate must independently pass its Raiser tests, full compiler
 suite, corpus regression comparison and sanitizer corpus. Ion's test script is
