@@ -8,10 +8,11 @@ extern function ion_nav_decide(scheme: cstring, host: cstring, isUserClick: int3
 
 const ALLOW:    int32 = 0 as int32;
 const EXTERNAL: int32 = 1 as int32;
+const BLOCK:    int32 = 2 as int32;
 
-test "file:// always allowed" {
-	assert ion_nav_decide("file", "", 0 as int32) === ALLOW;
-	assert ion_nav_decide("file", "", 1 as int32) === ALLOW;
+test "file:// always blocked" {
+	assert ion_nav_decide("file", "", 0 as int32) === BLOCK;
+	assert ion_nav_decide("file", "", 1 as int32) === BLOCK;
 }
 
 test "about: always allowed" {
@@ -52,7 +53,7 @@ test "programmatic external https → allow (SPA routing)" {
 }
 
 test "scheme is case-insensitive" {
-	assert ion_nav_decide("FILE", "", 0 as int32) === ALLOW;
+	assert ion_nav_decide("FILE", "", 0 as int32) === BLOCK;
 	assert ion_nav_decide("HTTPS", "github.com", 1 as int32) === EXTERNAL;
 }
 
