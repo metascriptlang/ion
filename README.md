@@ -28,7 +28,7 @@ Designed as a thin glue layer — most of ion is platform-native code (Cocoa + W
 
 The generator proof of concept evaluates a typed `project.ms` manifest with
 Raiser, resolves plugins and target dependencies, and emits a deterministic
-macOS Xcode project:
+macOS or iOS Xcode application project:
 
 ```bash
 tooling/generator/ion-generate examples/generator/project.ms /private/tmp/ion-generated

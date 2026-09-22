@@ -33,6 +33,13 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 Native LOC: macOS 1715 · Windows 2119 · Linux 1508 · shared C 1392.
 MetaScript LOC: 2016 across 20 modules.
 
+Project generation, measured 2026-09-22: macOS and iOS arm64 development
+applications build through Xcode. iOS simulator Debug/Release launch, ad-hoc
+signing and unsigned device builds are verified; this does not port Ion's
+runtime APIs or integrate Neon. See
+[PROJECT-GENERATOR.md](docs/PROJECT-GENERATOR.md#verification) for the measured
+tree, command and remaining boundaries.
+
 ## What the old docs got wrong
 
 These are already corrected in `README.md` / `CLAUDE.md` as of this pass, but

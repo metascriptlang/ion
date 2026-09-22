@@ -4,6 +4,12 @@ All notable changes to ion will be documented here. Format follows [Keep a Chang
 
 ## [Unreleased]
 
+### iOS project generation (2026-09-22)
+
+- `Target.iosApp` extends the existing Xcode generator. See
+  [the measured development-app boundary](docs/PROJECT-GENERATOR.md#ios-development-application);
+  Neon hosting and device distribution are not included.
+
 ### Phase 4.5 — Custom URI Scheme handler (2026-05-18, **mac + win done**, linux waits on linux foundation)
 
 Replaces `file://` with proper-origin custom schemes (Tauri-style). `file://` URLs have **opaque origin** (`null`) per the Fetch/HTML spec, which silently breaks every modern web platform feature that scopes by origin: `history.pushState` throws SecurityError on WebKit, `localStorage` scoping becomes random across all `file://` URLs, Service Workers can't register, COOP/COEP/SharedArrayBuffer disabled. ion ships the proper primitive instead.
