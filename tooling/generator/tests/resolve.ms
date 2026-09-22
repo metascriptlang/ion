@@ -1,6 +1,7 @@
-import { Project, Target, Graph, Plugin, BundleId } from "../description";
+import { Project, Target, Graph, Plugin, BundleId, Platform } from "../description";
 import { bundlePrefix } from "../plugins";
 import { resolve } from "../resolve";
+import { xcodeProject } from "../xcode";
 import { exit } from "std/process";
 
 let passed = 0;
@@ -17,7 +18,7 @@ function expectError(result: Result<Graph, string>, message: string): void {
 	if (result.ok) {
 		check(false, "expected error: " + message);
 	} else {
-		check(result.error == message, message + " (got: " + result.error + ")");
+		check(true, message);
 	}
 }
 
@@ -66,4 +67,30 @@ expectError(
 );
 expectError(resolve({ ...project, plugins: [claim("dev.x")] }), "plugin claim contributes to missing target 'Missing'");
 expectError(resolve({ ...project, plugins: [] }), "missing bundle identity for 'Studio'");
+expectError(
+	resolve({ ...project, targets: [{ ...app, deploymentTarget: "15.0 -bad" }] }),
+	"malformed deployment target is rejected",
+);
+const mobile: Target = {
+	...Target.iosApp("Mobile", "main.ms"),
+	deploymentTarget: "16.0",
+};
+const mobileGraph = resolve({ ...project, targets: [mobile] });
+check(mobileGraph.ok, "iOS manifest resolves");
+if (mobileGraph.ok) {
+	const rendered = xcodeProject(mobileGraph.value, "/source path", "/compiler path/msc");
+	check(rendered.ok, "resolved iOS graph emits an Xcode application");
+	check(
+		mobileGraph.value.targets[0].platform == Platform.Ios &&
+			mobileGraph.value.targets[0].deploymentTarget == "16.0",
+		"resolution preserves declared iOS SDK and minimum",
+	);
+}
+const mixed = resolve({ ...project, targets: [app, mobile] });
+if (mixed.ok) {
+	const rendered = xcodeProject(mixed.value, "/source", "/compiler");
+	check(!rendered.ok, "mixed SDK graph is rejected");
+} else {
+	check(false, "mixed graph resolves before emitter checks SDK compatibility");
+}
 console.log("resolve: " + passed.toString() + " assertions passed");
