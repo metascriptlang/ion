@@ -17,6 +17,19 @@ function validName(value: string): boolean {
 	return true;
 }
 
+function validDeploymentTarget(value: string): boolean {
+	const parts = value.split(".");
+	if (parts.length < 2 || parts.length > 3) return false;
+	for (const part of parts) {
+		if (part == "") return false;
+		for (let i = 0; i < part.byteLength; i += 1) {
+			const c = part.byteAt(i);
+			if (c < 48 || c > 57) return false;
+		}
+	}
+	return true;
+}
+
 function quoted(value: string): string {
 	return "'" + value + "'";
 }
@@ -71,6 +84,12 @@ export function resolve(this project: Project): Result<Graph, string> {
 		const target = graph.targets[i];
 		if (!validName(target.name)) return Result.err("invalid target name: " + quoted(target.name));
 		if (target.entry == "") return Result.err("target " + quoted(target.name) + " has no entry");
+		if (!validDeploymentTarget(target.deploymentTarget)) {
+			return Result.err(
+				"invalid deployment target for " + quoted(target.name) + ": " +
+				quoted(target.deploymentTarget) + " (expected major.minor or major.minor.patch)",
+			);
+		}
 		if (targetIndex(graph.targets, target.name) != i) return Result.err("the target " + quoted(target.name) + " is declared multiple times");
 		for (const dependency of target.dependencies) {
 			if (targetIndex(graph.targets, dependency) < 0) {

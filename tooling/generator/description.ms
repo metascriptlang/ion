@@ -3,6 +3,7 @@ export enum Platform { Macos, Ios }
 export struct Target {
 	name: string;
 	platform: Platform;
+	deploymentTarget: string;
 	entry: string;
 	bundleId: string;
 	dependencies: Vec<string>;
@@ -37,5 +38,15 @@ export struct Graph {
 }
 
 export function app(this typeof Target, name: string, entry: string): Target {
-	return { name, entry, platform: Platform.Macos, bundleId: "", dependencies: [] };
+	return {
+		name, entry, platform: Platform.Macos, deploymentTarget: "13.0",
+		bundleId: "", dependencies: [],
+	};
+}
+
+export function iosApp(this typeof Target, name: string, entry: string): Target {
+	return {
+		name, entry, platform: Platform.Ios, deploymentTarget: "15.0",
+		bundleId: "", dependencies: [],
+	};
 }
