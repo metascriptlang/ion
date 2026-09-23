@@ -26,7 +26,9 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 | `openExternal` | ✅ | ✅ | ✅ | `core/shell.{m,c}` |
 | Multi-window | ✅ | ✅ | ✅ | `common/windowRegistry.c` + `windowEvents.c` |
 | Native menu bar | ✅ | ❌ | ❌ | `macos/chrome/menu.m` only |
-| Render surface | ✅ | ❌ | ❌ | `macos/core/renderSurface.m` only |
+| Render surface | ✅ | ✅ | ❌ | `macos/core/renderSurface.m` / `windows/core/composition.cpp` (DirectComposition visual + consumer's composition swapchain) |
+| Surface key / text / IME / focus / resize events | ⛔ stub | ✅ | ❌ | `windows/input/input.c`; macOS produces pointer events only |
+| Webview as element (`webviewSetFrame`, `webviewSetVisible`) | ⛔ stub | ✅ | ❌ | WebView2 `CompositionController` visual |
 | OTA `check` / `download` / verify | ✅ | ✅ | ✅ | pure MS (`src/update.ms`) |
 | OTA `apply` (install + relaunch) | ✅ | ⛔ stub | ⛔ stub | `update/install.{m,c}` |
 
@@ -113,17 +115,37 @@ Remaining:
 - **OTA install on Linux** — AppImage atomic replace via `rename(2)`; polkit
   `pkexec` only if targeting system paths.
 - **Menu bar on Windows / Linux** — macOS-only today.
-- **Render surface on Windows / Linux** — macOS-only today. Note that
-  `renderSurface` symbols are exported from `src/index.ms` on every platform;
-  only dead-code elimination keeps non-macOS builds linking. Calling it on
-  Win/Linux is a link error, not a runtime error.
+- **Render surface on Linux** — not started. `renderSurface` symbols are
+  exported from `src/index.ms` on every platform; only dead-code elimination
+  keeps Linux linking, so calling them there is a link error.
+- **Surface keyboard, text, IME, focus and resize on macOS** — the bridge
+  symbols (`ionRenderSurfaceAttachSwapChain`, `ionRenderSurfaceSetImeRect`,
+  `ionWebviewSetFrame`, `ionWebviewSetVisible`) are no-op stubs in
+  `macos/core/renderSurface.m`, and the host view emits pointer events only.
+  Written 2026-09-23 on a Windows host and not compiled on macOS yet.
+- **Windows composition hosting, not wired yet** — since WebView2 moved to a
+  `CompositionController` (2026-09-23) the host forwards mouse input only.
+  Still to forward: file drag and drop into the webview
+  (`ICoreWebView2CompositionController3` `DragEnter/Over/Drop`), UI Automation
+  for screen readers (`WM_GETOBJECT` → `GetAutomationProvider`), and touch/pen
+  (`WM_POINTER*` → `SendPointerInput`). Not measured against the windowed
+  build, which had them for free.
+- **Adopt on Windows** — an adopted `HWND` is a child window, so it always sits
+  under the whole DirectComposition tree: `SurfaceAbove` cannot be honoured.
 - **Toast WinRT** — current Windows notification is a balloon tip (renders via
   the Toast/Action Center pipeline on Win10/11 anyway). Proper
   `ToastNotificationManager` needs an AUMID from a Start Menu shortcut.
-- **Windows cross-build link, red 2026-09-20** (`msc` build `bce99dbf`):
-  `runLoop` in `src/ipc.ms` reads `ionInputType/X/Y/P1/P2`, which only
-  `macos/webview/poll.m` defines, so dead-code elimination no longer hides the
-  render-surface gap and `--os=windows` fails at link. Linux not run.
+- **Windows native build, measured 2026-09-23** (`msc` v0.2.55, build
+  `dcfa743b`, Windows 11 host): `msc check src/index.ms` clean, every file
+  under `test/` and `test/common/` green, `helloWebview`, `renderSurfaceSmoke`
+  and `surfaceD3D11` build and link. The `ionInput*` accessors now live once in
+  `common/inputEvents.c`, which also removes the Linux gap of the same name
+  (not built on Linux). `surfaceD3D11` measured: D3D11 clear under a
+  transparent webview panel, key/text/focus/resize/pointer events printed,
+  typing inside the panel reaches the webview and not the surface, IPC round
+  trip (`auto-probe: ipc alive`, `addNumbers(100, 23)`) through the
+  composition controller. Not measured yet: an IME composition (Vietnamese
+  Telex) and a DPI change.
 
 Windows behaviour that is not a bug: a 1–2 s white flash on the first launch of
 a session (WebView2 process spawn + COM init; a splash screen is the answer),
