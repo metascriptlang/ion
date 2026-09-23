@@ -123,13 +123,16 @@ Remaining:
   `ionWebviewSetFrame`, `ionWebviewSetVisible`) are no-op stubs in
   `macos/core/renderSurface.m`, and the host view emits pointer events only.
   Written 2026-09-23 on a Windows host and not compiled on macOS yet.
-- **Windows composition hosting, not wired yet** — since WebView2 moved to a
-  `CompositionController` (2026-09-23) the host forwards mouse input only.
-  Still to forward: file drag and drop into the webview
-  (`ICoreWebView2CompositionController3` `DragEnter/Over/Drop`), UI Automation
-  for screen readers (`WM_GETOBJECT` → `GetAutomationProvider`), and touch/pen
-  (`WM_POINTER*` → `SendPointerInput`). Not measured against the windowed
-  build, which had them for free.
+- **Windows composition hosting** — since WebView2 moved to a
+  `CompositionController` (2026-09-23) the host forwards what windowed hosting
+  gave for free. Measured 2026-09-23 on WebView2 Runtime 153.0.4234.48: file
+  drag and drop from Explorer reaches the page (`webview/host.cpp` drop target →
+  `ICoreWebView2CompositionController3`); UI Automation reaches the page's
+  Document/Text/Edit under the Ion window, by hosting a UIA element on the
+  browser process's top-level `Chrome_WidgetWin_1` popup (an undocumented
+  Chromium window, found by class, browser PID and position — recheck on a
+  runtime update). Not tried with Narrator/NVDA/JAWS, nor with more than one
+  webview. Still not forwarded: touch/pen (`WM_POINTER*` → `SendPointerInput`).
 - **Adopt on Windows** — an adopted `HWND` is a child window, so it always sits
   under the whole DirectComposition tree: `SurfaceAbove` cannot be honoured.
 - **Toast WinRT** — current Windows notification is a balloon tip (renders via
