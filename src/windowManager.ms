@@ -22,7 +22,7 @@
 //   });
 
 import {
-    ionCreateWindow, ionCloseWindow, ionWindowCount, ionFindWindow,
+    ionInit, ionCreateWindow, ionCloseWindow, ionWindowCount, ionFindWindow,
     ionShowWindow, ionHideWindow, ionFocusWindow,
     ionMinimizeWindow, ionMaximizeWindow,
     ionSetWindowTitle, ionSetWindowSize, ionSetWindowPosition,
@@ -106,6 +106,7 @@ function flagsFromOptions(o: WindowOptions): int32 {
 // ---- Lifecycle ------------------------------------------------------------
 
 export function createWindow(label: string, options: WindowOptions): Window | null {
+    if (ionInit() === (0 as int32)) return null as unknown as Window | null;
     const id = ionCreateWindow(label, options.title,
                                options.width, options.height,
                                options.url, flagsFromOptions(options));
