@@ -36,14 +36,18 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
     if (hwnd == s_mainHwnd && ionWinHandleInput(hwnd, msg, wParam, lParam, &handled)) return handled;
     switch (msg) {
         case WM_SIZE:
+            if (wParam == SIZE_MINIMIZED) return 0;
             ionCompClientResized((int)(short)LOWORD(lParam),
                                  (int)(short)HIWORD(lParam));
             return 0;
         case WM_DPICHANGED: {
             const RECT *r = (const RECT *)lParam;
+            RECT before, after;
+            GetClientRect(hwnd, &before);
             SetWindowPos(hwnd, NULL, r->left, r->top, r->right - r->left, r->bottom - r->top,
                          SWP_NOZORDER | SWP_NOACTIVATE);
-            ionCompDpiChanged();
+            GetClientRect(hwnd, &after);
+            if (EqualRect(&before, &after)) ionCompDpiChanged();
             return 0;
         }
         case WM_MOVE:
