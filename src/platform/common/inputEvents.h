@@ -1,16 +1,13 @@
-// Pointer input event queue — small ring buffer, single-threaded FIFO.
+// Input event queue — small ring buffer, single-threaded FIFO.
 //
-// Producer: the render-surface host view's Cocoa event handlers (when the
-// surface sits on top in INPUT_FULL it is the hit-test target, so it reliably
-// receives mouse down/up/drag/move/scroll — SDL's content view, being below
-// the webview, does not). Consumer: ionPollEvent → returns 4 → MS reads
-// ionInput* and forwards into the native renderer.
+// Producers: the platform's render-surface host (pointer, key, text, IME
+// preedit, focus, resize). Consumer: ionPollEvent → ion_input_next → returns 4
+// → MS reads the current record through the ionInput* accessors, defined once
+// in inputEvents.c for every platform.
 //
-// Coordinates are a FRACTION (0..1) of the surface, top-left origin — the same
-// values the IonInputSink fast path delivers (single dispatch source in
-// renderSurface.m), so the polled and sink paths agree.
-// type: 1=button, 2=motion, 3=wheel; p1/p2 carry button/pressed, relX/relY,
-// or wheel dx/dy per type (see bridge.h ionInput*).
+// Pointer coordinates are a FRACTION (0..1) of the surface, top-left origin —
+// the same values the IonInputSink fast path delivers. Field meaning per type
+// is documented beside the accessors in bridge.h.
 
 #ifndef ION_INPUT_EVENTS_H
 #define ION_INPUT_EVENTS_H
@@ -19,8 +16,34 @@
 extern "C" {
 #endif
 
+#define ION_INPUT_BUTTON  1
+#define ION_INPUT_MOTION  2
+#define ION_INPUT_WHEEL   3
+#define ION_INPUT_KEY     4
+#define ION_INPUT_TEXT    5
+#define ION_INPUT_PREEDIT 6
+#define ION_INPUT_FOCUS   7
+#define ION_INPUT_RESIZE  8
+
+typedef struct {
+    int         type;
+    int         surface;
+    double      x, y, p1, p2;
+    int         key;
+    int         scancode;
+    int         mods;
+    int         consumedMods;
+    unsigned    unshifted;
+    const char *text;
+} IonInputRecord;
+
 int ion_input_push(int type, double x, double y, double p1, double p2);
-int ion_input_pop(int *type, double *x, double *y, double *p1, double *p2);
+// Copies r->text; the caller keeps ownership of its buffer.
+int ion_input_push_record(const IonInputRecord *r);
+
+// Moves the oldest record into the slot the ionInput* accessors read.
+// Returns 1 when a record was popped, 0 when the queue is empty.
+int ion_input_next(void);
 
 #ifdef __cplusplus
 }

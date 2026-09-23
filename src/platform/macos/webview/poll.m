@@ -24,17 +24,6 @@
 static IonWindowId s_last_wevt_id   = ION_WINDOW_INVALID;
 static int         s_last_wevt_type = 0;
 
-// Last input event (valid after ionPollEvent returns 4). Positions are a
-// fraction (0..1) of the surface, top-left origin (see inputEvents.h).
-// Fed by the input queue (producer: the render-surface host view's Cocoa
-// handlers, see renderSurface.m), not SDL — SDL's content view sits below the
-// webview so its mouse delivery is unreliable when a surface is on top.
-static int    s_input_type = 0;
-static double s_input_x  = 0.0;
-static double s_input_y  = 0.0;
-static double s_input_p1 = 0.0;
-static double s_input_p2 = 0.0;
-
 static IonWindowId windowIdForSdlWindowId(SDL_WindowID sdlWindowId) {
     SDL_Window *w = SDL_GetWindowFromID(sdlWindowId);
     if (w == NULL) return ION_WINDOW_INVALID;
@@ -50,7 +39,7 @@ static IonWindowId windowIdForSdlWindowId(SDL_WindowID sdlWindowId) {
 int ionPollEvent(void) {
     if (ion_wevt_pop(&s_last_wevt_id, &s_last_wevt_type)) return 3;
     if (ion_queue_pop()) return 2;
-    if (ion_input_pop(&s_input_type, &s_input_x, &s_input_y, &s_input_p1, &s_input_p2)) return 4;
+    if (ion_input_next()) return 4;
 
     SDL_Event ev;
     int got = SDL_WaitEventTimeout(&ev, 16);
@@ -82,7 +71,7 @@ int ionPollEvent(void) {
     }
 
     // Mouse events captured by the surface host view during the Cocoa pump above.
-    if (ion_input_pop(&s_input_type, &s_input_x, &s_input_y, &s_input_p1, &s_input_p2)) return 4;
+    if (ion_input_next()) return 4;
 
     if (ion_wevt_pop(&s_last_wevt_id, &s_last_wevt_type)) return 3;
     if (ion_queue_pop()) return 2;
@@ -95,12 +84,6 @@ IonWindowId ionMessageWindowId(void) { return ion_queue_last_window_id(); }
 
 IonWindowId ionWindowEventId(void)   { return s_last_wevt_id; }
 int         ionWindowEventType(void) { return s_last_wevt_type; }
-
-int    ionInputType(void) { return s_input_type; }
-double ionInputX(void)    { return s_input_x; }
-double ionInputY(void)    { return s_input_y; }
-double ionInputP1(void)   { return s_input_p1; }
-double ionInputP2(void)   { return s_input_p2; }
 
 int ionWindowPixelWidth(IonWindowId id) {
     IonMacWindowState *st = ionMacWindowState(id);

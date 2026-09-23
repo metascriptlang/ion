@@ -139,8 +139,21 @@ void  ionRenderSurfaceAdopt(IonRenderSurfaceId surf, void *nativeView);
 void  ionRenderSurfaceAdoptLayer(IonRenderSurfaceId surf, long long caLayer);
 
 // Mode B — Ion owns the surface; returns a layer the renderer draws into
-// (CAMetalLayer* on macOS, swapchain target on Windows). NULL until Phase 2.
+// (CAMetalLayer* on macOS). NULL on Windows, where Mode B is
+// ionRenderSurfaceAttachSwapChain.
 void *ionRenderSurfaceLayer(IonRenderSurfaceId surf);
+
+// Mode B (Windows) — the renderer creates an IDXGISwapChain1 with
+// CreateSwapChainForComposition (premultiplied alpha, flip model) on its own
+// D3D11 device, sized to the ION_INPUT_RESIZE pixel size; Ion makes it the
+// content of the surface's DirectComposition visual. The pointer crosses as
+// an integer for the same reason as caLayer above. Returns 1 on success, 0 on
+// an invalid surface or swapchain; always 0 on macOS and Linux.
+int   ionRenderSurfaceAttachSwapChain(IonRenderSurfaceId surf, long long dxgiSwapChain1);
+
+// Where the IME draws its candidate window: the caret rect in device pixels,
+// top-left of the surface. Set it whenever the caret moves.
+void  ionRenderSurfaceSetImeRect(IonRenderSurfaceId surf, int x, int y, int w, int h);
 
 // Low-latency input: a sink the surface host view calls DIRECTLY (main thread,
 // inside event processing) for each mouse event, bypassing the ionPollEvent
@@ -160,6 +173,15 @@ void  ionRenderSurfaceSyncFrame(IonRenderSurfaceId surf);   // match content-vie
 void  ionRenderSurfaceSetInputRegion(IonRenderSurfaceId surf,
                                      int mode, int x, int y, int w, int h);
 void  ionRenderSurfaceRelease(IonRenderSurfaceId surf);     // detach + destroy
+
+// ---- Webview as an element ------------------------------------------------
+//
+// The webview's frame in device pixels, top-left of the window's client area.
+// Until the first call it fills the client area and follows resizes; after it,
+// native layout owns the frame. Pointer input inside the frame goes to the
+// webview unless an ION_SURFACE_ABOVE surface's input region claims the point.
+void  ionWebviewSetFrame(IonWindowId win, int x, int y, int w, int h);
+void  ionWebviewSetVisible(IonWindowId win, int visible);
 
 // Pump platform events one tick (SDL+Cocoa on macOS, Win32 PeekMessage on
 // Windows). Caller (MS) calls this in a loop; this fn is non-blocking.
@@ -185,18 +207,54 @@ int         ionWindowEventType(void);
 
 // Valid only after ionPollEvent returned 4 (input event), until the next call.
 // A render-surface consumer forwards these into its native renderer's input.
-//   type: 1=mouse button, 2=mouse motion, 3=mouse wheel.
-//   x,y : position as a FRACTION (0..1) of the surface, top-left origin — the
-//         consumer scales by its renderer's resolution (DPI/resize-independent).
-//         Same values the IonInputSink fast path delivers.
-//   button → p1=button (1=left, 2=right, 3=middle), p2=pressed (1/0)
-//   motion → p1=relX, p2=relY (as surface fractions)
-//   wheel  → p1=dx, p2=dy (scroll deltas)
-int    ionInputType(void);
-double ionInputX(void);
-double ionInputY(void);
-double ionInputP1(void);
-double ionInputP2(void);
+// ionInputSurface is the surface the event belongs to (-1 when the platform
+// does not attribute it yet).
+//   1 button  x,y = position as a FRACTION (0..1) of the surface, top-left
+//             origin (same values the IonInputSink fast path delivers);
+//             p1 = button (1=left, 2=right, 3=middle), p2 = pressed (1/0)
+//   2 motion  x,y as above; p1,p2 = relX,relY as surface fractions
+//   3 wheel   x,y as above; p1,p2 = dx,dy scroll deltas
+//   4 key     p1 = ION_KEY_RELEASE/PRESS/REPEAT; key = ION_KEY code (W3C
+//             KeyboardEvent.code, name via ionKeyName); scancode = native;
+//             mods / consumedMods = ION_MOD_* bits; unshifted = the codepoint
+//             the key gives with no modifier (0 when none); text = the UTF-8
+//             the press produced (empty for release and for non-text keys)
+//   5 text    text = UTF-8 not tied to a key press (IME commit, injected input)
+//   6 preedit text = the IME composition in progress (empty = cleared);
+//             p1 = caret offset in bytes into text
+//   7 focus   p1 = 1 gained / 0 lost
+//   8 resize  p1,p2 = surface width,height in device pixels; x = scale (DPI/96)
+#define ION_KEY_RELEASE 0
+#define ION_KEY_PRESS   1
+#define ION_KEY_REPEAT  2
+
+#define ION_MOD_SHIFT       (1 << 0)
+#define ION_MOD_CTRL        (1 << 1)
+#define ION_MOD_ALT         (1 << 2)
+#define ION_MOD_SUPER       (1 << 3)
+#define ION_MOD_CAPS_LOCK   (1 << 4)
+#define ION_MOD_NUM_LOCK    (1 << 5)
+#define ION_MOD_SHIFT_RIGHT (1 << 6)
+#define ION_MOD_CTRL_RIGHT  (1 << 7)
+#define ION_MOD_ALT_RIGHT   (1 << 8)
+#define ION_MOD_SUPER_RIGHT (1 << 9)
+
+int      ionInputType(void);
+int      ionInputSurface(void);
+double   ionInputX(void);
+double   ionInputY(void);
+double   ionInputP1(void);
+double   ionInputP2(void);
+int      ionInputKey(void);
+int      ionInputScancode(void);
+int      ionInputMods(void);
+int      ionInputConsumedMods(void);
+int      ionInputUnshifted(void);
+msString ionInputText(void);
+
+// W3C KeyboardEvent.code name of an ION_KEY code ("KeyA", "ArrowUp"); "" when
+// out of range. The table lives in common/keys.c.
+msString ionKeyName(int key);
 
 // MS → JS. Evaluates `js` in the webview's main world.
 void ionEvalJS(const char *js);

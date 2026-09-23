@@ -15,11 +15,13 @@
 #include "../internal.h"
 #include "../../bridge.h"
 #include "../../common/queue.h"
+#include "../../common/inputEvents.h"
 
 #include <gtk/gtk.h>
 
 int ionPollEvent(void) {
     if (ion_queue_pop()) return 2;
+    if (ion_input_next()) return 4;
 
     while (gtk_events_pending()) {
         gtk_main_iteration_do(FALSE);
