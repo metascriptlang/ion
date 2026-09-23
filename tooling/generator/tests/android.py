@@ -129,8 +129,10 @@ for secret in ("ion-store",):
                 and secret.encode() in content], "signing secret leaked into the project"
 
 emulator = None
-if not os.environ.get("ANDROID_SERIAL") and "emulator-" not in run("devices", [adb, "devices"]):
-    os.environ["ANDROID_SERIAL"] = "emulator-5554"
+running = re.findall(r"^(emulator-\d+)\s+device$", run("devices", [adb, "devices"]), re.M)
+if not os.environ.get("ANDROID_SERIAL"):
+    os.environ["ANDROID_SERIAL"] = running[0] if running else "emulator-5554"
+if not running and os.environ["ANDROID_SERIAL"] == "emulator-5554":
     avd = os.environ.get("ION_ANDROID_AVD", "Pixel_9_Pro")
     emulator = subprocess.Popen([sdk / "emulator/emulator", "-avd", avd, "-no-window", "-no-audio",
                                  "-no-snapshot-save", "-no-boot-anim"],
@@ -143,11 +145,18 @@ try:
         if time.monotonic() > deadline:
             raise RuntimeError("emulator did not boot")
         time.sleep(2)
+    while emulator:
+        run("close-dialogs", [adb, "shell", "am", "broadcast", "-a", "android.intent.action.CLOSE_SYSTEM_DIALOGS"])
+        focus = run("focus", [adb, "shell", "dumpsys", "window"])
+        if re.search(r"mCurrentFocus=.*[Ll]auncher", focus):
+            break
+        if time.monotonic() > deadline:
+            raise RuntimeError(f"emulator never settled on the launcher; logs={results}")
+        time.sleep(2)
     assert run("sdk", [adb, "shell", "getprop", "ro.build.version.sdk"]).strip() == "36"
     rotation = {key: run("setting-" + key, [adb, "shell", "settings", "get", "system", key]).strip()
                 for key in ("accelerometer_rotation", "user_rotation")}
-    run("rotation-lock", [adb, "shell", "settings", "put", "system", "accelerometer_rotation", "0"])
-    run("portrait-start", [adb, "shell", "settings", "put", "system", "user_rotation", "0"])
+    run("portrait-start", [adb, "shell", "cmd", "window", "user-rotation", "lock", "0"])
 
     def events():
         return re.findall(r"IonFixture: (.*)", run("logcat", [adb, "logcat", "-d", "-s", "IonFixture"]))
@@ -188,9 +197,9 @@ try:
     width, height = map(int, re.search(r"resize (\d+)x(\d+)", " ".join(first)).groups())
     process = pid()
     run("logcat-clear", [adb, "logcat", "-c"])
-    run("landscape", [adb, "shell", "settings", "put", "system", "user_rotation", "1"])
+    run("landscape", [adb, "shell", "cmd", "window", "user-rotation", "lock", "1"])
     settle(lambda seen: f"resize {height}x{width} value=17" in seen)
-    run("portrait", [adb, "shell", "settings", "put", "system", "user_rotation", "0"])
+    run("portrait", [adb, "shell", "cmd", "window", "user-rotation", "lock", "0"])
     settle(lambda seen: f"resize {width}x{height} value=17" in seen)
     run("home", [adb, "shell", "input", "keyevent", "KEYCODE_HOME"])
     settle(lambda seen: seen[-1] == "pause value=17")
@@ -225,8 +234,11 @@ try:
         assert (project / path).read_bytes() == content, f"build rewrote generated {path}"
     assert not (source / "out").exists(), "Gradle build polluted the shared source tree"
 finally:
-    for key, value in locals().get("rotation", {}).items():
-        subprocess.run([str(adb), "shell", "settings", "put", "system", key, value], capture_output=True)
+    if "rotation" in globals():
+        mode = ["free"] if rotation["accelerometer_rotation"] == "1" else ["lock", rotation["user_rotation"]]
+        subprocess.run([str(adb), "shell", "cmd", "window", "user-rotation", *mode], capture_output=True)
+        subprocess.run([str(adb), "shell", "settings", "put", "system", "user_rotation", rotation["user_rotation"]],
+                       capture_output=True)
     subprocess.run([str(adb), "uninstall", package], capture_output=True)
     if emulator:
         subprocess.run([str(adb), "emu", "kill"], capture_output=True)
