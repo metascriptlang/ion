@@ -10,6 +10,7 @@ import {
 	webviewSetFrame, onInput, onKey, onText, onImePreedit, onSurfaceFocus, onSurfaceResize,
 	keyName, KeyEvent, SurfaceBelow, RenderSurfaceInvalid,
 } from "../src/index";
+import { Window } from "../src/windowManager";
 import { exit } from "std/process";
 
 when (windows) {
@@ -44,6 +45,11 @@ function visible(text: string): string {
 }
 
 let _swapChain: int64 = 0 as int64;
+let _window: Window | null = null;
+
+function px(logical: int32, scale: float64): int32 {
+	return ((logical as float64) * scale) as int32;
+}
 
 function onResize(surface: int32, width: int32, height: int32, scale: float64): void {
 	console.log(`resize surface=${surface} ${width}x${height} scale=${scale}`);
@@ -54,7 +60,10 @@ function onResize(surface: int32, width: int32, height: int32, scale: float64): 
 	} else {
 		demoD3DResize(width, height);
 	}
-	renderSurfaceSetImeRect(surface, 40 as int32, height - (80 as int32), 8 as int32, 20 as int32);
+	renderSurfaceSetImeRect(surface, px(40 as int32, scale), height - px(80 as int32, scale), px(8 as int32, scale), px(20 as int32, scale));
+	if (_window !== null) {
+		webviewSetFrame(_window, px(20 as int32, scale), px(20 as int32, scale), px(420 as int32, scale), px(110 as int32, scale));
+	}
 }
 
 function onKeyEvent(e: KeyEvent): void {
@@ -66,9 +75,9 @@ function onKeyEvent(e: KeyEvent): void {
 function main(): int32 {
 	const win = createWindow("main", defaultOptions("Ion surface D3D11", 900 as int32, 600 as int32, PANEL));
 	if (win === null) return 1;
+	_window = win;
 	const surf = renderSurfaceCreate(win, SurfaceBelow);
 	if (surf === RenderSurfaceInvalid) return 2;
-	webviewSetFrame(win, 20 as int32, 20 as int32, 420 as int32, 110 as int32);
 
 	onSurfaceResize(onResize);
 	onKey(onKeyEvent);
