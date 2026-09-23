@@ -8,6 +8,7 @@ cd "$repo"
 
 "$compiler" run tooling/generator/tests/resolve.ms --target=raiser > "$results/resolve.log" 2>&1
 "$compiler" run tooling/generator/tests/pluginIsolation.ms --target=raiser > "$results/isolation.log" 2>&1
+"$compiler" run tooling/generator/tests/android.ms --target=raiser > "$results/android-unit.log" 2>&1
 
 evaluators_before=$(find /private/tmp -maxdepth 1 -name 'ion-generator.*' | wc -l)
 generate=tooling/generator/ion-generate
@@ -46,4 +47,5 @@ for app in IonGenerator IonPreview; do
 	test "$(ION_GENERATOR_SMOKE=1 "$bundle/Contents/MacOS/$app")" = "Ion Generator window created"
 done
 python3 tooling/generator/tests/ios.py "$results"
-printf 'PASS: resolver, plugin isolation, fresh-process determinism, Xcode syntax, invalid manifest, overwrite refusal, default manifest and output, xcodebuild with dependency, app smoke\nlogs=%s\n' "$results"
+python3 tooling/generator/tests/android.py "$results"
+printf 'PASS: resolver, plugin isolation, fresh-process determinism, Xcode syntax, invalid manifest, overwrite refusal, default manifest and output, xcodebuild with dependency, app smoke, iOS and Android fixtures\nlogs=%s\n' "$results"
