@@ -129,7 +129,8 @@ for secret in ("ion-store",):
                 and secret.encode() in content], "signing secret leaked into the project"
 
 emulator = None
-if "emulator-" not in run("devices", [adb, "devices"]):
+if not os.environ.get("ANDROID_SERIAL") and "emulator-" not in run("devices", [adb, "devices"]):
+    os.environ["ANDROID_SERIAL"] = "emulator-5554"
     avd = os.environ.get("ION_ANDROID_AVD", "Pixel_9_Pro")
     emulator = subprocess.Popen([sdk / "emulator/emulator", "-avd", avd, "-no-window", "-no-audio",
                                  "-no-snapshot-save", "-no-boot-anim"],
@@ -143,6 +144,10 @@ try:
             raise RuntimeError("emulator did not boot")
         time.sleep(2)
     assert run("sdk", [adb, "shell", "getprop", "ro.build.version.sdk"]).strip() == "36"
+    rotation = {key: run("setting-" + key, [adb, "shell", "settings", "get", "system", key]).strip()
+                for key in ("accelerometer_rotation", "user_rotation")}
+    run("rotation-lock", [adb, "shell", "settings", "put", "system", "accelerometer_rotation", "0"])
+    run("portrait-start", [adb, "shell", "settings", "put", "system", "user_rotation", "0"])
 
     def events():
         return re.findall(r"IonFixture: (.*)", run("logcat", [adb, "logcat", "-d", "-s", "IonFixture"]))
@@ -182,7 +187,6 @@ try:
     assert first[0] == "start value=17" and "resume value=17" in first
     width, height = map(int, re.search(r"resize (\d+)x(\d+)", " ".join(first)).groups())
     process = pid()
-    run("rotation-lock", [adb, "shell", "settings", "put", "system", "accelerometer_rotation", "0"])
     run("logcat-clear", [adb, "logcat", "-c"])
     run("landscape", [adb, "shell", "settings", "put", "system", "user_rotation", "1"])
     settle(lambda seen: f"resize {height}x{width} value=17" in seen)
@@ -192,12 +196,12 @@ try:
     settle(lambda seen: seen[-1] == "pause value=17")
     run("relaunch", [adb, "shell", "am", "start", "-W", "-n", activity])
     settle(lambda seen: seen[-1] == "resume value=17")
+    assert pid() == process, "lifecycle crossed processes"
     task = re.search(r"taskId=(\d+): " + re.escape(activity), run("stacks", [adb, "shell", "am", "stack", "list"]))
     run("remove-task", [adb, "shell", "am", "stack", "remove", task.group(1)])
     lifecycle = settle(lambda seen: seen[-1] == "destroy value=17")
     assert "start value=17" not in lifecycle, "size change recreated the activity"
-    assert pid() == process, "lifecycle crossed processes"
-    with (results / "emulator.png").open("wb") as screenshot:
+    with (results / "device.png").open("wb") as screenshot:
         subprocess.run([str(adb), "exec-out", "screencap", "-p"], stdout=screenshot, check=True)
 
     launch(release_apk, 17)
@@ -221,7 +225,8 @@ try:
         assert (project / path).read_bytes() == content, f"build rewrote generated {path}"
     assert not (source / "out").exists(), "Gradle build polluted the shared source tree"
 finally:
-    subprocess.run([str(adb), "shell", "settings", "put", "system", "accelerometer_rotation", "1"], capture_output=True)
+    for key, value in locals().get("rotation", {}).items():
+        subprocess.run([str(adb), "shell", "settings", "put", "system", key, value], capture_output=True)
     subprocess.run([str(adb), "uninstall", package], capture_output=True)
     if emulator:
         subprocess.run([str(adb), "emu", "kill"], capture_output=True)
@@ -229,5 +234,5 @@ finally:
 
 print("PASS: Android deterministic generation, vendored wrapper, overwrite and invalid-manifest refusal, "
       "Debug/Release separation, 16 KiB ELF/APK alignment, signed APK/AAB, missing-signing refusal, "
-      "JNI lifecycle on Android 36, spaced paths, source/header rebuilds and failure recovery")
+      "JNI lifecycle on Android 36 (" + os.environ["ANDROID_SERIAL"] + "), spaced paths, source/header rebuilds and failure recovery")
 print(f"android logs={results}")
