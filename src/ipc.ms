@@ -31,6 +31,7 @@
 @compile("./platform/common/windowRegistry.c");
 @compile("./platform/common/windowEvents.c");
 @compile("./platform/common/inputEvents.c");
+@compile("./platform/common/frameClock.c");
 @compile("./platform/common/keys.c");
 @compile("./platform/common/navpolicy.c");
 @compile("./platform/common/bootstrap.c");

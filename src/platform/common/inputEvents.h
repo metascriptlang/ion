@@ -24,6 +24,7 @@ extern "C" {
 #define ION_INPUT_PREEDIT 6
 #define ION_INPUT_FOCUS   7
 #define ION_INPUT_RESIZE  8
+#define ION_INPUT_FRAME   9
 
 typedef struct {
     int         type;
