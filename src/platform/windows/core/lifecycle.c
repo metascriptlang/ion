@@ -16,6 +16,7 @@
 #include "../../bridge.h"
 
 #include <shellapi.h>  // CommandLineToArgvW
+#include <ole2.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -86,11 +87,14 @@ static void forwardToPrimaryAndExit(void) {
     ExitProcess(0);
 }
 
+static int s_oleInitialized = 0;
+
 int ionInit(void) {
     if (s_hInstance == NULL) {
         s_hInstance = GetModuleHandleW(NULL);
     }
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    if (!s_oleInitialized && SUCCEEDED(OleInitialize(NULL))) s_oleInitialized = 1;
 
     captureColdStartUrl();
 
@@ -112,5 +116,6 @@ void ionQuit(void) {
     // Webview teardown happens in window.c's WM_DESTROY handler — by the
     // time ionQuit runs, the HWND (and any WebView2 attached to it) is
     // already gone. Nothing to release here beyond clearing the HINSTANCE.
+    if (s_oleInitialized) { OleUninitialize(); s_oleInitialized = 0; }
     s_hInstance = NULL;
 }

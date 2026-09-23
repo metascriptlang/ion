@@ -132,6 +132,7 @@ when (windows) {
 	@compile("./platform/windows/webview/nav.cpp");
 	@compile("./platform/windows/webview/eval.cpp");
 	@compile("./platform/windows/webview/protocol.cpp");
+	@compile("./platform/windows/webview/host.cpp");
 	@compile("./platform/windows/chrome/tray.c");
 	@compile("./platform/windows/chrome/notify.c");
 	@compile("./platform/windows/chrome/dialog.c");
@@ -154,6 +155,8 @@ when (windows) {
 	@passL("-ladvapi32");  // Credential Manager: CredWriteW / CredReadW / CredDeleteW
 	@passL("-ldcomp");
 	@passL("-limm32");
+	@passL("-luiautomationcore");
+	@passL("-loleaut32");
 	// GUI subsystem — suppresses the default console window that pops up when
 	// the user double-clicks a .exe. Without this flag, the linker defaults to
 	// console subsystem and a terminal appears next to our window.

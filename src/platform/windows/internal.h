@@ -35,6 +35,10 @@ void    ionWebView2Focus(void);
 void    ionWebView2ParentMoved(void);
 void    ionWebView2SendMouse(UINT msg, WPARAM wParam, DWORD mouseData, int x, int y);
 HCURSOR ionWebView2Cursor(void);
+void    ionWebView2RegisterDrop(HWND host);
+void    ionWebView2RevokeDrop(HWND host);
+int     ionWebView2HostAutomation(HWND host, WPARAM wParam, LPARAM lParam, LRESULT *result);
+void    ionWebView2DetachAutomation(HWND host);
 
 #define ION_COMP_ROUTE_NONE    (-1)
 #define ION_COMP_ROUTE_WEBVIEW (-2)

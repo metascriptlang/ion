@@ -53,6 +53,9 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
         case WM_MOVE:
             ionWebView2ParentMoved();
             return 0;
+        case WM_GETOBJECT:
+            if (ionWebView2HostAutomation(hwnd, wParam, lParam, &handled)) return handled;
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
         case WM_ION_TRAY_CB:
             // wParam = uID (1 = tray), lParam = mouse msg (e.g., WM_LBUTTONUP).
             ionTrayHandleCallback((UINT)lParam);
@@ -86,6 +89,8 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             return 0;
         case WM_DESTROY:
             if (hwnd == s_mainHwnd) {
+                ionWebView2RevokeDrop(hwnd);
+                ionWebView2DetachAutomation(hwnd);
                 ionWebView2Shutdown();
                 ionCompShutdown();
                 s_mainHwnd = NULL;
@@ -151,6 +156,7 @@ int ionOpen(const char *title, int width, int height, const char *url) {
         s_mainHwnd = NULL;
         return 0;
     }
+    ionWebView2RegisterDrop(hwnd);
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
 
