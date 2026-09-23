@@ -1,4 +1,4 @@
-import { Project, Graph, Target, BundleIdentity } from "./description";
+import { Project, Graph, Target, BundleIdentity, Platform } from "./description";
 
 function targetIndex(targets: Span<Target>, name: string): int32 {
 	for (let i = 0; i < targets.length; i += 1) {
@@ -84,7 +84,7 @@ export function resolve(this project: Project): Result<Graph, string> {
 		const target = graph.targets[i];
 		if (!validName(target.name)) return Result.err("invalid target name: " + quoted(target.name));
 		if (target.entry == "") return Result.err("target " + quoted(target.name) + " has no entry");
-		if (!validDeploymentTarget(target.deploymentTarget)) {
+		if (target.platform != Platform.Android && !validDeploymentTarget(target.deploymentTarget)) {
 			return Result.err(
 				"invalid deployment target for " + quoted(target.name) + ": " +
 				quoted(target.deploymentTarget) + " (expected major.minor or major.minor.patch)",
