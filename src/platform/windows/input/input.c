@@ -460,6 +460,10 @@ int ionWinHandleInput(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT
             if (msg == WM_XBUTTONDOWN || msg == WM_XBUTTONUP) *result = TRUE;
             return 1;
 
+        case WM_POINTERDOWN: case WM_POINTERUP: case WM_POINTERUPDATE:
+        case WM_POINTERENTER: case WM_POINTERLEAVE: case WM_POINTERCAPTURECHANGED:
+            return ionWebView2PointerMessage(hwnd, msg, wParam, lParam);
+
         case WM_SETCURSOR:
             if (LOWORD(lParam) == HTCLIENT && s_hover == ION_COMP_ROUTE_WEBVIEW && ionWebView2Cursor() != NULL) {
                 SetCursor(ionWebView2Cursor());

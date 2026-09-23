@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cwchar>
 #include <oleauto.h>
+#include <windowsx.h>
 
 using Microsoft::WRL::ComPtr;
 
@@ -105,6 +106,112 @@ private:
 };
 
 static HostDropTarget *s_dropTarget = nullptr;
+
+static const int ION_MAX_POINTERS = 16;
+static UINT32 s_webviewPointers[ION_MAX_POINTERS];
+static int    s_webviewPointerCount = 0;
+
+static bool pointerInWebview(UINT32 id) {
+    for (int i = 0; i < s_webviewPointerCount; i++)
+        if (s_webviewPointers[i] == id) return true;
+    return false;
+}
+
+static void trackPointer(UINT32 id, bool on) {
+    for (int i = 0; i < s_webviewPointerCount; i++) {
+        if (s_webviewPointers[i] != id) continue;
+        if (!on) s_webviewPointers[i] = s_webviewPointers[--s_webviewPointerCount];
+        return;
+    }
+    if (on && s_webviewPointerCount < ION_MAX_POINTERS) s_webviewPointers[s_webviewPointerCount++] = id;
+}
+
+static POINT toFrame(HWND host, POINT screen) {
+    int ox, oy;
+    ionCompWebviewOrigin(&ox, &oy);
+    ScreenToClient(host, &screen);
+    screen.x -= ox;
+    screen.y -= oy;
+    return screen;
+}
+
+static RECT toFrameRect(HWND host, RECT r) {
+    POINT tl = toFrame(host, POINT{ r.left, r.top });
+    POINT br = toFrame(host, POINT{ r.right, r.bottom });
+    return RECT{ tl.x, tl.y, br.x, br.y };
+}
+
+static HRESULT fillPointerInfo(HWND host, UINT32 id, ICoreWebView2PointerInfo *out) {
+    POINTER_INFO pi;
+    if (!GetPointerInfo(id, &pi)) return HRESULT_FROM_WIN32(GetLastError());
+    out->put_PointerKind(pi.pointerType);
+    out->put_PointerId(pi.pointerId);
+    out->put_FrameId(pi.frameId);
+    out->put_PointerFlags(pi.pointerFlags);
+    RECT device, display;
+    if (GetPointerDeviceRects(pi.sourceDevice, &device, &display)) {
+        out->put_PointerDeviceRect(device);
+        out->put_DisplayRect(display);
+    }
+    out->put_PixelLocation(toFrame(host, pi.ptPixelLocation));
+    out->put_PixelLocationRaw(toFrame(host, pi.ptPixelLocationRaw));
+    out->put_HimetricLocation(pi.ptHimetricLocation);
+    out->put_HimetricLocationRaw(pi.ptHimetricLocationRaw);
+    out->put_Time(pi.dwTime);
+    out->put_HistoryCount(pi.historyCount);
+    out->put_InputData(pi.InputData);
+    out->put_KeyStates(pi.dwKeyStates);
+    out->put_PerformanceCount(pi.PerformanceCount);
+    out->put_ButtonChangeKind((INT32)pi.ButtonChangeType);
+    if (pi.pointerType == PT_PEN) {
+        POINTER_PEN_INFO pen;
+        if (GetPointerPenInfo(id, &pen)) {
+            out->put_PenFlags(pen.penFlags);
+            out->put_PenMask(pen.penMask);
+            out->put_PenPressure(pen.pressure);
+            out->put_PenRotation(pen.rotation);
+            out->put_PenTiltX(pen.tiltX);
+            out->put_PenTiltY(pen.tiltY);
+        }
+    } else if (pi.pointerType == PT_TOUCH) {
+        POINTER_TOUCH_INFO touch;
+        if (GetPointerTouchInfo(id, &touch)) {
+            out->put_TouchFlags(touch.touchFlags);
+            out->put_TouchMask(touch.touchMask);
+            out->put_TouchContact(toFrameRect(host, touch.rcContact));
+            out->put_TouchContactRaw(toFrameRect(host, touch.rcContactRaw));
+            out->put_TouchOrientation(touch.orientation);
+            out->put_TouchPressure(touch.pressure);
+        }
+    }
+    return S_OK;
+}
+
+extern "C" int ionWebView2PointerMessage(HWND host, UINT msg, WPARAM wParam, LPARAM lParam) {
+    WebView2State *st = ionGetWebView2State();
+    if (st == nullptr || !st->composition || !st->env) return 0;
+    UINT32 id = GET_POINTERID_WPARAM(wParam);
+    POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+    ScreenToClient(host, &pt);
+    bool started = pointerInWebview(id);
+    if (!started && ionCompRoute(pt.x, pt.y) != ION_COMP_ROUTE_WEBVIEW) return 0;
+    if (msg == WM_POINTERDOWN || msg == WM_POINTERENTER) trackPointer(id, true);
+    if (msg == WM_POINTERDOWN) ionWebView2Focus();
+
+    ComPtr<ICoreWebView2Environment3> env3;
+    ComPtr<ICoreWebView2PointerInfo> info;
+    if (FAILED(st->env->QueryInterface(IID_ICoreWebView2Environment3, (void **)&env3)) ||
+        FAILED(env3->CreateCoreWebView2PointerInfo(&info)) ||
+        FAILED(fillPointerInfo(host, id, info.Get()))) return 0;
+    st->composition->SendPointerInput((COREWEBVIEW2_POINTER_EVENT_KIND)msg, info.Get());
+
+    if (msg == WM_POINTERUP || msg == WM_POINTERLEAVE || msg == WM_POINTERCAPTURECHANGED) {
+        POINTER_INFO pi;
+        if (msg != WM_POINTERUP || !GetPointerInfo(id, &pi) || !(pi.pointerFlags & POINTER_FLAG_INRANGE))
+            trackPointer(id, false);
+    }
+    return 1;
+}
 
 extern "C" void ionWebView2RegisterDrop(HWND host) {
     if (s_dropTarget != nullptr) return;

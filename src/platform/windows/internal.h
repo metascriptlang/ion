@@ -37,6 +37,7 @@ void    ionWebView2SendMouse(UINT msg, WPARAM wParam, DWORD mouseData, int x, in
 HCURSOR ionWebView2Cursor(void);
 void    ionWebView2RegisterDrop(HWND host);
 void    ionWebView2RevokeDrop(HWND host);
+int     ionWebView2PointerMessage(HWND host, UINT msg, WPARAM wParam, LPARAM lParam);
 int     ionWebView2HostAutomation(HWND host, WPARAM wParam, LPARAM lParam, LRESULT *result);
 void    ionWebView2DetachAutomation(HWND host);
 
