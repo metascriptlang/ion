@@ -27,7 +27,10 @@ extern function demoD3DClear(r: float64, g: float64, b: float64): void;
 const PANEL = "data:text/html,<body style='margin:0;background:transparent;font:14px sans-serif'>"
 	+ "<div style='margin:12px;padding:12px;border-radius:8px;background:rgba(255,255,255,0.75)'>"
 	+ "webview panel over the D3D11 surface<br><input placeholder='type here: goes to the webview'>"
-	+ "</div></body>";
+	+ "<div id=drop style='margin-top:6px'>drop files here</div>"
+	+ "</div><script>addEventListener('dragover',e=>e.preventDefault());"
+	+ "addEventListener('drop',e=>{e.preventDefault();document.getElementById('drop').textContent="
+	+ "'dropped: '+[...e.dataTransfer.files].map(f=>f.name).join(', ')})</script></body>";
 
 function visible(text: string): string {
 	let control = false;
@@ -62,7 +65,7 @@ function onResize(surface: int32, width: int32, height: int32, scale: float64): 
 	}
 	renderSurfaceSetImeRect(surface, px(40 as int32, scale), height - px(80 as int32, scale), px(8 as int32, scale), px(20 as int32, scale));
 	if (_window !== null) {
-		webviewSetFrame(_window, px(20 as int32, scale), px(20 as int32, scale), px(420 as int32, scale), px(110 as int32, scale));
+		webviewSetFrame(_window, px(20 as int32, scale), px(20 as int32, scale), px(420 as int32, scale), px(140 as int32, scale));
 	}
 }
 
