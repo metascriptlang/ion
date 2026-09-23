@@ -29,6 +29,11 @@ const PANEL = "data:text/html,<body style='margin:0;background:transparent;font:
 	+ "</div></body>";
 
 function visible(text: string): string {
+	let control = false;
+	for (let i = 0; i < text.length; i++) {
+		if (text.charCodeAt(i) < 32) control = true;
+	}
+	if (!control) return text;
 	let out = "";
 	for (let i = 0; i < text.length; i++) {
 		const c = text.charCodeAt(i);
