@@ -29,6 +29,7 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 | Render surface | ✅ | ✅ | ❌ | `macos/core/renderSurface.m` / `windows/core/composition.cpp` (DirectComposition visual + consumer's composition swapchain) |
 | Surface key / text / IME / focus / resize events | ⛔ stub | ✅ | ❌ | `windows/input/input.c`; macOS produces pointer events only |
 | Webview as element (`webviewSetFrame`, `webviewSetVisible`) | ⛔ stub | ✅ | ❌ | WebView2 `CompositionController` visual |
+| Surface frame clock (`FrameOnDemand` / `FrameContinuous`) | ⛔ stub | ✅ | ❌ | `common/frameClock.c`; Windows compositor clock in `windows/webview/poll.c` |
 | OTA `check` / `download` / verify | ✅ | ✅ | ✅ | pure MS (`src/update.ms`) |
 | OTA `apply` (install + relaunch) | ✅ | ⛔ stub | ⛔ stub | `update/install.{m,c}` |
 
@@ -123,6 +124,14 @@ Remaining:
   `ionWebviewSetFrame`, `ionWebviewSetVisible`) are no-op stubs in
   `macos/core/renderSurface.m`, and the host view emits pointer events only.
   Written 2026-09-23 on a Windows host and not compiled on macOS yet.
+- **Frame clock on macOS** — frames are emitted at the 16 ms poll tick with no
+  vsync (`CVDisplayLink` not written), and window activity and minimize are not
+  reported, so a continuous surface keeps ticking while inactive. Written
+  2026-09-24 on a Windows host and not compiled on macOS yet.
+- **Frame clock on Windows 10** — `DCompositionWaitForCompositorClock` is
+  Windows 11 only; on Windows 10 Ion reports it on stderr and no surface gets a
+  frame. Measured on Windows 11 only (`docs/RENDER-SURFACE.md`, "Driving the
+  renderer").
 - **Windows composition hosting** — since WebView2 moved to a
   `CompositionController` (2026-09-23) the host forwards what windowed hosting
   gave for free. Measured 2026-09-23 on WebView2 Runtime 153.0.4234.48: file
