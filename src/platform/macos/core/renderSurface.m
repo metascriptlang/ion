@@ -18,6 +18,7 @@
 
 #include "../../common/windowRegistry.h"
 #include "../../common/inputEvents.h"
+#include "../../common/frameClock.h"
 
 #define ION_MAX_SURFACES 16
 
@@ -120,6 +121,7 @@ IonRenderSurfaceId ionRenderSurfaceCreate(IonWindowId win, int z) {
             s_surfaces[i].win  = win;
             s_surfaces[i].z    = z;
             s_surfaces[i].view = nil;
+            ion_frame_surface_open(i, win);
             return (IonRenderSurfaceId)i;
         }
     }
@@ -247,6 +249,7 @@ void ionRenderSurfaceRelease(IonRenderSurfaceId surf) {
     }
     s->used = 0;
     s->win  = ION_WINDOW_INVALID;
+    ion_frame_surface_close(surf);
 }
 
 int ionRenderSurfaceAttachSwapChain(IonRenderSurfaceId surf, long long dxgiSwapChain1) {
