@@ -7,7 +7,7 @@
 // modules like this one don't drop them.
 
 export { open, close, resourcePath, resourceUrl } from "./window";
-export { listen, invoke, eval, runLoop, onFrame, onInput, Handler, InputHandler } from "./ipc";
+export { listen, invoke, eval, runLoop, onInput, Handler, InputHandler } from "./ipc";
 export {
 	renderSurfaceCreate, renderSurfaceAdopt, renderSurfaceAdoptLayer, renderSurfaceLayer,
 	renderSurfaceAttachSwapChain, renderSurfaceSetImeRect, webviewSetFrame, webviewSetVisible,
