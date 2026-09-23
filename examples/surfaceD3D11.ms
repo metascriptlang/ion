@@ -30,7 +30,7 @@ const PANEL = "data:text/html,<body style='margin:0;background:transparent;font:
 	+ "<div id=drop style='margin-top:6px'>drop files here</div>"
 	+ "</div><script>addEventListener('dragover',e=>e.preventDefault());"
 	+ "addEventListener('pointerdown',e=>{document.getElementById('drop').textContent="
-	+ "'pointer: '+e.pointerType+' at '+e.clientX+','+e.clientY});"
+	+ "'pointer: '+e.pointerType+' at '+e.clientX+','+e.clientY+' pressure '+e.pressure.toFixed(2)});"
 	+ "addEventListener('drop',e=>{e.preventDefault();document.getElementById('drop').textContent="
 	+ "'dropped: '+[...e.dataTransfer.files].map(f=>f.name).join(', ')})</script></body>";
 
