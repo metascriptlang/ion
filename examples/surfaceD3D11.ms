@@ -1,14 +1,16 @@
 // Windows render-surface demo: a D3D11 clear colour on a BELOW surface, a
 // transparent webview panel framed over it, and every surface input event
-// printed to stdout. Run from a console so stdout is visible:
+// printed to stdout. It draws on demand, one frame per input; C toggles a
+// continuous frame policy. Run from a console so stdout is visible:
 //   msc build examples/surfaceD3D11.ms && out/debug/surfaceD3D11.exe
 // WebView2Loader.dll must sit next to the exe (vendor/webview2/runtime/x64/).
 
 import {
-	createWindow, defaultOptions, runLoop, onFrame, listen,
+	createWindow, defaultOptions, runLoop, listen,
 	renderSurfaceCreate, renderSurfaceAttachSwapChain, renderSurfaceSetImeRect,
-	webviewSetFrame, onInput, onKey, onText, onImePreedit, onSurfaceFocus, onSurfaceResize,
-	keyName, KeyEvent, SurfaceBelow, RenderSurfaceInvalid,
+	webviewSetFrame, onInput, onKey, onText, onImePreedit, onSurfaceFocus, onSurfaceResize, onSurfaceFrame,
+	renderSurfaceSetFramePolicy, renderSurfaceRequestFrame,
+	keyName, KeyEvent, KeyAction, SurfaceBelow, RenderSurfaceInvalid, FrameOnDemand, FrameContinuous,
 } from "../src/index";
 import { Window } from "../src/windowManager";
 import { exit } from "std/process";
@@ -51,6 +53,8 @@ function visible(text: string): string {
 
 let _swapChain: int64 = 0 as int64;
 let _window: Window | null = null;
+let _continuous = false;
+let _frames = 0;
 
 function px(logical: int32, scale: float64): int32 {
 	return ((logical as float64) * scale) as int32;
@@ -72,6 +76,12 @@ function onResize(surface: int32, width: int32, height: int32, scale: float64): 
 }
 
 function onKeyEvent(e: KeyEvent): void {
+	if (e.action === KeyAction.Press && keyName(e.key) === "KeyC") {
+		_continuous = !_continuous;
+		renderSurfaceSetFramePolicy(e.surface, _continuous ? FrameContinuous : FrameOnDemand);
+		console.log(`frame policy ${_continuous ? "continuous" : "on demand"}`);
+	}
+	renderSurfaceRequestFrame(e.surface);
 	console.log(`key ${e.action.toString()} ${keyName(e.key)} scancode=0x${e.scancode.toString(16)} `
 		+ `mods=${e.mods.toString()} consumed=${e.consumedMods.toString()} `
 		+ `unshifted=${e.unshifted} text="${visible(e.text)}"`);
@@ -95,9 +105,15 @@ function main(): int32 {
 	});
 	onInput((type: int32, x: float64, y: float64, p1: float64, p2: float64): void => {
 		console.log(`pointer type=${type} x=${x} y=${y} p1=${p1} p2=${p2}`);
+		renderSurfaceRequestFrame(surf);
 	});
 	listen((name: string, payload: string): void => { console.log(`ipc ${name} ${payload}`); });
-	onFrame((): void => { demoD3DClear(0.05, 0.25, 0.30); });
+	onSurfaceFrame((surface: int32, timeMs: float64): void => {
+		_frames++;
+		const shade = (_frames % 60) as float64 / 60.0;
+		demoD3DClear(0.05, 0.25 + 0.2 * shade, 0.30);
+		if (!_continuous) console.log(`frame ${_frames} at ${timeMs}`);
+	});
 
 	runLoop();
 	return 0;
