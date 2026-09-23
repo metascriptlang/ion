@@ -144,8 +144,13 @@ Remaining:
   transparent webview panel, key/text/focus/resize/pointer events printed,
   typing inside the panel reaches the webview and not the surface, IPC round
   trip (`auto-probe: ipc alive`, `addNumbers(100, 23)`) through the
-  composition controller. Not measured yet: an IME composition (Vietnamese
-  Telex) and a DPI change.
+  composition controller. By hand the same day: a DPI change 96 → 144 → 96
+  gives one `resize` each (1328x844 at scale 1.5, back to 884x561); UniKey
+  Telex types "tiếng việt" into the webview, and its Backspace + `VK_PACKET`
+  output reaches the surface as a Backspace key then `text` (replayed with
+  `KEYEVENTF_UNICODE`, a surrogate pair arrives whole). Not measured: an
+  IMM32/TSF IME composition (`preedit` events) — no Microsoft IME is
+  installed on this box.
 
 Windows behaviour that is not a bug: a 1–2 s white flash on the first launch of
 a session (WebView2 process spawn + COM init; a splash screen is the answer),
