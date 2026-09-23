@@ -274,9 +274,14 @@ and no secret in the project. On an Android 36 emulator it launches Debug and
 Release, drives rotation, home, relaunch and task removal, and rebuilds after
 source, header and deliberate compile-failure edits. `ANDROID_SERIAL` selects
 a device; without it the script boots the AVD named by `ION_ANDROID_AVD`
-(default `Pixel_9_Pro`) when no emulator is attached. It restores the device's
-rotation settings. A physical device kills the process when its task is
-removed, so the same-process check runs before the task removal.
+(default `Pixel_9_Pro`) when no emulator is attached, and then waits for the
+launcher to hold focus: right after `sys.boot_completed` a cold emulator showed
+"System UI isn't responding" over the app, and once recreated the activity
+before its first layout. Rotation goes through `cmd window user-rotation`;
+writing `user_rotation` with `settings put` did not rotate a cold emulator. The
+script restores the device's rotation mode. A physical device kills the
+process when its task is removed, so the same-process check runs before the
+task removal.
 
 Measured 2026-09-22 on code/test tree
 `d8eea541f1eacc34c117501c2723c1d35f803dbf`, installed `msc` v0.2.55
@@ -310,7 +315,7 @@ values went 17 (Debug and Release) → 27 after the source edit → 33 after the
 header edit; the forced failure left neither the library nor `app-debug.apk`,
 and the fixed source rebuilt to 33.
 
-Measured the same day on tree `70d7fa7c532f6f02a2047a9d9eaddf06f3dbeda0`, same toolchain, on a physical Solana
+Measured the same day on tree `70d7fa7c532f6f02a2047a9d9eaddf06f3dbeda0` and again on `59ca40236110b79ef2c1f9d2b9d186b415ccea74`, same toolchain, on a physical Solana
 Seeker (Android 16, API 36, arm64-v8a, 4 KiB pages) over USB with
 `ANDROID_SERIAL` set: `tests/android.py` passed. Debug and Release both launched
 with native value 17; one process logged start, resume, `resize 1200x2670`,
