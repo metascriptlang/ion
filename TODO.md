@@ -132,7 +132,10 @@ Remaining:
   browser process's top-level `Chrome_WidgetWin_1` popup (an undocumented
   Chromium window, found by class, browser PID and position — recheck on a
   runtime update). Not tried with Narrator/NVDA/JAWS, nor with more than one
-  webview. Still not forwarded: touch/pen (`WM_POINTER*` → `SendPointerInput`).
+  webview. Touch in the webview frame reaches the page as `pointerType`
+  "touch" at frame coordinates (`WM_POINTER*` → `SendPointerInput`, measured with
+  `InjectTouchInput`, no touch hardware here); outside the frame Windows
+  promotes it to mouse input for the surface. Pen takes the same path, not measured.
 - **Adopt on Windows** — an adopted `HWND` is a child window, so it always sits
   under the whole DirectComposition tree: `SurfaceAbove` cannot be honoured.
 - **Toast WinRT** — current Windows notification is a balloon tip (renders via
