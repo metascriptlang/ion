@@ -5,8 +5,10 @@ packaging orchestration. Ion runtime owns windows, lifecycle and render-surface
 hosting. Neon remains a UI/rendering consumer and is not required to generate
 or build an Ion application.
 
-The generator emits macOS and iOS Xcode applications, using the existing
-typed-manifest → resolved-graph → platform-emitter boundary. Manifest evaluation
+The generator emits macOS and iOS Xcode applications and Android Gradle
+applications, using the existing typed-manifest → resolved-graph →
+platform-emitter boundary. The emitted project is a deterministic output:
+configure the manifest and regenerate rather than editing it. Manifest evaluation
 uses the Raiser backend; there is no native fallback.
 
 ## Manifest surface
@@ -29,14 +31,15 @@ export const project: Project = {
 The API deliberately uses normal language features:
 
 - `struct` and `Vec<T>` for owned descriptions;
-- static extensions for `Target.app` and `Target.iosApp`;
+- static extensions for `Target.app`, `Target.iosApp` and `Target.androidApp`;
 - spread for local variants;
 - `Result<T, string>` for validation and emission errors;
 - a named struct holding a closure for plugins.
 
 Macros, decorators and a generator-specific keyword are not part of the
-surface. Runnable manifests are `examples/generator/project.ms` (macOS) and
-`examples/generatorIos/project.ms` (iOS).
+surface. Runnable manifests are `examples/generator/project.ms` (macOS),
+`examples/generatorIos/project.ms` (iOS) and
+`examples/generatorAndroid/project.ms` (Android).
 
 ## Pipeline
 
@@ -177,6 +180,71 @@ replacing the same archive under `@passL` left the old executable value;
 declaring it with `@link` rebuilt correctly. This is why the incremental
 fixture uses the same `@link` contract as Recompiler's native-boundary guard.
 
+## Android application
+
+```bash
+tooling/generator/ion-generate examples/generatorAndroid/project.ms /private/tmp/ion-android
+cd /private/tmp/ion-android
+./gradlew assembleDebug
+adb install app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n dev.ion.IonAndroid/dev.metascript.app.MainActivity
+
+ION_ANDROID_STORE_FILE=/abs/release.jks ION_ANDROID_STORE_PASSWORD=… \
+ION_ANDROID_KEY_ALIAS=… ION_ANDROID_KEY_PASSWORD=… \
+  ./gradlew assembleRelease bundleRelease
+```
+
+Pass the output path: the default is still `out/xcode`. The build machine needs
+JDK 17+, `ANDROID_HOME` with the configured platform and NDK, and network access
+the first time the wrapper downloads Gradle. It does not need a global Gradle.
+
+`Target.androidApp` in `description.ms` owns the defaults in `AndroidSettings`.
+`gradle.ms` `gradleProject` validates them and renders every text file;
+`generate.ms` adds the wrapper files from `tooling/generator/android/wrapper/`
+byte for byte. Why the shape is what it is:
+
+- **One target, Android only.** An Android graph with a second target, a
+  dependency, or a macOS/iOS target is refused by name. The minimum API lives
+  only in `android.minSdk`; an Android target that sets `deploymentTarget` is
+  refused rather than reconciled.
+- **Pinned toolchain.** Gradle 9.3.1 with its distribution SHA-256 and AGP
+  9.1.0: the pair the Android boundary probe proved on this machine. The wrapper
+  jar is Gradle's own (SHA-256 `b3a875dd…ec13`, the published checksum), vendored
+  so that generation needs no Gradle and output does not depend on the one that
+  is installed. NDK 28 is the floor because NDK 27.1 linked the same library
+  with 4096-byte `PT_LOAD` segments, which puts Android 16 KiB devices in
+  compatibility mode.
+- **msc owns the native library.** Each variant registers
+  `compileMetaScript<Variant>`, which runs the pinned compiler with
+  `--os=android --cpu=arm64 --app=lib` and the NDK's
+  `aarch64-linux-android<minSdk>-clang` wrapper, found through AGP's
+  `ndkDirectory`. It works in `app/build/metascript/<variant>` and writes
+  `lib` + `nativeLibrary` + `.so` into a generated `jniLibs` directory. The
+  task is never up to date: msc's cache decides what to rebuild. Release adds
+  `--release --strip`. When msc fails, the task deletes its own output and that
+  variant's APK and AAB output directories, so no runnable stale package
+  survives. Gradle holds no C source, header list, CMake or prebuilt archive.
+- **Package-stable bootstrap.** The Java package and the Gradle namespace are
+  always `dev.metascript.app`; `applicationId` is the resolved bundle identity.
+  So the JNI symbols (`Java_dev_metascript_app_NativeApp_start` and so on) do
+  not change with the application id, and the native side can be written once.
+  `MainActivity` creates the root `FrameLayout` and forwards start, measured
+  resize, pause, resume and destroy on the main thread. The manifest declares
+  `configChanges` for size and orientation, so rotation reaches `resize` in the
+  same activity instead of recreating it. The fixture's `fixture.c` shows the
+  native half; Neon owns the real one.
+- **Release signing from the environment.** `ION_ANDROID_STORE_FILE`,
+  `ION_ANDROID_STORE_PASSWORD`, `ION_ANDROID_KEY_ALIAS` and
+  `ION_ANDROID_KEY_PASSWORD`, or the matching `-Pion.android.*` properties.
+  Nothing secret enters the manifest, the graph or the generated files. When
+  one is missing, `verifyReleaseSigning` fails and names all of them before any
+  native Release work runs. JDK 17 `keytool` writes PKCS12 stores, which
+  ignore a separate `-keypass`: the key password is the store password.
+- **Not packaged by Ion.** A library that needs `libc++_shared.so` (a C++
+  dependency such as Yoga) will not load, because Ion does not inspect the
+  library to add runtimes. Making the `.so` self-contained belongs to the
+  package that declares the C++ graph, or to msc.
+
 ## Verification
 
 ```bash
@@ -194,6 +262,18 @@ native source/header/archive edits, compiler failure recovery, and rejected
 Xcode environments. It creates and deletes its own simulator and retains logs
 and a screenshot under the printed results directory. Xcode, Python 3 and an
 installed iOS simulator runtime/device type are required.
+
+`tooling/generator/tests/android.ms` pins the typed defaults, every validation
+message, the emitted file set and the contract lines of each file.
+`tooling/generator/tests/android.py` generates twice under paths with spaces and
+compares whole trees, then checks overwrite and invalid-manifest refusal with no
+output, Debug and Release libraries (exports, 16 KiB `PT_LOAD`, stripped
+Release, distinct work directories), 16 KiB APK alignment, refused unsigned
+Release, a signed APK (`apksigner`) and AAB (`jarsigner`) from a throwaway key,
+and no secret in the project. On an Android 36 emulator it launches Debug and
+Release, drives rotation, home, relaunch and task removal, and rebuilds after
+source, header and deliberate compile-failure edits. It boots the AVD named by
+`ION_ANDROID_AVD` (default `Pixel_9_Pro`) when no emulator is attached.
 
 Measured 2026-09-22 on code/test tree
 `d8eea541f1eacc34c117501c2723c1d35f803dbf`, installed `msc` v0.2.55
@@ -216,6 +296,17 @@ fails on the missing `UISupportedInterfaceOrientations~iphone` key and the
 device build warns "All interface orientations must be supported unless the app
 requires full screen."
 
+Measured 2026-09-23 on code/test tree
+`28d92d2cf8746f268e623982d5935d9d0ea6248a`, `msc` v0.2.55 build `e5f0ec68`,
+Gradle 9.3.1, AGP 9.1.0, NDK 28.0.13004108, Zulu JDK 17.0.18, Pixel 9 Pro
+emulator on Android 36: `tests/android.py` passed. Debug library 958984 bytes,
+stripped Release 331864; Debug APK 1288694, signed Release APK 370658
+(v1 + v2 verified), AAB 161945. In one process: start, resume,
+`resize 1280x2856`, `2856x1280`, `1280x2856`, pause, resume, destroy. Native
+values went 17 (Debug and Release) → 27 after the source edit → 33 after the
+header edit; the forced failure left neither the library nor `app-debug.apk`,
+and the fixed source rebuilt to 33.
+
 The Recompiler candidate must independently pass its Raiser tests, full compiler
 suite, corpus regression comparison and sanitizer corpus. Ion's test script is
 a consumer gate, not a substitute for compiler verification.
@@ -224,6 +315,10 @@ a consumer gate, not a substitute for compiler verification.
 
 - macOS and iOS application targets are supported, but a single graph cannot
   mix their SDKs. Generate separate projects for mixed-platform applications.
+  An Android graph holds one Android application target.
+- Android builds only `arm64-v8a`. The native task accepts macOS and Linux
+  hosts and refuses others; only macOS has been run. Physical-device install
+  and Play upload are not verified.
 - iOS Debug uses an ordinary compiler build; Release adds `--release`.
   macOS retains its existing compiler command in both configurations.
 - Manifests are trusted programs. Current Raiser host bindings expose filesystem
