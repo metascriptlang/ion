@@ -19,6 +19,9 @@ import {
 	ionRenderSurfaceSyncFrame,
 	ionRenderSurfaceSetInputRegion,
 	ionRenderSurfaceRelease,
+	ionRenderSurfaceSetFramePolicy,
+	ionRenderSurfaceSetFrameWhenInactive,
+	ionRenderSurfaceRequestFrame,
 } from "./platform/bridge.h";
 import { Window } from "./windowManager";
 
@@ -30,6 +33,10 @@ export const SurfaceAbove: int32 = 1 as int32;
 export const InputNone: int32 = 0 as int32;
 export const InputFull: int32 = 1 as int32;
 export const InputRect: int32 = 2 as int32;
+
+// frame policies (mirror bridge.h).
+export const FrameOnDemand: int32 = 0 as int32;
+export const FrameContinuous: int32 = 1 as int32;
 
 export type RenderSurfaceId = int32;
 export const RenderSurfaceInvalid: RenderSurfaceId = -1 as int32;
@@ -91,6 +98,18 @@ export function renderSurfaceSetInputRegion(surf: RenderSurfaceId, mode: int32):
 // Split: input inside the rect → surface, outside → webview.
 export function renderSurfaceSetInputRect(surf: RenderSurfaceId, x: int32, y: int32, w: int32, h: int32): void {
 	ionRenderSurfaceSetInputRegion(surf, InputRect, x, y, w, h);
+}
+
+export function renderSurfaceSetFramePolicy(surf: RenderSurfaceId, policy: int32): void {
+	ionRenderSurfaceSetFramePolicy(surf, policy);
+}
+
+export function renderSurfaceSetFrameWhenInactive(surf: RenderSurfaceId, enabled: boolean): void {
+	ionRenderSurfaceSetFrameWhenInactive(surf, enabled ? (1 as int32) : (0 as int32));
+}
+
+export function renderSurfaceRequestFrame(surf: RenderSurfaceId): void {
+	ionRenderSurfaceRequestFrame(surf);
 }
 
 export function renderSurfaceRelease(surf: RenderSurfaceId): void {

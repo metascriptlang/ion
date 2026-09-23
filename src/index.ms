@@ -13,13 +13,14 @@ export {
 	renderSurfaceAttachSwapChain, renderSurfaceSetImeRect, webviewSetFrame, webviewSetVisible,
 	renderSurfaceSetVisible, renderSurfaceSyncFrame,
 	renderSurfaceSetInputRegion, renderSurfaceSetInputRect, renderSurfaceRelease,
+	renderSurfaceSetFramePolicy, renderSurfaceSetFrameWhenInactive, renderSurfaceRequestFrame,
 	RenderSurfaceId, RenderSurfaceInvalid,
-	SurfaceBelow, SurfaceAbove, InputNone, InputFull, InputRect,
+	SurfaceBelow, SurfaceAbove, InputNone, InputFull, InputRect, FrameOnDemand, FrameContinuous,
 } from "./renderSurface";
 export {
-	onKey, onText, onImePreedit, onSurfaceFocus, onSurfaceResize, keyName, keyMods,
+	onKey, onText, onImePreedit, onSurfaceFocus, onSurfaceResize, onSurfaceFrame, keyName, keyMods,
 	KeyEvent, KeyAction, KeyMod, KeyHandler, TextHandler, PreeditHandler,
-	SurfaceFocusHandler, SurfaceResizeHandler,
+	SurfaceFocusHandler, SurfaceResizeHandler, SurfaceFrameHandler,
 } from "./input";
 export { command, Command } from "./command";
 export {
