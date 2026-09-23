@@ -272,8 +272,11 @@ Release, distinct work directories), 16 KiB APK alignment, refused unsigned
 Release, a signed APK (`apksigner`) and AAB (`jarsigner`) from a throwaway key,
 and no secret in the project. On an Android 36 emulator it launches Debug and
 Release, drives rotation, home, relaunch and task removal, and rebuilds after
-source, header and deliberate compile-failure edits. It boots the AVD named by
-`ION_ANDROID_AVD` (default `Pixel_9_Pro`) when no emulator is attached.
+source, header and deliberate compile-failure edits. `ANDROID_SERIAL` selects
+a device; without it the script boots the AVD named by `ION_ANDROID_AVD`
+(default `Pixel_9_Pro`) when no emulator is attached. It restores the device's
+rotation settings. A physical device kills the process when its task is
+removed, so the same-process check runs before the task removal.
 
 Measured 2026-09-22 on code/test tree
 `d8eea541f1eacc34c117501c2723c1d35f803dbf`, installed `msc` v0.2.55
@@ -307,6 +310,14 @@ values went 17 (Debug and Release) → 27 after the source edit → 33 after the
 header edit; the forced failure left neither the library nor `app-debug.apk`,
 and the fixed source rebuilt to 33.
 
+Measured the same day on tree `70d7fa7c532f6f02a2047a9d9eaddf06f3dbeda0`, same toolchain, on a physical Solana
+Seeker (Android 16, API 36, arm64-v8a, 4 KiB pages) over USB with
+`ANDROID_SERIAL` set: `tests/android.py` passed. Debug and Release both launched
+with native value 17; one process logged start, resume, `resize 1200x2670`,
+`2670x1200`, `1200x2670`, pause, resume, destroy; the incremental sequence went
+17 → 27 → 33, failed and recovered at 33, as on the emulator. The phone's
+auto-rotate setting read the same before and after.
+
 The Recompiler candidate must independently pass its Raiser tests, full compiler
 suite, corpus regression comparison and sanitizer corpus. Ion's test script is
 a consumer gate, not a substitute for compiler verification.
@@ -317,8 +328,8 @@ a consumer gate, not a substitute for compiler verification.
   mix their SDKs. Generate separate projects for mixed-platform applications.
   An Android graph holds one Android application target.
 - Android builds only `arm64-v8a`. The native task accepts macOS and Linux
-  hosts and refuses others; only macOS has been run. Physical-device install
-  and Play upload are not verified.
+  hosts and refuses others; only macOS has been run. Play upload is not
+  verified.
 - iOS Debug uses an ordinary compiler build; Release adds `--release`.
   macOS retains its existing compiler command in both configurations.
 - Manifests are trusted programs. Current Raiser host bindings expose filesystem
