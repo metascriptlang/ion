@@ -132,9 +132,9 @@ Ion owns one frame clock per window; each surface declares its own policy (`neon
 |---|---|---|
 | active | one frame per `renderSurfaceRequestFrame` | every vsync |
 | inactive, visible | one frame per request | none, unless `renderSurfaceSetFrameWhenInactive(surf, true)` |
-| minimized | none; the request waits for restore | none |
+| minimized, or cloaked (Windows) | none; the request waits | none |
 
-A resize requests a frame. With no surface due a frame, the Windows loop blocks in `MsgWaitForMultipleObjectsEx` and the vsync thread parks.
+Windows learns of a cloak from a WinEvent hook on `EVENT_OBJECT_CLOAKED` / `UNCLOAKED` (`windows/core/window.c`); a cloaked window is still active and not minimized, so without the hook it kept its 165 Hz. A resize requests a frame. With no surface due a frame, the Windows loop blocks in `MsgWaitForMultipleObjectsEx` and the vsync thread parks.
 
 **Windows tick source.** A thread waits on `DCompositionWaitForCompositorClock` (Windows 11) only while a surface is due a frame. `DwmFlush` was measured as the alternative and rejected: the same 165 Hz and the same jitter, but 105% of one core (10.5 s CPU in 10 s), because it busy-waits. A DXGI frame-latency waitable needs the swapchain created with its flag, and the renderer owns the swapchain. On Windows 10 the entry point is missing: Ion prints `[ion] frame clock: DCompositionWaitForCompositorClock not found` and sends no frames.
 
@@ -149,6 +149,7 @@ A resize requests a frame. With no surface due a frame, the Windows loop blocks 
 | on demand, a click every 100 ms | — | 93 posted clicks → 93 frames |
 | continuous, another window active | — | 0 frames; 1657 frames at 165 Hz with FrameWhenInactive |
 | continuous, minimized | — | 0 frames, with and without FrameWhenInactive |
+| continuous, cloaked 5 s by `DWMWA_CLOAK` | — | 0 frames (801 with the hook removed), then 165 Hz after uncloak |
 
 `examples/surfaceD3D11.ms` shows both policies by hand: it draws one frame per input, and `C` toggles continuous.
 

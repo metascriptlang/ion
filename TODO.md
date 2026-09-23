@@ -138,7 +138,9 @@ Remaining:
   a Windows 10 box. `IDXGIOutput::WaitForVBlank` is the candidate second source.
 - **Surface fully covered by other windows** — not written: a continuous surface
   keeps ticking while another window hides it. Windows sends no event for that;
-  it needs a geometry tracker over every top-level window.
+  it needs a geometry tracker over every top-level window. A cloaked window does
+  stop its frames, measured with an app cloak (`DWMWA_CLOAK`); a shell cloak
+  (switching virtual desktop) goes through the same hook but was not exercised.
 - **Windows composition hosting** — since WebView2 moved to a
   `CompositionController` (2026-09-23) the host forwards what windowed hosting
   gave for free. Measured 2026-09-23 on WebView2 Runtime 153.0.4234.48: file
