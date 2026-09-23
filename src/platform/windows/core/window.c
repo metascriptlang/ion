@@ -9,6 +9,7 @@
 #include "../internal.h"
 #include "../../bridge.h"
 #include "../../common/protoReg.h"
+#include "../../common/frameClock.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +17,8 @@
 
 static const wchar_t kIonClassName[] = L"IonMainWindow";
 static int s_classRegistered = 0;
+static int s_active = 1;
+static int s_minimized = 0;
 
 // Matches lifecycle.c's secondary→primary deep-link forward marker. Kept
 // as a file-local constant; if more COPYDATA channels appear we'll lift
@@ -35,8 +38,14 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
     LRESULT handled;
     if (hwnd == s_mainHwnd && ionWinHandleInput(hwnd, msg, wParam, lParam, &handled)) return handled;
     switch (msg) {
+        case WM_ACTIVATE:
+            s_active = LOWORD(wParam) != WA_INACTIVE;
+            ion_frame_window_state(0, s_active, !s_minimized);
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
         case WM_SIZE:
-            if (wParam == SIZE_MINIMIZED) return 0;
+            s_minimized = wParam == SIZE_MINIMIZED;
+            ion_frame_window_state(0, s_active, !s_minimized);
+            if (s_minimized) return 0;
             ionCompClientResized((int)(short)LOWORD(lParam),
                                  (int)(short)HIWORD(lParam));
             return 0;
