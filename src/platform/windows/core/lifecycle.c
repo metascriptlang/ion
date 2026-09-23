@@ -90,6 +90,7 @@ int ionInit(void) {
     if (s_hInstance == NULL) {
         s_hInstance = GetModuleHandleW(NULL);
     }
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
     captureColdStartUrl();
 

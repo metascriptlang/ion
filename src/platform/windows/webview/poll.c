@@ -20,15 +20,9 @@
 #include "../../common/queue.h"
 #include "../../common/inputEvents.h"
 
-static int    s_input_type = 0;
-static double s_input_x  = 0.0;
-static double s_input_y  = 0.0;
-static double s_input_p1 = 0.0;
-static double s_input_p2 = 0.0;
-
 int ionPollEvent(void) {
     if (ion_queue_pop()) return 2;
-    if (ion_input_pop(&s_input_type, &s_input_x, &s_input_y, &s_input_p1, &s_input_p2)) return 4;
+    if (ion_input_next()) return 4;
 
     MSG msg;
     while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
@@ -36,9 +30,10 @@ int ionPollEvent(void) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+    ionWinKeyFlush();
 
     if (ion_queue_pop()) return 2;
-    if (ion_input_pop(&s_input_type, &s_input_x, &s_input_y, &s_input_p1, &s_input_p2)) return 4;
+    if (ion_input_next()) return 4;
 
     // Window closed (s_mainHwnd cleared by WM_DESTROY) but no WM_QUIT yet
     // somehow — treat as quit so runLoop can exit cleanly.
@@ -50,9 +45,3 @@ int ionPollEvent(void) {
 
 msString ionMessageName(void)    { return cStringToMs(ion_queue_last_name()); }
 msString ionMessagePayload(void) { return cStringToMs(ion_queue_last_payload()); }
-
-int    ionInputType(void) { return s_input_type; }
-double ionInputX(void)    { return s_input_x; }
-double ionInputY(void)    { return s_input_y; }
-double ionInputP1(void)   { return s_input_p1; }
-double ionInputP2(void)   { return s_input_p2; }

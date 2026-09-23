@@ -23,7 +23,8 @@ static int s_classRegistered = 0;
 #define ION_COPYDATA_DEEPLINK  0x494f4e44  /* 'IOND' */
 
 // Window proc:
-//   WM_SIZE              → keep WebView2 child sized to the client area
+//   input messages       → input/input.c (surfaces, webview forwarding, IME)
+//   WM_SIZE / DPI / MOVE → composition tree + webview bounds
 //   WM_ION_TRAY_CB       → tray icon callback (Shell_NotifyIcon → tray.c)
 //   WM_ION_NOTIFY_CB     → notification balloon callback (→ notify.c)
 //   WM_CLOSE/WM_DESTROY  → tear down WebView2 + PostQuitMessage
@@ -31,11 +32,22 @@ static int s_classRegistered = 0;
 // Tray + notify route their Shell_NotifyIcon callbacks here because
 // HWND_MESSAGE windows don't reliably receive them on Win10/11.
 static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    LRESULT handled;
+    if (hwnd == s_mainHwnd && ionWinHandleInput(hwnd, msg, wParam, lParam, &handled)) return handled;
     switch (msg) {
         case WM_SIZE:
-            // LOWORD = new client width, HIWORD = new client height.
-            ionWebView2Resize((int)(short)LOWORD(lParam),
-                              (int)(short)HIWORD(lParam));
+            ionCompClientResized((int)(short)LOWORD(lParam),
+                                 (int)(short)HIWORD(lParam));
+            return 0;
+        case WM_DPICHANGED: {
+            const RECT *r = (const RECT *)lParam;
+            SetWindowPos(hwnd, NULL, r->left, r->top, r->right - r->left, r->bottom - r->top,
+                         SWP_NOZORDER | SWP_NOACTIVATE);
+            ionCompDpiChanged();
+            return 0;
+        }
+        case WM_MOVE:
+            ionWebView2ParentMoved();
             return 0;
         case WM_ION_TRAY_CB:
             // wParam = uID (1 = tray), lParam = mouse msg (e.g., WM_LBUTTONUP).
@@ -71,6 +83,7 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
         case WM_DESTROY:
             if (hwnd == s_mainHwnd) {
                 ionWebView2Shutdown();
+                ionCompShutdown();
                 s_mainHwnd = NULL;
                 PostQuitMessage(0);
             }
@@ -107,8 +120,9 @@ int ionOpen(const char *title, int width, int height, const char *url) {
     // the now-immutable registry inside ionWebView2Start below.
     ionProtoFreeze();
 
-    int w = width  > 0 ? width  : 1280;
-    int h = height > 0 ? height : 720;
+    UINT dpi = GetDpiForSystem();
+    int w = MulDiv(width  > 0 ? width  : 1280, (int)dpi, 96);
+    int h = MulDiv(height > 0 ? height : 720,  (int)dpi, 96);
 
     wchar_t *wtitle = ionUtf8ToWide(title && title[0] ? title : "ion");
     if (wtitle == NULL) return 0;
@@ -128,6 +142,11 @@ int ionOpen(const char *title, int width, int height, const char *url) {
 
     if (hwnd == NULL) return 0;
     s_mainHwnd = hwnd;
+    if (!ionCompInit(hwnd)) {
+        DestroyWindow(hwnd);
+        s_mainHwnd = NULL;
+        return 0;
+    }
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
 
