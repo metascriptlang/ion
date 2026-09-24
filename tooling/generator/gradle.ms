@@ -74,7 +74,7 @@ function validate(target: Target): Result<void, string> {
 	return Result.ok(null);
 }
 
-function settingsGradle(name: string): string {
+function settingsGradle(name: string, compiler: string, entry: string): string {
 	return lines([
 		"pluginManagement {",
 		"\trepositories {",
@@ -94,6 +94,65 @@ function settingsGradle(name: string): string {
 		"",
 		"rootProject.name = " + groovy(name),
 		"include(':app')",
+		"",
+		"def mscCompiler = " + groovy(compiler),
+		"def mscEntry = " + groovy(entry),
+		"def androidLibraries = new File(settingsDir, 'build/metascript/androidLibraries.txt')",
+		"def checkDirectory = new File(settingsDir, 'build/metascript/check')",
+		"androidLibraries.delete()",
+		"if (!(checkDirectory.isDirectory() || checkDirectory.mkdirs())) throw new GradleException(\"MetaScript: cannot create ${checkDirectory}\")",
+		"def check = providers.exec {",
+		"\tworkingDir(checkDirectory)",
+		"\tcommandLine(mscCompiler, 'check', mscEntry, '--os=android', '--cpu=arm64', \"-d:ionAndroidLibraries=${androidLibraries}\", '--no-color')",
+		"\tignoreExitValue = true",
+		"}",
+		"if (check.result.get().exitValue != 0) {",
+		"\tthrow new GradleException(\"MetaScript: msc check failed\\n\" + check.standardOutput.asText.get() + check.standardError.asText.get())",
+		"}",
+		"gradle.ext.androidLibraries = []",
+		"(androidLibraries.isFile() ? androidLibraries.readLines().unique().sort() : []).each { path ->",
+		"\tString name = ':' + path.replaceAll('[^A-Za-z0-9]+', '-').replaceAll('^-|-$', '')",
+		"\tif (gradle.androidLibraries.contains(name)) throw new GradleException(\"MetaScript: two Android libraries map to the Gradle project ${name}\")",
+		"\tinclude(name)",
+		"\tproject(name).projectDir = new File(path)",
+		"\tgradle.androidLibraries << name",
+		"}",
+	]);
+}
+
+function rootGradle(target: Target): string {
+	const settings = target.android;
+	const java = "JavaVersion.VERSION_" + settings.javaVersion.toString();
+	return lines([
+		"plugins {",
+		"\tid 'com.android.application' version '9.1.0' apply false",
+		"\tid 'com.android.library' version '9.1.0' apply false",
+		"}",
+		"",
+		"subprojects {",
+		"\tif (path == ':app') return",
+		"\tlayout.buildDirectory = rootProject.layout.buildDirectory.dir(\"androidLibraries/${name}\")",
+		"\tFile packaged = project(':app').layout.buildDirectory.dir('outputs').get().asFile",
+		"\ttasks.withType(JavaCompile).configureEach { compile ->",
+		"\t\tString variant = compile.name.replaceFirst('^compile', '').replaceFirst('JavaWithJavac$', '').uncapitalize()",
+		"\t\tcompile.doFirst {",
+		"\t\t\tnew File(packaged, \"apk/${variant}\").deleteDir()",
+		"\t\t\tnew File(packaged, \"bundle/${variant}\").deleteDir()",
+		"\t\t}",
+		"\t}",
+		"\tplugins.withId('com.android.library') {",
+		"\t\tandroid {",
+		"\t\t\tcompileSdk = " + settings.compileSdk.toString(),
+		"\t\t\tdefaultConfig {",
+		"\t\t\t\tminSdk = " + settings.minSdk.toString(),
+		"\t\t\t}",
+		"\t\t\tcompileOptions {",
+		"\t\t\t\tsourceCompatibility = " + java,
+		"\t\t\t\ttargetCompatibility = " + java,
+		"\t\t\t}",
+		"\t\t}",
+		"\t}",
+		"}",
 	]);
 }
 
@@ -200,6 +259,10 @@ function appGradle(target: Target, root: string, compiler: string): string {
 		"\t\tsourceCompatibility = " + java,
 		"\t\ttargetCompatibility = " + java,
 		"\t}",
+		"}",
+		"",
+		"dependencies {",
+		"\tgradle.androidLibraries.each { implementation project(it) }",
 		"}",
 		"",
 		"tasks.register('verifyReleaseSigning') {",
@@ -331,8 +394,8 @@ export function gradleProject(graph: Graph, root: string, compiler: string): Res
 	const target = graph.targets[0];
 	try validate(target);
 	return Result.ok([
-		{ path: "settings.gradle", content: settingsGradle(graph.name) },
-		{ path: "build.gradle", content: lines(["plugins {", "\tid 'com.android.application' version '9.1.0' apply false", "}"]) },
+		{ path: "settings.gradle", content: settingsGradle(graph.name, compiler, root + "/" + target.entry) },
+		{ path: "build.gradle", content: rootGradle(target) },
 		{ path: "gradle.properties", content: lines(["org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8"]) },
 		{
 			path: "gradle/wrapper/gradle-wrapper.properties",
