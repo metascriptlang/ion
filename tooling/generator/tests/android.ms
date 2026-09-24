@@ -56,12 +56,7 @@ const first = render([app]);
 check(first.ok, "Android graph emits a Gradle project");
 const second = render([app]);
 if (first.ok && second.ok) {
-	check(first.value.length == second.value.length, "deterministic file count");
-	for (let i = 0; i < first.value.length; i += 1) {
-		const a = first.value[i];
-		const b = second.value[i];
-		check(a.path == b.path && a.content == b.content, "deterministic " + a.path);
-	}
+	check(JSON.stringify(first.value) == JSON.stringify(second.value), "deterministic output");
 	const files = first.value;
 	const paths: Vec<string> = [];
 	for (const generated of files) paths.push(generated.path);
