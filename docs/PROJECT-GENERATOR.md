@@ -240,6 +240,41 @@ byte for byte. Why the shape is what it is:
   one is missing, `verifyReleaseSigning` fails and names all of them before any
   native Release work runs. JDK 17 `keytool` writes PKCS12 stores, which
   ignore a separate `-keypass`: the key password is the store password.
+- **Package Java is an Android library module.** A package keeps its Java in
+  a standard Android library module (its own `build.gradle`, `src/main/java`,
+  keep rules through `consumerProguardFiles`) and declares it in its own source
+  with the macro from `src/android.ms`:
+
+  ```ms
+  import { androidLibrary } from "ion/src/android";
+
+  when (android) {
+  	androidLibrary("./android");
+  }
+  ```
+
+  The path resolves beside the calling module; a directory without
+  `build.gradle` fails the compile. Gradle fixes its project list before any
+  task runs, so the generated `settings.gradle` runs the pinned
+  `msc check <entry> --os=android --cpu=arm64 -d:ionAndroidLibraries=<file>` on
+  every invocation. `check` expands the macro each time and never reports up
+  to date, and the list starts empty each time, so a removed call drops its
+  module on the next build with no clean. A source that does not type-check
+  therefore fails configuration, not only the native task. Each declared
+  directory becomes a Gradle project built in place, with its build output
+  under the root `build/androidLibraries/`; the app depends on every one, and
+  the target's compileSdk, minSdk and Java level apply to it. javac errors name
+  the package's own file. When a library's javac runs, the variant's APK and
+  AAB are removed first, so a failed compile leaves no runnable package.
+- **Release refuses a JNI class R8 removed.** An empty consumer keep rule
+  otherwise builds green while R8 removes the class, and the app finds no
+  listener at run time. `verifyNativeClassesRelease` reads the
+  `Java_…` exports of the Release library with the NDK's `llvm-nm` and, when
+  R8's mapping dropped or renamed an owning class, deletes the Release APK and
+  AAB and fails: `R8 removed dev.ion.fixture.Tap, but libmetascript.so
+  implements its native method Java_dev_ion_fixture_Tap_tapped`. A class that
+  native code reaches only through `FindClass` or `RegisterNatives`, with no
+  exported `Java_…` symbol, is not checked.
 - **Not packaged by Ion.** A library that needs `libc++_shared.so` (a C++
   dependency such as Yoga) will not load, because Ion does not inspect the
   library to add runtimes. Making the `.so` self-contained belongs to the
@@ -272,7 +307,12 @@ Release, distinct work directories), 16 KiB APK alignment, refused unsigned
 Release, a signed APK (`apksigner`) and AAB (`jarsigner`) from a throwaway key,
 and no secret in the project. On an Android 36 emulator it launches Debug and
 Release, drives rotation, home, relaunch and task removal, and rebuilds after
-source, header and deliberate compile-failure edits. `ANDROID_SERIAL` selects
+source, header and deliberate compile-failure edits. The fixture declares its
+`android/` library: a tap on the label reaches native through the library's
+listener in Debug and Release; an emptied keep rule fails Release with no
+package left; a Java edit changes the tapped tag with no clean; a javac failure
+names the package file and leaves no `app-debug.apk`; removing the declaration
+drops the library and the app reports the listener missing. `ANDROID_SERIAL` selects
 a device; without it the script boots the AVD named by `ION_ANDROID_AVD`
 (default `Pixel_9_Pro`) when no emulator is attached, and then waits for the
 launcher to hold focus: right after `sys.boot_completed` a cold emulator showed
@@ -323,6 +363,22 @@ with native value 17; one process logged start, resume, `resize 1200x2670`,
 17 → 27 → 33, failed and recovered at 33, as on the emulator. The phone's
 auto-rotate setting read the same before and after.
 
+Measured 2026-09-25 on code/test tree
+`14817032611a916b47d643a1ac8d5543c92326ab`, `msc` v0.2.55 build `242b735a`,
+the same Gradle, AGP, NDK and JDK, Pixel 9 Pro emulator on Android 36 with
+`ANDROID_SERIAL=emulator-5554`: `tests/android.py` passed. A tap on the label
+logged `tap tag=7` through the library's listener in Debug and Release. An
+emptied `consumer-rules.pro` failed Release with `R8 removed
+dev.ion.fixture.Tap, …` and left no APK or AAB. Editing `Tap.java` logged
+`tap tag=107` with no clean. A missing semicolon failed at `source with
+spaces/android/src/main/java/dev/ion/fixture/Tap.java:14` and left no
+`app-debug.apk`. Removing the declaration dropped the library project, and the
+app logged `listener=missing`. Unchanged `5b26122` passed on the same emulator
+just before. Two earlier runs of this tree stopped at the emulator, not
+the build, with the host at load average 40–74: a "System UI isn't responding"
+dialog covered the app, and in the other run task removal left the activity
+`isExiting` with no `destroy`.
+
 The Recompiler candidate must independently pass its Raiser tests, full compiler
 suite, corpus regression comparison and sanitizer corpus. Ion's test script is
 a consumer gate, not a substitute for compiler verification.
@@ -356,6 +412,8 @@ a consumer gate, not a substitute for compiler verification.
   renumbers objects.
 - Plugins contribute bundle identifiers only. Settings, files and new targets
   are not contribution kinds yet.
+- An `androidLibrary` path containing `..` fails at compile time: Raiser's
+  `Array.pop` breaks `join` (`~/metascript/.inbox/compiler/2026-09-25-raiser-array-pop-fails.md`).
 
 The next product step is to stabilize the project-description package and fold
 the generator command into Ion's primary CLI without moving graph or emitter
