@@ -39,6 +39,16 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_start(JNIEnv *env, jcla
 	if (label) (*env)->DeleteGlobalRef(env, label);
 	label = (*env)->NewGlobalRef(env, view);
 	report("start");
+	jclass tap = (*env)->FindClass(env, "dev/ion/fixture/Tap");
+	if (tap) {
+		jobject listener = (*env)->NewObject(env, tap, (*env)->GetMethodID(env, tap, "<init>", "(I)V"), 7);
+		(*env)->CallVoidMethod(env, view,
+			(*env)->GetMethodID(env, textView, "setOnClickListener", "(Landroid/view/View$OnClickListener;)V"), listener);
+		__android_log_print(ANDROID_LOG_INFO, "IonFixture", "listener=attached");
+	} else {
+		(*env)->ExceptionClear(env);
+		__android_log_print(ANDROID_LOG_INFO, "IonFixture", "listener=missing");
+	}
 }
 
 JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_resize(JNIEnv *env, jclass cls, jint width, jint height) {
@@ -64,4 +74,10 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_destroy(JNIEnv *env, jc
 	if (label) (*env)->DeleteGlobalRef(env, label);
 	label = NULL;
 	report("destroy");
+}
+
+JNIEXPORT void JNICALL Java_dev_ion_fixture_Tap_tapped(JNIEnv *env, jclass cls, jint tag) {
+	(void)env;
+	(void)cls;
+	__android_log_print(ANDROID_LOG_INFO, "IonFixture", "tap tag=%d value=%d", tag, fixtureValue);
 }

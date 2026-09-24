@@ -1,0 +1,10 @@
+plugins {
+	id 'com.android.library'
+}
+
+android {
+	namespace = 'dev.ion.fixture'
+	defaultConfig {
+		consumerProguardFiles 'consumer-rules.pro'
+	}
+}
