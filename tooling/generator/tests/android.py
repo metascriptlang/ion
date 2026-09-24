@@ -14,6 +14,8 @@ source = results / "source with spaces"
 shutil.copytree(repo / "examples/generatorAndroid", source)
 manifest = source / "project.ms"
 manifest.write_text(manifest.read_text().replace("../../tooling/generator/", str(repo / "tooling/generator") + "/"))
+entry = source / "main.ms"
+entry.write_text(entry.read_text().replace('"../../src/android"', '"' + str(repo / "src/android") + '"'))
 sdk = Path(os.environ.get("ANDROID_HOME") or Path.home() / "Library/Android/sdk")
 ndk_bin = sdk / "ndk/28.0.13004108/toolchains/llvm/prebuilt/darwin-x86_64/bin"
 build_tools = sdk / "build-tools/36.0.0"
@@ -188,12 +190,22 @@ try:
             time.sleep(0.5)
         raise RuntimeError(f"lifecycle did not settle; saw {events()}; logs={results}")
 
+    def tap(tag):
+        run("ui-dump", [adb, "shell", "uiautomator", "dump", "/sdcard/ion-android.xml"])
+        ui = run("ui", [adb, "exec-out", "cat", "/sdcard/ion-android.xml"])
+        bounds = re.search(r'text="Ion Android native value: \d+"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', ui)
+        left, top, right, bottom = map(int, bounds.groups())
+        run("tap", [adb, "shell", "input", "tap", (left + right) // 2, (top + bottom) // 2])
+        return settle(lambda seen: any(e.startswith(f"tap tag={tag} ") for e in seen))
+
     def pid():
         return run("pid", [adb, "shell", "pidof", package]).strip()
 
     launch(debug_apk, 17)
     first = settle(lambda seen: any(e.startswith("resize ") for e in seen))
     assert first[0] == "start value=17" and "resume value=17" in first
+    assert "listener=attached" in first, f"Debug did not attach the library listener: {first}"
+    tap(7)
     width, height = map(int, re.search(r"resize (\d+)x(\d+)", " ".join(first)).groups())
     process = pid()
     run("logcat-clear", [adb, "logcat", "-c"])
@@ -214,6 +226,39 @@ try:
         subprocess.run([str(adb), "exec-out", "screencap", "-p"], stdout=screenshot, check=True)
 
     launch(release_apk, 17)
+    settle(lambda seen: "listener=attached" in seen)
+    tap(7)
+
+    rules = source / "android/consumer-rules.pro"
+    kept = rules.read_text()
+    rules.write_text("")
+    stripped = gradle("keep-rule-missing", "assembleRelease", "bundleRelease", env=signed_env, success=False)
+    assert "R8 removed dev.ion.fixture.Tap, but libmetascript.so implements its native method " \
+        "Java_dev_ion_fixture_Tap_tapped" in stripped
+    assert not release_apk.exists() and not release_aab.exists(), "missing keep rule left a Release package"
+    rules.write_text(kept)
+
+    java = source / "android/src/main/java/dev/ion/fixture/Tap.java"
+    listener = java.read_text()
+    java.write_text(listener.replace("tapped(tag);", "tapped(tag + 100);"))
+    gradle("java-edit", "assembleDebug")
+    launch(debug_apk, 17)
+    settle(lambda seen: "listener=attached" in seen)
+    tap(107)
+    java.write_text(listener.replace("tapped(tag);", "tapped(tag)"))
+    broken = gradle("java-failure", "assembleDebug", success=False)
+    assert "source with spaces/android/src/main/java/dev/ion/fixture/Tap.java:" in broken, "javac did not name the package source"
+    assert not debug_apk.exists(), "failed javac left a runnable stale APK"
+    java.write_text(listener)
+    gradle("java-recovery", "assembleDebug")
+
+    declared = entry.read_text()
+    entry.write_text(declared.replace('\tandroidLibrary("./android");\n', ""))
+    dropped = gradle("library-removed", "assembleDebug")
+    assert "source-with-spaces-android:" not in dropped, "an undeclared library still builds"
+    launch(debug_apk, 17)
+    settle(lambda seen: "listener=missing" in seen)
+    entry.write_text(declared)
 
     fixture = source / "fixture.c"
     header = source / "fixture.h"
@@ -233,6 +278,7 @@ try:
     for path, content in generated.items():
         assert (project / path).read_bytes() == content, f"build rewrote generated {path}"
     assert not (source / "out").exists(), "Gradle build polluted the shared source tree"
+    assert not (source / "android/build").exists(), "Gradle build polluted the package library"
 finally:
     if "rotation" in globals():
         mode = ["free"] if rotation["accelerometer_rotation"] == "1" else ["lock", rotation["user_rotation"]]
@@ -246,5 +292,6 @@ finally:
 
 print("PASS: Android deterministic generation, vendored wrapper, overwrite and invalid-manifest refusal, "
       "Debug/Release separation, 16 KiB ELF/APK alignment, signed APK/AAB, missing-signing refusal, "
-      "JNI lifecycle on Android 36 (" + os.environ["ANDROID_SERIAL"] + "), spaced paths, source/header rebuilds and failure recovery")
+      "JNI lifecycle on Android 36 (" + os.environ["ANDROID_SERIAL"] + "), spaced paths, source/header rebuilds and failure recovery, "
+      "declared Android library (listener in Debug/Release, missing keep rule, Java edit, javac failure, removal)")
 print(f"android logs={results}")
