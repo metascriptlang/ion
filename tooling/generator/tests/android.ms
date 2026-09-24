@@ -76,7 +76,20 @@ if (first.ok && second.ok) {
 
 	const settings = file(files, "settings.gradle");
 	check(settings.includes("rootProject.name = 'Mobile'") && settings.includes("include(':app')"), "settings names the project");
-	check(file(files, "build.gradle").includes("id 'com.android.application' version '9.1.0' apply false"), "AGP pinned");
+	check(settings.includes("def mscEntry = '/source with spaces/main.ms'"), "settings pins the entry");
+	check(
+		settings.includes("'check', mscEntry, '--os=android', '--cpu=arm64', \"-d:ionAndroidLibraries=${androidLibraries}\""),
+		"settings reads the declared Android libraries from msc check",
+	);
+	check(settings.includes("androidLibraries.delete()"), "each configuration starts from no declaration");
+	check(settings.includes("throw new GradleException(\"MetaScript: msc check failed"), "a failed check fails configuration");
+	check(settings.includes("project(name).projectDir = new File(path)"), "a declared library is built in place");
+	const root = file(files, "build.gradle");
+	check(root.includes("id 'com.android.application' version '9.1.0' apply false"), "AGP pinned");
+	check(root.includes("id 'com.android.library' version '9.1.0' apply false"), "library plugin pinned with the application");
+	check(root.includes("rootProject.layout.buildDirectory.dir(\"androidLibraries/${name}\")"), "library build output stays in the project");
+	check(root.includes("compileSdk = 36") && root.includes("minSdk = 23") && root.includes("JavaVersion.VERSION_17"), "libraries use the target's levels");
+	check(root.includes("tasks.withType(JavaCompile)") && root.includes("\"apk/${variant}\").deleteDir()"), "library javac drops the variant's packages");
 	const wrapper = file(files, "gradle/wrapper/gradle-wrapper.properties");
 	check(wrapper.includes("gradle-9.3.1-bin.zip"), "Gradle pinned");
 	check(wrapper.includes("distributionSha256Sum=b266d5ff6b90eada6dc3b20cb090e3731302e553a27c5d3e4df1f0d76beaff06"), "Gradle checksum pinned");
@@ -96,6 +109,10 @@ if (first.ok && second.ok) {
 	check(build.includes("ION_ANDROID_STORE_FILE") && build.includes("verifyReleaseSigning"), "release signing surface");
 	check(build.includes("if (variant.buildType == 'release') dependsOn('verifyReleaseSigning')"), "signing refused before native release work");
 	check(build.includes("packagedOutputs.files.each { it.deleteDir() }"), "failed native build removes packaged variant output");
+	check(build.includes("gradle.androidLibraries.each { implementation project(it) }"), "app depends on every declared library");
+	check(build.includes("mapping = variant.artifacts.get(SingleArtifact.OBFUSCATION_MAPPING_FILE.INSTANCE)"), "Release checks R8's mapping");
+	check(build.includes("R8 removed ${owner}, but ${implemented}"), "a removed JNI class fails the build");
+	check(build.includes("tasks.matching { it.name in packaging }.configureEach { dependsOn nativeClasses }"), "packaging waits on the JNI class check");
 	check(build.includes("layout.buildDirectory.dir(\"metascript/${variant.name}\")"), "per-variant msc work directory");
 	check(!build.includes("externalNativeBuild") && !build.includes("CMake") && !build.includes(".c'"), "no native source inventory");
 
