@@ -10,11 +10,17 @@ export { open, close, resourcePath, resourceUrl } from "./window";
 export { listen, invoke, eval, runLoop, onFrame, onInput, Handler, InputHandler } from "./ipc";
 export {
 	renderSurfaceCreate, renderSurfaceAdopt, renderSurfaceAdoptLayer, renderSurfaceLayer,
+	renderSurfaceAttachSwapChain, renderSurfaceSetImeRect, webviewSetFrame, webviewSetVisible,
 	renderSurfaceSetVisible, renderSurfaceSyncFrame,
 	renderSurfaceSetInputRegion, renderSurfaceSetInputRect, renderSurfaceRelease,
 	RenderSurfaceId, RenderSurfaceInvalid,
 	SurfaceBelow, SurfaceAbove, InputNone, InputFull, InputRect,
 } from "./renderSurface";
+export {
+	onKey, onText, onImePreedit, onSurfaceFocus, onSurfaceResize, keyName, keyMods,
+	KeyEvent, KeyAction, KeyMod, KeyHandler, TextHandler, PreeditHandler,
+	SurfaceFocusHandler, SurfaceResizeHandler,
+} from "./input";
 export { command, Command } from "./command";
 export {
 	createWindow, closeWindow, getWindow, windowCount, defaultOptions,

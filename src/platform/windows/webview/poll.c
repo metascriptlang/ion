@@ -18,9 +18,11 @@
 #include "../internal.h"
 #include "../../bridge.h"
 #include "../../common/queue.h"
+#include "../../common/inputEvents.h"
 
 int ionPollEvent(void) {
     if (ion_queue_pop()) return 2;
+    if (ion_input_next()) return 4;
 
     MSG msg;
     while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
@@ -28,8 +30,10 @@ int ionPollEvent(void) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+    ionWinKeyFlush();
 
     if (ion_queue_pop()) return 2;
+    if (ion_input_next()) return 4;
 
     // Window closed (s_mainHwnd cleared by WM_DESTROY) but no WM_QUIT yet
     // somehow — treat as quit so runLoop can exit cleanly.

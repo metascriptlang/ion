@@ -24,9 +24,9 @@ Ion is a webview shell. A **render surface** lets an app host a *native* renderi
 One window, two composited planes:
 
 ```
-Ion window (SDL3 NSWindow / Win32 HWND) → contentView
-  ├─ render surface   (native: adopted NSView / Ion-owned CAMetalLayer / swapchain panel)
-  └─ webview          (WKWebView / WebView2)
+Ion window (SDL3 NSWindow / Win32 HWND) → contentView / DirectComposition tree
+  ├─ render surface   (native: adopted NSView / Ion-owned CAMetalLayer / composition swapchain visual)
+  └─ webview          (WKWebView / WebView2 CompositionController visual)
 ```
 
 z-order is explicit per surface: `Below` the webview (the surface is a backdrop the web UI overlays — HUD/launcher chrome on top of a game) or `Above` (the surface is an overlay over web content). Multiple surfaces may coexist with a defined stack order.
@@ -157,12 +157,12 @@ Pragmatic default: drive z-order + input region from app **state** (launcher vs 
 
 | | macOS | Windows |
 |---|---|---|
-| Window | SDL3 → `NSWindow` (`window.m` extracts `contentView`) | SDL3 → `HWND` |
-| Webview | `WKWebView` (subview of contentView — `webview/bootstrap.m`) | WebView2 |
-| Surface (adopt) | `[contentView addSubview:view positioned:NSWindowBelow/Above relativeTo:webview]` | `SetParent(childHwnd, hostHwnd)` + z-order |
-| Surface (layer) | `CAMetalLayer` in an `NSView` Ion creates | DXGI swapchain composition panel |
-| Transparency | `webview.drawsBackground = NO`, window `ION_WIN_TRANSPARENT` | WebView2 `DefaultBackgroundColor` transparent |
-| State storage | new fields on `IonMacWindowState` (`state.h`) | per-window struct (windows `state.h`) |
+| Window | SDL3 → `NSWindow` (`window.m` extracts `contentView`) | plain Win32 `HWND` with a topmost `IDCompositionTarget` |
+| Webview | `WKWebView` (subview of contentView — `webview/bootstrap.m`) | WebView2 `CompositionController` hung on a DirectComposition visual; the host forwards mouse input |
+| Surface (adopt) | `[contentView addSubview:view positioned:NSWindowBelow/Above relativeTo:webview]` | `SetParent(childHwnd, hostHwnd)`; a child window sits under the whole composition tree, so only `Below` |
+| Surface (layer) | `CAMetalLayer` in an `NSView` Ion creates | a DirectComposition visual; the renderer attaches its own `CreateSwapChainForComposition` swapchain (`renderSurfaceAttachSwapChain`) |
+| Transparency | `webview.drawsBackground = NO`, window `ION_WIN_TRANSPARENT` | WebView2 `DefaultBackgroundColor` transparent while a `Below` surface exists |
+| State storage | new fields on `IonMacWindowState` (`state.h`) | `windows/core/composition.cpp` (single window) |
 | Frame clock | MS loop (`runLoop`); `CVDisplayLink` later | MS loop; `DXGI`/`DwmFlush` later |
 
 macOS is the lead target (matches Ion v0). The adopt path slots into `window.m` right where `ionSetupWebview` adds the webview — same `contentView`, just `positioned:NSWindowBelow relativeTo:webview` and `drawsBackground = NO` on the webview. Windows mirrors via the same MS API; `SetParent` cross-process is allowed on Win32, in-process is trivial.

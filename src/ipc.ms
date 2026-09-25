@@ -31,6 +31,7 @@
 @compile("./platform/common/windowRegistry.c");
 @compile("./platform/common/windowEvents.c");
 @compile("./platform/common/inputEvents.c");
+@compile("./platform/common/keys.c");
 @compile("./platform/common/navpolicy.c");
 @compile("./platform/common/bootstrap.c");
 @compile("./platform/common/json_extract.c");
@@ -123,6 +124,7 @@ when (windows) {
 	@compile("./platform/windows/utf8.c");
 	@compile("./platform/windows/core/lifecycle.c");
 	@compile("./platform/windows/core/window.c");
+	@compile("./platform/windows/core/composition.cpp");
 	@compile("./platform/windows/core/shell.c");
 	@compile("./platform/windows/webview/poll.c");
 	@compile("./platform/windows/webview/controller.cpp");
@@ -130,10 +132,12 @@ when (windows) {
 	@compile("./platform/windows/webview/nav.cpp");
 	@compile("./platform/windows/webview/eval.cpp");
 	@compile("./platform/windows/webview/protocol.cpp");
+	@compile("./platform/windows/webview/host.cpp");
 	@compile("./platform/windows/chrome/tray.c");
 	@compile("./platform/windows/chrome/notify.c");
 	@compile("./platform/windows/chrome/dialog.c");
 	@compile("./platform/windows/input/hotkey.c");
+	@compile("./platform/windows/input/input.c");
 	@compile("./platform/windows/security/content_protect.c");
 	@compile("./platform/windows/security/keychain.c");
 	@compile("./platform/windows/update/install.c");
@@ -149,6 +153,10 @@ when (windows) {
 	@passL("-lbcrypt");
 	@passL("-luuid");
 	@passL("-ladvapi32");  // Credential Manager: CredWriteW / CredReadW / CredDeleteW
+	@passL("-ldcomp");
+	@passL("-limm32");
+	@passL("-luiautomationcore");
+	@passL("-loleaut32");
 	// GUI subsystem — suppresses the default console window that pops up when
 	// the user double-clicks a .exe. Without this flag, the linker defaults to
 	// console subsystem and a terminal appears next to our window.
@@ -170,6 +178,7 @@ import {
 } from "./platform/bridge.h";
 import { jsEscape } from "./internal/jsEscape";
 import { dispatchWindowEvent, routeEmit } from "./windowManager";
+import { dispatchInput } from "./input";
 
 export type Handler = (name: string, payload: string) => void;
 
@@ -249,11 +258,15 @@ export function runLoop(): void {
 			dispatchWindowEvent(label, type);
 		} else if (evt === 4) {
 			const it  = ionInputType();
-			const ix  = ionInputX();
-			const iy  = ionInputY();
-			const ip1 = ionInputP1();
-			const ip2 = ionInputP2();
-			for (const ih of _inputCallbacks) ih(it, ix, iy, ip1, ip2);
+			if (it > (3 as int32)) {
+				dispatchInput(it);
+			} else {
+				const ix  = ionInputX();
+				const iy  = ionInputY();
+				const ip1 = ionInputP1();
+				const ip2 = ionInputP2();
+				for (const ih of _inputCallbacks) ih(it, ix, iy, ip1, ip2);
+			}
 		}
 		if (running) {
 			for (const fc of _frameCallbacks) fc();

@@ -26,7 +26,9 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 | `openExternal` | ✅ | ✅ | ✅ | `core/shell.{m,c}` |
 | Multi-window | ✅ | ✅ | ✅ | `common/windowRegistry.c` + `windowEvents.c` |
 | Native menu bar | ✅ | ❌ | ❌ | `macos/chrome/menu.m` only |
-| Render surface | ✅ | ❌ | ❌ | `macos/core/renderSurface.m` only |
+| Render surface | ✅ | ✅ | ❌ | `macos/core/renderSurface.m` / `windows/core/composition.cpp` (DirectComposition visual + consumer's composition swapchain) |
+| Surface key / text / IME / focus / resize events | ⛔ stub | ✅ | ❌ | `windows/input/input.c`; macOS produces pointer events only |
+| Webview as element (`webviewSetFrame`, `webviewSetVisible`) | ⛔ stub | ✅ | ❌ | WebView2 `CompositionController` visual |
 | OTA `check` / `download` / verify | ✅ | ✅ | ✅ | pure MS (`src/update.ms`) |
 | OTA `apply` (install + relaunch) | ✅ | ⛔ stub | ⛔ stub | `update/install.{m,c}` |
 
@@ -117,17 +119,49 @@ Remaining:
 - **OTA install on Linux** — AppImage atomic replace via `rename(2)`; polkit
   `pkexec` only if targeting system paths.
 - **Menu bar on Windows / Linux** — macOS-only today.
-- **Render surface on Windows / Linux** — macOS-only today. Note that
-  `renderSurface` symbols are exported from `src/index.ms` on every platform;
-  only dead-code elimination keeps non-macOS builds linking. Calling it on
-  Win/Linux is a link error, not a runtime error.
+- **Render surface on Linux** — not started. `renderSurface` symbols are
+  exported from `src/index.ms` on every platform; only dead-code elimination
+  keeps Linux linking, so calling them there is a link error.
+- **Surface keyboard, text, IME, focus and resize on macOS** — the bridge
+  symbols (`ionRenderSurfaceAttachSwapChain`, `ionRenderSurfaceSetImeRect`,
+  `ionWebviewSetFrame`, `ionWebviewSetVisible`) are no-op stubs in
+  `macos/core/renderSurface.m`, and the host view emits pointer events only.
+  Written 2026-09-23 on a Windows host and not compiled on macOS yet.
+- **Windows composition hosting** — since WebView2 moved to a
+  `CompositionController` (2026-09-23) the host forwards what windowed hosting
+  gave for free. Measured 2026-09-23 on WebView2 Runtime 153.0.4234.48: file
+  drag and drop from Explorer reaches the page (`webview/host.cpp` drop target →
+  `ICoreWebView2CompositionController3`); UI Automation reaches the page's
+  Document/Text/Edit under the Ion window, by hosting a UIA element on the
+  browser process's top-level `Chrome_WidgetWin_1` popup (an undocumented
+  Chromium window, found by class, browser PID and position — recheck on a
+  runtime update). Not tried with Narrator/NVDA/JAWS, nor with more than one
+  webview. Touch in the webview frame reaches the page as `pointerType`
+  "touch" at frame coordinates (`WM_POINTER*` → `SendPointerInput`, measured with
+  `InjectTouchInput`, no touch hardware here); outside the frame Windows
+  promotes it to mouse input for the surface. Pen measured the same way
+  (`InjectSyntheticPointerInput`): the page sees `pointerType` "pen" with its pressure.
+- **Adopt on Windows** — an adopted `HWND` is a child window, so it always sits
+  under the whole DirectComposition tree: `SurfaceAbove` cannot be honoured.
 - **Toast WinRT** — current Windows notification is a balloon tip (renders via
   the Toast/Action Center pipeline on Win10/11 anyway). Proper
   `ToastNotificationManager` needs an AUMID from a Start Menu shortcut.
-- **Windows cross-build link, red 2026-09-20** (`msc` build `bce99dbf`):
-  `runLoop` in `src/ipc.ms` reads `ionInputType/X/Y/P1/P2`, which only
-  `macos/webview/poll.m` defines, so dead-code elimination no longer hides the
-  render-surface gap and `--os=windows` fails at link. Linux not run.
+- **Windows native build, measured 2026-09-23** (`msc` v0.2.55, build
+  `dcfa743b`, Windows 11 host): `msc check src/index.ms` clean, every file
+  under `test/` and `test/common/` green, `helloWebview`, `renderSurfaceSmoke`
+  and `surfaceD3D11` build and link. The `ionInput*` accessors now live once in
+  `common/inputEvents.c`, which also removes the Linux gap of the same name
+  (not built on Linux). `surfaceD3D11` measured: D3D11 clear under a
+  transparent webview panel, key/text/focus/resize/pointer events printed,
+  typing inside the panel reaches the webview and not the surface, IPC round
+  trip (`auto-probe: ipc alive`, `addNumbers(100, 23)`) through the
+  composition controller. By hand the same day: a DPI change 96 → 144 → 96
+  gives one `resize` each (1328x844 at scale 1.5, back to 884x561); UniKey
+  Telex types "tiếng việt" into the webview, and its Backspace + `VK_PACKET`
+  output reaches the surface as a Backspace key then `text` (replayed with
+  `KEYEVENTF_UNICODE`, a surrogate pair arrives whole). Not measured: an
+  IMM32/TSF IME composition (`preedit` events) — no Microsoft IME is
+  installed on this box.
 
 Windows behaviour that is not a bug: a 1–2 s white flash on the first launch of
 a session (WebView2 process spawn + COM init; a splash screen is the answer),

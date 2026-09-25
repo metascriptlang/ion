@@ -248,3 +248,20 @@ void ionRenderSurfaceRelease(IonRenderSurfaceId surf) {
     s->used = 0;
     s->win  = ION_WINDOW_INVALID;
 }
+
+int ionRenderSurfaceAttachSwapChain(IonRenderSurfaceId surf, long long dxgiSwapChain1) {
+    (void)surf; (void)dxgiSwapChain1;
+    return 0;
+}
+
+void ionRenderSurfaceSetImeRect(IonRenderSurfaceId surf, int x, int y, int w, int h) {
+    (void)surf; (void)x; (void)y; (void)w; (void)h;
+}
+
+void ionWebviewSetFrame(IonWindowId win, int x, int y, int w, int h) {
+    (void)win; (void)x; (void)y; (void)w; (void)h;
+}
+
+void ionWebviewSetVisible(IonWindowId win, int visible) {
+    (void)win; (void)visible;
+}

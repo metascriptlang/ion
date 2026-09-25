@@ -4,18 +4,20 @@
 //   1. ionWebView2Start: LoadLibraryW("WebView2Loader.dll") → GetProcAddress
 //      for CreateCoreWebView2EnvironmentWithOptions → call it with
 //      EnvCreatedCallback as the completion handler. Returns synchronously.
-//   2. EnvCreatedCallback::Invoke: got env → env->CreateCoreWebView2Controller
-//      with ControllerCreatedCallback.
+//   2. EnvCreatedCallback::Invoke: got env → Environment3's
+//      CreateCoreWebView2CompositionController with ControllerCreatedCallback.
 //   3. ControllerCreatedCallback::Invoke: got controller → cache controller
-//      + webview → resize to hwnd → inject bootstrap script → attach event
-//      handlers (WebMessageReceived from messaging.cpp + NavigationStarting
-//      from nav.cpp) → Navigate(url).
+//      + webview → hang it on the composition tree's webview visual → apply
+//      the pending frame → inject bootstrap script → attach event handlers
+//      (WebMessageReceived from messaging.cpp + NavigationStarting from
+//      nav.cpp) → Navigate(url).
 //
 // Each callback class is a hand-rolled IUnknown impl (zig's bundled MinGW
 // ships wrl/client.h for ComPtr but NOT wrl/event.h for Callback<>).
 
 #include "internal.hpp"
 #include "../utf8.h"
+#include "../internal.h"
 #include "../../common/invokekey.h"
 #include "../../common/bootstrap.h"
 
@@ -57,18 +59,61 @@ private:
     LONG m_refs;
 };
 
+static RECT s_bounds      = { 0, 0, 0, 0 };
+static int  s_visible     = 1;
+static int  s_transparent = 0;
+
+static void applyBackground(WebView2State *st) {
+    ComPtr<ICoreWebView2Controller2> c2;
+    if (FAILED(st->controller->QueryInterface(IID_ICoreWebView2Controller2, (void **)&c2))) return;
+    COREWEBVIEW2_COLOR color = { (BYTE)(s_transparent ? 0 : 255), 255, 255, 255 };
+    c2->put_DefaultBackgroundColor(color);
+}
+
+class CursorChangedCallback final : public ICoreWebView2CursorChangedEventHandler {
+public:
+    CursorChangedCallback() : m_refs(1) {}
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppv) override {
+        if (!ppv) return E_POINTER;
+        if (IsEqualIID(riid, IID_IUnknown) ||
+            IsEqualIID(riid, IID_ICoreWebView2CursorChangedEventHandler)) {
+            *ppv = this; AddRef(); return S_OK;
+        }
+        *ppv = nullptr; return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef()  override { return (ULONG)InterlockedIncrement(&m_refs); }
+    ULONG STDMETHODCALLTYPE Release() override {
+        LONG r = InterlockedDecrement(&m_refs);
+        if (r == 0) delete this;
+        return (ULONG)r;
+    }
+    HRESULT STDMETHODCALLTYPE Invoke(ICoreWebView2CompositionController *sender, IUnknown *args) override {
+        (void)args;
+        WebView2State *st = ionGetWebView2State();
+        if (st == nullptr) return S_OK;
+        HCURSOR cursor = nullptr;
+        if (SUCCEEDED(sender->get_Cursor(&cursor))) st->cursor = cursor;
+        SetCursor(st->cursor);
+        return S_OK;
+    }
+
+private:
+    LONG m_refs;
+};
+
 // ---- ControllerCreatedCallback --------------------------------------------
 // Step 3 of the init chain: controller is ready, finish wiring everything.
 
 class ControllerCreatedCallback final
-    : public ICoreWebView2CreateCoreWebView2ControllerCompletedHandler {
+    : public ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler {
 public:
     ControllerCreatedCallback(HWND hwnd) : m_refs(1), m_hwnd(hwnd) {}
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppv) override {
         if (!ppv) return E_POINTER;
         if (IsEqualIID(riid, IID_IUnknown) ||
-            IsEqualIID(riid, IID_ICoreWebView2CreateCoreWebView2ControllerCompletedHandler)) {
+            IsEqualIID(riid, IID_ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler)) {
             *ppv = this; AddRef(); return S_OK;
         }
         *ppv = nullptr; return E_NOINTERFACE;
@@ -80,16 +125,32 @@ public:
         return (ULONG)r;
     }
 
-    HRESULT STDMETHODCALLTYPE Invoke(HRESULT hr, ICoreWebView2Controller *controller) override {
-        if (FAILED(hr) || controller == nullptr) {
-            fprintf(stderr, "[ion] WebView2 controller create failed: 0x%08lx\n", (long)hr);
+    HRESULT STDMETHODCALLTYPE Invoke(HRESULT hr, ICoreWebView2CompositionController *composition) override {
+        if (FAILED(hr) || composition == nullptr) {
+            fprintf(stderr, "[ion] WebView2 composition controller create failed: 0x%08lx\n", (long)hr);
             return hr;
         }
 
         WebView2State *st = ionGetWebView2State();
         if (st == nullptr) return E_UNEXPECTED;
 
+        st->composition = composition;
+        ComPtr<ICoreWebView2Controller> controller;
+        if (FAILED(composition->QueryInterface(IID_ICoreWebView2Controller, (void **)&controller))) {
+            fprintf(stderr, "[ion] composition controller has no ICoreWebView2Controller\n");
+            return E_FAIL;
+        }
         st->controller = controller;
+
+        hr = composition->put_RootVisualTarget((IUnknown *)ionCompWebviewVisual());
+        if (FAILED(hr)) {
+            fprintf(stderr, "[ion] WebView2 put_RootVisualTarget failed: 0x%08lx\n", (long)hr);
+            return hr;
+        }
+        ionCompCommit();
+        auto *cursorCb = new CursorChangedCallback();
+        composition->add_CursorChanged(cursorCb, &st->cursorChangedToken);
+        cursorCb->Release();
         ComPtr<ICoreWebView2> webview;
         if (FAILED(controller->get_CoreWebView2(&webview)) || !webview) {
             fprintf(stderr, "[ion] get_CoreWebView2 failed\n");
@@ -116,10 +177,9 @@ public:
             settings->put_AreDevToolsEnabled(devtools);
         }
 
-        // Size to fit the host window.
-        RECT rc{};
-        GetClientRect(m_hwnd, &rc);
-        controller->put_Bounds(rc);
+        controller->put_Bounds(s_bounds);
+        controller->put_IsVisible(s_visible ? TRUE : FALSE);
+        applyBackground(st);
 
         // Inject the bootstrap script — shared template, Windows transport line.
         // The bootstrap itself includes a main-frame guard (see common/bootstrap.c)
@@ -198,8 +258,14 @@ public:
         WebView2State *st = ionGetWebView2State();
         if (st != nullptr) st->env = env;
 
+        ComPtr<ICoreWebView2Environment3> env3;
+        if (FAILED(env->QueryInterface(IID_ICoreWebView2Environment3, (void **)&env3))) {
+            fprintf(stderr, "[ion] WebView2 Runtime lacks ICoreWebView2Environment3 "
+                            "(composition hosting) - update the WebView2 Runtime\n");
+            return E_NOINTERFACE;
+        }
         auto *cb = new ControllerCreatedCallback(m_hwnd);
-        HRESULT r = env->CreateCoreWebView2Controller(m_hwnd, cb);
+        HRESULT r = env3->CreateCoreWebView2CompositionController(m_hwnd, cb);
         cb->Release();
         return r;
     }
@@ -311,6 +377,10 @@ extern "C" void ionWebView2Shutdown(void) {
         st->webview->remove_NavigationStarting(st->navStartingToken);
         st->webview->remove_WebResourceRequested(st->resourceRequestedToken);
     }
+    if (st->composition) {
+        st->composition->remove_CursorChanged(st->cursorChangedToken);
+        st->composition->put_RootVisualTarget(nullptr);
+    }
     if (st->controller) {
         st->controller->Close();
     }
@@ -319,9 +389,50 @@ extern "C" void ionWebView2Shutdown(void) {
     s_webview2State = nullptr;
 }
 
-extern "C" void ionWebView2Resize(int width, int height) {
+extern "C" void ionWebView2SetBounds(int x, int y, int width, int height) {
+    s_bounds = RECT{ (LONG)x, (LONG)y, (LONG)(x + width), (LONG)(y + height) };
     WebView2State *st = ionGetWebView2State();
     if (st == nullptr || !st->controller) return;
-    RECT rc{ 0, 0, (LONG)width, (LONG)height };
-    st->controller->put_Bounds(rc);
+    st->controller->put_Bounds(s_bounds);
+}
+
+extern "C" void ionWebView2SetVisible(int visible) {
+    s_visible = visible ? 1 : 0;
+    WebView2State *st = ionGetWebView2State();
+    if (st == nullptr || !st->controller) return;
+    st->controller->put_IsVisible(s_visible ? TRUE : FALSE);
+}
+
+extern "C" void ionWebView2SetTransparent(int transparent) {
+    s_transparent = transparent ? 1 : 0;
+    WebView2State *st = ionGetWebView2State();
+    if (st == nullptr || !st->controller) return;
+    applyBackground(st);
+}
+
+extern "C" void ionWebView2Focus(void) {
+    WebView2State *st = ionGetWebView2State();
+    if (st == nullptr || !st->controller) return;
+    st->controller->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+}
+
+extern "C" void ionWebView2ParentMoved(void) {
+    WebView2State *st = ionGetWebView2State();
+    if (st == nullptr || !st->controller) return;
+    st->controller->NotifyParentWindowPositionChanged();
+}
+
+extern "C" void ionWebView2SendMouse(UINT msg, WPARAM wParam, DWORD mouseData, int x, int y) {
+    WebView2State *st = ionGetWebView2State();
+    if (st == nullptr || !st->composition) return;
+    POINT pt = { x, y };
+    st->composition->SendMouseInput(
+        (COREWEBVIEW2_MOUSE_EVENT_KIND)msg,
+        (COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS)GET_KEYSTATE_WPARAM(wParam),
+        mouseData, pt);
+}
+
+extern "C" HCURSOR ionWebView2Cursor(void) {
+    WebView2State *st = ionGetWebView2State();
+    return st != nullptr ? st->cursor : nullptr;
 }

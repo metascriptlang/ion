@@ -22,6 +22,7 @@
 struct WebView2State {
     Microsoft::WRL::ComPtr<ICoreWebView2Environment> env;
     Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller;
+    Microsoft::WRL::ComPtr<ICoreWebView2CompositionController> composition;
     Microsoft::WRL::ComPtr<ICoreWebView2>           webview;
 
     // Tokens for the events we subscribe to — kept so Shutdown can `remove_*`
@@ -29,6 +30,8 @@ struct WebView2State {
     EventRegistrationToken navStartingToken       { 0 };
     EventRegistrationToken messageToken           { 0 };
     EventRegistrationToken resourceRequestedToken { 0 };
+    EventRegistrationToken cursorChangedToken     { 0 };
+    HCURSOR cursor { nullptr };
 
     // URL to navigate to once the controller is ready. strdup'd in
     // ionWebView2Start; freed after Navigate() fires.

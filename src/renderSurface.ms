@@ -11,6 +11,10 @@ import {
 	ionRenderSurfaceAdopt,
 	ionRenderSurfaceAdoptLayer,
 	ionRenderSurfaceLayer,
+	ionRenderSurfaceAttachSwapChain,
+	ionRenderSurfaceSetImeRect,
+	ionWebviewSetFrame,
+	ionWebviewSetVisible,
 	ionRenderSurfaceSetVisible,
 	ionRenderSurfaceSyncFrame,
 	ionRenderSurfaceSetInputRegion,
@@ -52,6 +56,22 @@ export function renderSurfaceAdoptLayer(surf: RenderSurfaceId, caLayer: int64): 
 // Mode B — Ion owns the surface; returns a layer to render into. Null until Phase 2.
 export function renderSurfaceLayer(surf: RenderSurfaceId): Ptr<void> {
 	return ionRenderSurfaceLayer(surf);
+}
+
+export function renderSurfaceAttachSwapChain(surf: RenderSurfaceId, dxgiSwapChain1: int64): boolean {
+	return ionRenderSurfaceAttachSwapChain(surf, dxgiSwapChain1) !== (0 as int32);
+}
+
+export function renderSurfaceSetImeRect(surf: RenderSurfaceId, x: int32, y: int32, w: int32, h: int32): void {
+	ionRenderSurfaceSetImeRect(surf, x, y, w, h);
+}
+
+export function webviewSetFrame(win: Window, x: int32, y: int32, w: int32, h: int32): void {
+	ionWebviewSetFrame(win.id, x, y, w, h);
+}
+
+export function webviewSetVisible(win: Window, visible: boolean): void {
+	ionWebviewSetVisible(win.id, visible ? (1 as int32) : (0 as int32));
 }
 
 export function renderSurfaceSetVisible(surf: RenderSurfaceId, visible: boolean): void {
