@@ -79,7 +79,7 @@ function record(ref graph: Graph, identity: BundleIdentity): Result<void, string
 export function resolve(this project: Project): Result<Graph, string> {
 	if (!validName(project.name)) return Result.err("invalid project name: " + quoted(project.name));
 	if (project.targets.length == 0) return Result.err("project " + quoted(project.name) + " has no targets");
-	const graph: Graph = { name: project.name, targets: project.targets, identities: [] };
+	let graph: Graph = { name: project.name, targets: project.targets, identities: [] };
 	for (let i = 0; i < graph.targets.length; i += 1) {
 		const target = graph.targets[i];
 		if (!validName(target.name)) return Result.err("invalid target name: " + quoted(target.name));
