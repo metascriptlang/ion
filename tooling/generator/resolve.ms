@@ -1,4 +1,4 @@
-import { Project, Graph, Target, BundleIdentity } from "./description";
+import { Project, Graph, Target, BundleIdentity, Platform } from "./description";
 
 function targetIndex(targets: Span<Target>, name: string): int32 {
 	for (let i = 0; i < targets.length; i += 1) {
@@ -79,12 +79,12 @@ function record(ref graph: Graph, identity: BundleIdentity): Result<void, string
 export function resolve(this project: Project): Result<Graph, string> {
 	if (!validName(project.name)) return Result.err("invalid project name: " + quoted(project.name));
 	if (project.targets.length == 0) return Result.err("project " + quoted(project.name) + " has no targets");
-	const graph: Graph = { name: project.name, targets: project.targets, identities: [] };
+	let graph: Graph = { name: project.name, targets: project.targets, identities: [] };
 	for (let i = 0; i < graph.targets.length; i += 1) {
 		const target = graph.targets[i];
 		if (!validName(target.name)) return Result.err("invalid target name: " + quoted(target.name));
 		if (target.entry == "") return Result.err("target " + quoted(target.name) + " has no entry");
-		if (!validDeploymentTarget(target.deploymentTarget)) {
+		if (target.platform != Platform.Android && !validDeploymentTarget(target.deploymentTarget)) {
 			return Result.err(
 				"invalid deployment target for " + quoted(target.name) + ": " +
 				quoted(target.deploymentTarget) + " (expected major.minor or major.minor.patch)",

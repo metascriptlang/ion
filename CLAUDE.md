@@ -30,10 +30,11 @@ msc check src/index.ms                      # type-check the library
 msc test test/mods.ms                       # one unit test file; test/*.ms and test/common/*.ms
 msc build examples/helloWebview.ms          # macOS host build
 msc build examples/helloWebview.ms --os=windows -f   # cross-compile from macOS
+msc check tooling/generator/generate.ms --target=raiser   # type-check the generator
 MSC=<candidate msc> bash tooling/generator/tests/run.sh   # generator suite
 ```
 
-- **The gate before a land**: `msc check src/index.ms`, every file under `test/` and `test/common/` through `msc test`, and `msc build examples/helloWebview.ms`. One `msc` per directory at a time. No `rm -rf out`; switching `--os` needs `-f`, because cached objects are keyed by source path and not by target.
+- **The gate before a land**: `msc check src/index.ms`, every file under `test/` and `test/common/` through `msc test`, `msc build examples/helloWebview.ms`, and `msc check tooling/generator/generate.ms --target=raiser`. That last one is the only gate step that compiles the generator: `msc check tooling/generator/cli.ms` stays clean when `generate.ms` breaks, because the CLI only spawns the evaluator that imports it. One `msc` per directory at a time. No `rm -rf out`; switching `--os` needs `-f`, because cached objects are keyed by source path and not by target.
 - **A Windows host builds natively**: the same gate commands run as they are; a built `.exe` runs with `WebView2Loader.dll` (from `vendor/webview2/runtime/x64/`) beside it, and `examples/surfaceD3D11.ms` is the by-hand check for the render surface and its input.
 - **Linux builds only on a Linux host** (Parallels Ubuntu): the `when (linux)` block runs `pkg-config` for GTK/WebKitGTK at `@comptime`, and those packages do not exist on macOS.
 - A structural change to window, webview or IPC is smoke-tested by hand: build the `.app` with `scripts/make-app.sh`, launch it, and read its stdout for `auto-probe: ipc alive`, `MS command addNumbers(100, 23)` and `[ion] IPC rejected: invalid invoke_key`.

@@ -38,8 +38,12 @@ MetaScript LOC: 2016 across 20 modules.
 
 Project generation, measured 2026-09-22: macOS and iOS arm64 development
 applications build through Xcode. iOS simulator Debug/Release launch, ad-hoc
-signing and unsigned device builds are verified; this does not port Ion's
-runtime APIs or integrate Neon. See
+signing and unsigned device builds are verified. Android arm64 (measured
+2026-09-23): a Gradle project builds Debug and signed Release APK/AAB and runs
+the JNI lifecycle fixture on the Android 36 emulator and a physical Seeker phone. A package's Java
+reaches that project as an Android library module it declares with `androidLibrary`
+(`src/android.ms`; measured 2026-09-25 on the emulator). Neither ports Ion's
+runtime APIs or integrates Neon. See
 [PROJECT-GENERATOR.md](docs/PROJECT-GENERATOR.md#verification) for the measured
 tree, command and remaining boundaries.
 

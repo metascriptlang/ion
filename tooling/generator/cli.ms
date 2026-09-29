@@ -15,7 +15,7 @@ function evaluatorSource(runner: string, manifest: string, generator: string, ou
 	return "import { project } from " + JSON.stringify(manifestImport) + ";\n"
 		+ "import { generate } from " + JSON.stringify(generatorImport) + ";\n"
 		+ "import { exit } from \"std/process\";\n"
-		+ "const result = generate(project, " + JSON.stringify(dirname(manifest)) + ", " + JSON.stringify(output) + ", " + JSON.stringify(compiler) + ");\n"
+		+ "const result = generate(project, " + JSON.stringify(dirname(manifest)) + ", " + JSON.stringify(output) + ", " + JSON.stringify(compiler) + ", " + JSON.stringify(dirname(generator)) + ");\n"
 		+ "if (result.ok) console.log(result.value); else { console.log(result.error); exit(1); }\n";
 }
 

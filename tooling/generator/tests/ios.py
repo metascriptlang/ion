@@ -67,6 +67,14 @@ def metadata(configuration, sdk, platform):
     assert info["MinimumOSVersion"] == "15.0"
     assert info["UIDeviceFamily"] == [1, 2]
     assert "UILaunchScreen" in info
+    orientations = [
+        "UIInterfaceOrientationPortrait",
+        "UIInterfaceOrientationPortraitUpsideDown",
+        "UIInterfaceOrientationLandscapeLeft",
+        "UIInterfaceOrientationLandscapeRight",
+    ]
+    assert info["UISupportedInterfaceOrientations~iphone"] == orientations
+    assert info["UISupportedInterfaceOrientations~ipad"] == orientations
     output = run("macho-" + sdk + "-" + configuration,
                  ["xcrun", "vtool", "-show-build", app / "IonIos"])
     assert f"platform {platform}" in output
@@ -77,7 +85,7 @@ build("simulator-debug")
 metadata("Debug", "iphonesimulator", "IOSSIMULATOR")
 build("simulator-release", "Release")
 metadata("Release", "iphonesimulator", "IOSSIMULATOR")
-build("device-unsigned", sdk="iphoneos")
+assert "All interface orientations must be supported" not in build("device-unsigned", sdk="iphoneos")
 metadata("Debug", "iphoneos", "IOS")
 build("simulator-signed", settings=("CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-"))
 run("verify-signature", ["codesign", "--verify", "--strict", "--verbose=2", bundle()])

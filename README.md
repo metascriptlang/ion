@@ -24,11 +24,12 @@ Designed as a thin glue layer — most of ion is platform-native code (Cocoa + W
 
 ## Quick start
 
-### Generate an Xcode project from MetaScript
+### Generate an Xcode or Gradle project from MetaScript
 
 The generator proof of concept evaluates a typed `project.ms` manifest with
 Raiser, resolves plugins and target dependencies, and emits a deterministic
-macOS or iOS Xcode application project:
+macOS or iOS Xcode application project, or an Android Gradle project
+(`examples/generatorAndroid/project.ms`):
 
 ```bash
 tooling/generator/ion-generate examples/generator/project.ms /private/tmp/ion-generated
