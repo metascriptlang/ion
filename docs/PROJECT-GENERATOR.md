@@ -183,8 +183,8 @@ fixture uses the same `@link` contract as Recompiler's native-boundary guard.
 ## Android application
 
 ```bash
-tooling/generator/ion-generate examples/generatorAndroid/project.ms /private/tmp/ion-android
-cd /private/tmp/ion-android
+bash tooling/generator/ion-generate examples/generatorAndroid/project.ms out/ionAndroid
+cd out/ionAndroid
 ./gradlew assembleDebug
 adb install app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n dev.ion.IonAndroid/dev.metascript.app.MainActivity
@@ -197,6 +197,43 @@ ION_ANDROID_KEY_ALIAS=… ION_ANDROID_KEY_PASSWORD=… \
 Pass the output path: the default is still `out/xcode`. The build machine needs
 JDK 17+, `ANDROID_HOME` with the configured platform and NDK, and network access
 the first time the wrapper downloads Gradle. It does not need a global Gradle.
+
+Use the same Bash entry and generated Gradle tasks on Windows, macOS and Linux.
+On Windows, `MSC` must name the native `msc.exe`; the generated project pins
+that executable. The build-host path has no separate Ion platform launchers.
+Windows APK verification is currently compiler-blocked; see the measured
+boundary below rather than treating successful generation as an APK claim.
+
+**Windows build-host boundary — 2026-09-30.**
+
+Measured on code/test tree `38aea60fe5fe79d3a1027f0f22b0a837e15fb0d5`,
+installed `msc` v0.2.55 binary/support `35601908`, Windows 11 x64, JDK 21
+and NDK `28.0.13004108`:
+
+- `python tooling/generator/tests/cli.py out/tmp/unifiedCliGuard`, with `MSC`
+  set to the installed native compiler, passed all five invocations.
+- `msc check tooling/generator/generate.ms --target=raiser` checked 33 modules;
+  resolver 24 assertions, plugin isolation and Android 18 assertions passed.
+  `msc check src/index.ms` checked 72 modules with no type errors and an
+  existing unused `invoke` import warning.
+- The generated project's common NDK selection executed the real Windows
+  `clang.cmd` and `llvm-nm.exe` successfully through both Gradle launchers.
+  This was an isolated tool-selection smoke, not a native-library or Release
+  JNI verification.
+- `gradlew.bat --no-daemon --console=plain assembleDebug` reached Java
+  compilation and `compileMetaScriptDebug`, then failed: `The system cannot
+  find the path specified.` and `error: @compile failed for
+  C:/Users/metacraft/.metascript/runtime/core/system.c (exit 1)`.
+  A one-line entry without Gradle or spaces in its output path failed through
+  the same installed NDK wrapper; that wrapper's `--version` returned zero.
+
+The compiler prerequisite is recorded as an Android sighting in workspace card
+`.inbox/compiler/2026-09-20-emcc-spawn-windows.md`. No shim or alternate native
+build path was added. No APK, native load, Release JNI, Android lifecycle or
+physical-device result was obtained from this Windows run; macOS/Linux builds
+were not rerun. The reusable Android runtime host and Neon integration remain
+separate from successful project generation.
+
 
 `Target.androidApp` in `description.ms` owns the defaults in `AndroidSettings`.
 `gradle.ms` `gradleProject` validates them and renders every text file;
@@ -298,8 +335,17 @@ Xcode environments. It creates and deletes its own simulator and retains logs
 and a screenshot under the printed results directory. Xcode, Python 3 and an
 installed iOS simulator runtime/device type are required.
 
-`tooling/generator/tests/android.ms` pins the typed defaults, every validation
-message, the emitted file set and the contract lines of each file.
+`tooling/generator/tests/cli.py` exercises the common generator entry with
+relative and native absolute paths, fresh-process determinism, overwrite
+preservation, invalid-manifest isolation and nested Android output with spaces.
+It can run independently of Xcode:
+
+```bash
+MSC=/absolute/path/to/msc python tooling/generator/tests/cli.py out/generatorTests
+```
+
+`tooling/generator/tests/android.ms` exercises graph and Android-setting
+refusals and deterministic emission; it does not pin generated source text.
 `tooling/generator/tests/android.py` generates twice under paths with spaces and
 compares whole trees, then checks overwrite and invalid-manifest refusal with no
 output, Debug and Release libraries (exports, 16 KiB `PT_LOAD`, stripped

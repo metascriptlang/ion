@@ -47,6 +47,14 @@ runtime APIs or integrates Neon. See
 [PROJECT-GENERATOR.md](docs/PROJECT-GENERATOR.md#verification) for the measured
 tree, command and remaining boundaries.
 
+Windows Android build-host boundary, measured 2026-09-30: unified generation
+and the generated NDK tool selection run on Windows. APK construction is
+compiler-blocked by the Windows batch-tool invocation recorded in workspace
+card `.inbox/compiler/2026-09-20-emcc-spawn-windows.md`; no Android runtime host,
+native-load, Release-JNI or lifecycle claim follows from that generation.
+Commands and limits are in `docs/PROJECT-GENERATOR.md`, "Windows build-host
+boundary". No generated-project workaround is approved.
+
 ## What the old docs got wrong
 
 These are already corrected in `README.md` / `CLAUDE.md` as of this pass, but
