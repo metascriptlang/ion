@@ -80,7 +80,10 @@ function winApp(
 	// ---- Render NSI template into build dir ----
 	const tplPath = `${here}/scripts/make-app-windows.nsi`;
 	const tplRes = readFile(tplPath);
-	if (!tplRes.ok) die(`failed to read template: ${tplPath}`);
+	if (!tplRes.ok) {
+		die(`failed to read template: ${tplPath}`);
+		return;
+	}
 
 	const outDirAbs = outDir.length > 0 ? outDir : `${here}/out`;
 	ensureDir(outDirAbs);
