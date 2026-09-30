@@ -7,7 +7,8 @@
 //      letting WKScriptMessageHandler + URL handler enqueue while we wait);
 //      classify SDL_EVENT_WINDOW_* → push to wevt queue
 //   4. drain wevt + IPC again — events that arrived during wait
-//   5. otherwise → return 0 (idle)
+//   5. frame records for surfaces due one → return 4
+//   6. otherwise → return 0 (idle)
 //
 // Quit (Cmd+Q via SDL_EVENT_QUIT, or close button on the "main" window in
 // legacy mode) → return 1. Step 4 will transition close-requested to
@@ -20,6 +21,7 @@
 #include "../../common/windowEvents.h"
 #include "../../common/windowRegistry.h"
 #include "../../common/inputEvents.h"
+#include "../../common/frameClock.h"
 
 static IonWindowId s_last_wevt_id   = ION_WINDOW_INVALID;
 static int         s_last_wevt_type = 0;
@@ -75,6 +77,7 @@ int ionPollEvent(void) {
 
     if (ion_wevt_pop(&s_last_wevt_id, &s_last_wevt_type)) return 3;
     if (ion_queue_pop()) return 2;
+    if (ion_frame_emit((double)SDL_GetTicksNS() / 1e6) > 0 && ion_input_next()) return 4;
     return 0;
 }
 

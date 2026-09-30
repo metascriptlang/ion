@@ -29,6 +29,7 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 | Render surface | ✅ | ✅ | ❌ | `macos/core/renderSurface.m` / `windows/core/composition.cpp` (DirectComposition visual + consumer's composition swapchain) |
 | Surface key / text / IME / focus / resize events | ⛔ stub | ✅ | ❌ | `windows/input/input.c`; macOS produces pointer events only |
 | Webview as element (`webviewSetFrame`, `webviewSetVisible`) | ⛔ stub | ✅ | ❌ | WebView2 `CompositionController` visual |
+| Surface frame clock (`FrameOnDemand` / `FrameContinuous`) | ⛔ stub | ✅ | ❌ | `common/frameClock.c`; Windows compositor clock in `windows/webview/poll.c` |
 | OTA `check` / `download` / verify | ✅ | ✅ | ✅ | pure MS (`src/update.ms`) |
 | OTA `apply` (install + relaunch) | ✅ | ⛔ stub | ⛔ stub | `update/install.{m,c}` |
 
@@ -127,6 +128,23 @@ Remaining:
   `ionWebviewSetFrame`, `ionWebviewSetVisible`) are no-op stubs in
   `macos/core/renderSurface.m`, and the host view emits pointer events only.
   Written 2026-09-23 on a Windows host and not compiled on macOS yet.
+- **Frame clock on macOS** — two debts. Not written: vsync (`CVDisplayLink`),
+  and the inactive and minimized pause (`ion_frame_window_state` is never
+  called), so a continuous surface ticks at the 16 ms poll rate in every window
+  state. Written but never compiled: the frame emission in `macos/webview/poll.m`
+  and the `ion_frame_surface_open` / `close` calls in `macos/core/renderSurface.m`
+  (2026-09-24, from a Windows host) — `main` may not build on macOS until a Mac
+  session runs the gate. Handoff: `~/metascript/.inbox/ion/2026-09-24-macos-frame-clock.md`.
+- **Frame clock on Windows 10** — not written: `windows/webview/poll.c` has one
+  tick source, `DCompositionWaitForCompositorClock`, and without it prints
+  `[ion] frame clock: ... not found` and sends no frame. That the entry point is
+  missing on Windows 10 is taken from memory, not checked against its docs or on
+  a Windows 10 box. `IDXGIOutput::WaitForVBlank` is the candidate second source.
+- **Surface fully covered by other windows** — not written: a continuous surface
+  keeps ticking while another window hides it. Windows sends no event for that;
+  it needs a geometry tracker over every top-level window. A cloaked window does
+  stop its frames, measured with an app cloak (`DWMWA_CLOAK`); a shell cloak
+  (switching virtual desktop) goes through the same hook but was not exercised.
 - **Windows composition hosting** — since WebView2 moved to a
   `CompositionController` (2026-09-23) the host forwards what windowed hosting
   gave for free. Measured 2026-09-23 on WebView2 Runtime 153.0.4234.48: file

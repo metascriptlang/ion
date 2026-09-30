@@ -9,6 +9,7 @@
 #include "../internal.h"
 #include "../../bridge.h"
 #include "../../common/protoReg.h"
+#include "../../common/frameClock.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +17,22 @@
 
 static const wchar_t kIonClassName[] = L"IonMainWindow";
 static int s_classRegistered = 0;
+static int s_active = 1;
+static int s_minimized = 0;
+static int s_cloaked = 0;
+static HWINEVENTHOOK s_cloakHook = NULL;
+
+static void reportFrameWindow(void) {
+    ion_frame_window_state(0, s_active, !s_minimized && !s_cloaked);
+}
+
+static void CALLBACK onCloak(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject,
+                             LONG idChild, DWORD thread, DWORD time) {
+    (void)hook; (void)idChild; (void)thread; (void)time;
+    if (hwnd != s_mainHwnd || idObject != OBJID_WINDOW) return;
+    s_cloaked = event == EVENT_OBJECT_CLOAKED;
+    reportFrameWindow();
+}
 
 // Matches lifecycle.c's secondary→primary deep-link forward marker. Kept
 // as a file-local constant; if more COPYDATA channels appear we'll lift
@@ -35,8 +52,14 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
     LRESULT handled;
     if (hwnd == s_mainHwnd && ionWinHandleInput(hwnd, msg, wParam, lParam, &handled)) return handled;
     switch (msg) {
+        case WM_ACTIVATE:
+            s_active = LOWORD(wParam) != WA_INACTIVE;
+            reportFrameWindow();
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
         case WM_SIZE:
-            if (wParam == SIZE_MINIMIZED) return 0;
+            s_minimized = wParam == SIZE_MINIMIZED;
+            reportFrameWindow();
+            if (s_minimized) return 0;
             ionCompClientResized((int)(short)LOWORD(lParam),
                                  (int)(short)HIWORD(lParam));
             return 0;
@@ -89,6 +112,8 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             return 0;
         case WM_DESTROY:
             if (hwnd == s_mainHwnd) {
+                if (s_cloakHook != NULL) { UnhookWinEvent(s_cloakHook); s_cloakHook = NULL; }
+                s_cloaked = 0;
                 ionWebView2RevokeDrop(hwnd);
                 ionWebView2DetachAutomation(hwnd);
                 ionWebView2Shutdown();
@@ -157,6 +182,9 @@ int ionOpen(const char *title, int width, int height, const char *url) {
         return 0;
     }
     ionWebView2RegisterDrop(hwnd);
+    s_cloakHook = SetWinEventHook(EVENT_OBJECT_CLOAKED, EVENT_OBJECT_UNCLOAKED, NULL, onCloak,
+                                  GetCurrentProcessId(), 0, WINEVENT_OUTOFCONTEXT);
+    if (s_cloakHook == NULL) fprintf(stderr, "[ion] cloak hook failed (%lu)\n", GetLastError());
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
 

@@ -1,4 +1,4 @@
-// Keyboard, text, IME, focus and resize events for render surfaces — the
+// Keyboard, text, IME, focus, resize and frame events for render surfaces — the
 // ionPollEvent → 4 types above pointer input (bridge.h ionInput*). runLoop
 // hands every such event to dispatchInput; pointer types stay on onInput.
 
@@ -21,6 +21,7 @@ export const InputText: int32 = 5 as int32;
 export const InputPreedit: int32 = 6 as int32;
 export const InputFocus: int32 = 7 as int32;
 export const InputResize: int32 = 8 as int32;
+export const InputFrame: int32 = 9 as int32;
 
 export enum KeyAction {
 	Release,
@@ -58,18 +59,21 @@ export type TextHandler = (surface: int32, text: string) => void;
 export type PreeditHandler = (surface: int32, text: string, cursor: int32) => void;
 export type SurfaceFocusHandler = (surface: int32, focused: boolean) => void;
 export type SurfaceResizeHandler = (surface: int32, width: int32, height: int32, scale: float64) => void;
+export type SurfaceFrameHandler = (surface: int32, timeMs: float64) => void;
 
 const _keyHandlers: KeyHandler[] = [];
 const _textHandlers: TextHandler[] = [];
 const _preeditHandlers: PreeditHandler[] = [];
 const _focusHandlers: SurfaceFocusHandler[] = [];
 const _resizeHandlers: SurfaceResizeHandler[] = [];
+const _frameHandlers: SurfaceFrameHandler[] = [];
 
 export function onKey(fn: KeyHandler): void { _keyHandlers.push(fn); }
 export function onText(fn: TextHandler): void { _textHandlers.push(fn); }
 export function onImePreedit(fn: PreeditHandler): void { _preeditHandlers.push(fn); }
 export function onSurfaceFocus(fn: SurfaceFocusHandler): void { _focusHandlers.push(fn); }
 export function onSurfaceResize(fn: SurfaceResizeHandler): void { _resizeHandlers.push(fn); }
+export function onSurfaceFrame(fn: SurfaceFrameHandler): void { _frameHandlers.push(fn); }
 
 export function keyName(key: int32): string {
 	return ionKeyName(key);
@@ -124,6 +128,11 @@ function dispatchResize(surface: int32): void {
 	for (const h of _resizeHandlers) h(surface, width, height, scale);
 }
 
+function dispatchFrame(surface: int32): void {
+	const timeMs = ionInputX();
+	for (const h of _frameHandlers) h(surface, timeMs);
+}
+
 export function dispatchInput(type: int32): void {
 	const surface = ionInputSurface() as int32;
 	match (type) {
@@ -132,6 +141,7 @@ export function dispatchInput(type: int32): void {
 		6 => dispatchPreedit(surface),
 		7 => dispatchFocus(surface),
 		8 => dispatchResize(surface),
+		9 => dispatchFrame(surface),
 		_ => {},
 	};
 }

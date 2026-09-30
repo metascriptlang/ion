@@ -170,6 +170,13 @@ void  ionRenderSurfaceSetInputRegion(IonRenderSurfaceId surf,
                                      int mode, int x, int y, int w, int h);
 void  ionRenderSurfaceRelease(IonRenderSurfaceId surf);     // detach + destroy
 
+#define ION_FRAME_ON_DEMAND  0
+#define ION_FRAME_CONTINUOUS 1
+
+void  ionRenderSurfaceSetFramePolicy(IonRenderSurfaceId surf, int policy);
+void  ionRenderSurfaceSetFrameWhenInactive(IonRenderSurfaceId surf, int enabled);
+void  ionRenderSurfaceRequestFrame(IonRenderSurfaceId surf);
+
 // ---- Webview as an element ------------------------------------------------
 //
 // The webview's frame in device pixels, top-left of the window's client area.
@@ -179,8 +186,9 @@ void  ionRenderSurfaceRelease(IonRenderSurfaceId surf);     // detach + destroy
 void  ionWebviewSetFrame(IonWindowId win, int x, int y, int w, int h);
 void  ionWebviewSetVisible(IonWindowId win, int visible);
 
-// Pump platform events one tick (SDL+Cocoa on macOS, Win32 PeekMessage on
-// Windows). Caller (MS) calls this in a loop; this fn is non-blocking.
+// Pump platform events (SDL+Cocoa on macOS, Win32 on Windows). Caller (MS)
+// calls this in a loop. Windows blocks until it has something to return;
+// macOS and Linux return 0 after at most 16 ms.
 // Return codes:
 //   0  idle
 //   1  quit requested
@@ -220,6 +228,7 @@ int         ionWindowEventType(void);
 //             p1 = caret offset in bytes into text
 //   7 focus   p1 = 1 gained / 0 lost
 //   8 resize  p1,p2 = surface width,height in device pixels; x = scale (DPI/96)
+//   9 frame   x = tick time in ms, monotonic
 #define ION_KEY_RELEASE 0
 #define ION_KEY_PRESS   1
 #define ION_KEY_REPEAT  2

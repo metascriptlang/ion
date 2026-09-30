@@ -4,6 +4,7 @@ extern "C" {
 #include "../../bridge.h"
 }
 #include "../../common/inputEvents.h"
+#include "../../common/frameClock.h"
 
 #include <dcomp.h>
 #include <dxgi1_2.h>
@@ -60,6 +61,7 @@ static void pushResize(int id) {
     r.p1 = s_clientW;
     r.p2 = s_clientH;
     ion_input_push_record(&r);
+    ionRenderSurfaceRequestFrame(id);
 }
 
 static void pushFocus(int id, int gained) {
@@ -122,6 +124,7 @@ static void releaseSurface(IonWinSurface *s) {
         ShowWindow(s->adopted, SW_HIDE);
         SetParent(s->adopted, nullptr);
     }
+    ion_frame_surface_close((int)(s - s_surfaces));
     memset(s, 0, sizeof *s);
 }
 
@@ -246,6 +249,7 @@ extern "C" IonRenderSurfaceId ionRenderSurfaceCreate(IonWindowId win, int z) {
         s->z = z;
         s->visible = 1;
         s->inputMode = ION_INPUT_FULL;
+        ion_frame_surface_open(i, win);
         commit();
         if (z == ION_SURFACE_BELOW && belowCount() == 1) ionWebView2SetTransparent(1);
         if (s_focused == ION_RENDER_SURFACE_INVALID) ionCompFocusSurface(i, GetFocus() == ionGetMainHwnd());

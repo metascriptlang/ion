@@ -7,19 +7,20 @@
 // modules like this one don't drop them.
 
 export { open, close, resourcePath, resourceUrl } from "./window";
-export { listen, invoke, eval, runLoop, onFrame, onInput, Handler, InputHandler } from "./ipc";
+export { listen, invoke, eval, runLoop, onInput, Handler, InputHandler } from "./ipc";
 export {
 	renderSurfaceCreate, renderSurfaceAdopt, renderSurfaceAdoptLayer, renderSurfaceLayer,
 	renderSurfaceAttachSwapChain, renderSurfaceSetImeRect, webviewSetFrame, webviewSetVisible,
 	renderSurfaceSetVisible, renderSurfaceSyncFrame,
 	renderSurfaceSetInputRegion, renderSurfaceSetInputRect, renderSurfaceRelease,
+	renderSurfaceSetFramePolicy, renderSurfaceSetFrameWhenInactive, renderSurfaceRequestFrame,
 	RenderSurfaceId, RenderSurfaceInvalid,
-	SurfaceBelow, SurfaceAbove, InputNone, InputFull, InputRect,
+	SurfaceBelow, SurfaceAbove, InputNone, InputFull, InputRect, FrameOnDemand, FrameContinuous,
 } from "./renderSurface";
 export {
-	onKey, onText, onImePreedit, onSurfaceFocus, onSurfaceResize, keyName, keyMods,
+	onKey, onText, onImePreedit, onSurfaceFocus, onSurfaceResize, onSurfaceFrame, keyName, keyMods,
 	KeyEvent, KeyAction, KeyMod, KeyHandler, TextHandler, PreeditHandler,
-	SurfaceFocusHandler, SurfaceResizeHandler,
+	SurfaceFocusHandler, SurfaceResizeHandler, SurfaceFrameHandler,
 } from "./input";
 export { command, Command } from "./command";
 export {

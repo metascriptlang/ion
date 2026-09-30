@@ -15,7 +15,7 @@ Ion is a webview shell. A **render surface** lets an app host a *native* renderi
 - Not a renderer. Ion never draws game/3D content — it only hosts and composites a surface someone else fills.
 - Not engine-specific. The public API never mentions Godot/Unity/etc. Those are *consumers* (see the example at the end).
 - Not a multi-window manager. A surface belongs to one window.
-- Not a frame clock. Ion does not own a render timer in v0 — the app drives its renderer from the existing MS event loop (see "Driving the renderer").
+- Not a render loop. Ion owns the frame clock and tells a surface when to draw; drawing is the renderer's (see "Driving the renderer").
 
 ---
 
@@ -126,16 +126,32 @@ Both are first-class. A consumer picks whichever fits the renderer it wraps.
 
 ## Driving the renderer
 
-Ion is **not** a frame clock in v0. The render step is driven by MetaScript, off the loop Ion already runs — `runLoop()` polling `ionPollEvent()` once per tick (`src/ipc.ms`). There is no native timer calling back into MS (a per-frame callback would route a function value through native→MS, which trips a known MS codegen limitation, and would split the engine tick off the loop thread).
+Ion owns one frame clock per window; each surface declares its own policy (`neon/docs/VISION.md`, "Window, frame and input": "Each rendering area declares its own frame policy… An idle app draws nothing"). The tick reaches MS as input type 9 through the queue `ionPollEvent` already drains, so the render step stays on the loop thread and `onSurfaceFrame` handlers run like every other input handler. The rules are `due()` in `src/platform/common/frameClock.c`, pinned by `test/common/frameClock.ms`:
 
-Two ways the app interleaves its render step:
+| window state | `FrameOnDemand` (application UI) | `FrameContinuous` (game) |
+|---|---|---|
+| active | one frame per `renderSurfaceRequestFrame` | every vsync |
+| inactive, visible | one frame per request | none, unless `renderSurfaceSetFrameWhenInactive(surf, true)` |
+| minimized, or cloaked (Windows) | none; the request waits | none |
 
-1. **`onFrame(fn)` hook** — registers a callback `runLoop` invokes once per poll iteration (`runLoop()`'s signature is unchanged — existing no-arg callers keep working). The consumer drives its engine there (`godotIteration()`). Stored in an array and dispatched via `for-of`, the same shape as `listen` handlers — Bug-5-safe.
-2. **App-owned loop** — the consumer writes its own loop calling `ionPollEvent` + its render step, instead of `runLoop`. More control, but re-implements IPC/window-event dispatch.
+Windows learns of a cloak from a WinEvent hook on `EVENT_OBJECT_CLOAKED` / `UNCLOAKED` (`windows/core/window.c`); a cloaked window is still active and not minimized, so without the hook it kept its 165 Hz. A resize requests a frame. With no surface due a frame, the Windows loop blocks in `MsgWaitForMultipleObjectsEx` and the vsync thread parks.
 
-`renderSurfaceSyncFrame` is called on resize (and may be auto-driven by the window-resize event) to keep the surface matched to the content view.
+**Windows tick source.** A thread waits on `DCompositionWaitForCompositorClock` (Windows 11) only while a surface is due a frame. `DwmFlush` was measured as the alternative and rejected: the same 165 Hz and the same jitter, but 105% of one core (10.5 s CPU in 10 s), because it busy-waits. A DXGI frame-latency waitable needs the swapchain created with its flag, and the renderer owns the swapchain. On Windows 10 the entry point is missing: Ion prints `[ion] frame clock: DCompositionWaitForCompositorClock not found` and sends no frames.
 
-A native `CVDisplayLink` / DXGI-waitable frame clock — vsync-accurate, independent of the MS loop — is a later enhancement (see Phases), only needed if MS-loop pacing proves insufficient.
+**macOS, Linux.** macOS emits due frames at its 16 ms `SDL_WaitEventTimeout` tick with no vsync, and does not report window activity or minimize, so a continuous surface keeps ticking while the window is inactive. Linux has no render surface.
+
+**Measured** 2026-09-24 on this Windows 11 box (RTX 5090, 3440-wide display at 164 Hz), msc v0.2.55 (build `65985605`), 10 s after 3 s of warm-up, a D3D11 clear plus `Present(1)` per frame. CPU is `QueryProcessCycleTime` for the process and `QueryThreadCycleTime` for the loop thread, and intervals are QPC stamps taken in the frame handler:
+
+| | before: 16 ms poll loop, frame hook every tick | after: frame clock |
+|---|---|---|
+| idle (nothing requested) | 33 wakeups/s, ~7 M cycles/s, the hook still ran | 0 frames, loop thread 0.000 M cycles/s, process 3.9–4.4 M cycles/s (WebView2 and composition threads) |
+| continuous | 32.0–33.2 Hz (`Sleep(16)` rounds to ~31 ms), sd 2.1–3.8 ms, p99 up to 47.6 ms | 165.0 Hz, sd 0.07–0.10 ms, p99 6.25–6.32 ms |
+| on demand, a click every 100 ms | — | 93 posted clicks → 93 frames |
+| continuous, another window active | — | 0 frames; 1657 frames at 165 Hz with FrameWhenInactive |
+| continuous, minimized | — | 0 frames, with and without FrameWhenInactive |
+| continuous, cloaked 5 s by `DWMWA_CLOAK` | — | 0 frames (801 with the hook removed), then 165 Hz after uncloak |
+
+`examples/surfaceD3D11.ms` shows both policies by hand: it draws one frame per input, and `C` toggles continuous.
 
 ---
 
@@ -163,7 +179,7 @@ Pragmatic default: drive z-order + input region from app **state** (launcher vs 
 | Surface (layer) | `CAMetalLayer` in an `NSView` Ion creates | a DirectComposition visual; the renderer attaches its own `CreateSwapChainForComposition` swapchain (`renderSurfaceAttachSwapChain`) |
 | Transparency | `webview.drawsBackground = NO`, window `ION_WIN_TRANSPARENT` | WebView2 `DefaultBackgroundColor` transparent while a `Below` surface exists |
 | State storage | new fields on `IonMacWindowState` (`state.h`) | `windows/core/composition.cpp` (single window) |
-| Frame clock | MS loop (`runLoop`); `CVDisplayLink` later | MS loop; `DXGI`/`DwmFlush` later |
+| Frame clock | 16 ms poll tick, no vsync, no inactive pause; `CVDisplayLink` later | compositor clock thread, per-surface policy |
 
 macOS is the lead target (matches Ion v0). The adopt path slots into `window.m` right where `ionSetupWebview` adds the webview — same `contentView`, just `positioned:NSWindowBelow relativeTo:webview` and `drawsBackground = NO` on the webview. Windows mirrors via the same MS API; `SetParent` cross-process is allowed on Win32, in-process is trivial.
 
@@ -183,7 +199,8 @@ This is **not** part of Ion. It shows how a consumer (e.g. a TCG launcher) uses 
 const surf = renderSurfaceCreate(win, SurfaceBelow);
 renderSurfaceAdopt(surf, godotWindowView());     // godot: window_get_native_handle(WINDOW_VIEW)
 
-onFrame(() => godotIteration());                 // drive the engine on Ion's loop
+renderSurfaceSetFramePolicy(surf, FrameContinuous);
+onSurfaceFrame((s, timeMs) => godotIteration()); // drive the engine on Ion's clock
 runLoop();
 
 // in-match:    renderSurfaceSetInputRegion(surf, InputFull);
@@ -199,5 +216,5 @@ Everything Godot-specific (booting libgodot, getting `WINDOW_VIEW`, calling `ite
 1. **macOS adopt + below** — reparent an external `NSView` under a transparent webview; `runLoop` frame hook; state-driven input region. (Unblocks the Godot/TCG case.)
 2. **macOS layer mode** — Ion-owned `CAMetalLayer` for render-into consumers.
 3. **Windows parity** — WebView2 + child HWND / swapchain panel.
-4. **Native frame clock** — `CVDisplayLink` / DXGI-waitable for vsync-accurate ticking independent of the MS loop.
+4. **Native frame clock** — Windows done (compositor clock); macOS `CVDisplayLink` open.
 5. **Region passthrough** — CSS `pointer-events` holes → forwarded input (seamless web-over-native).

@@ -5,11 +5,12 @@ import {
 	renderSurfaceCreate, renderSurfaceAdopt, renderSurfaceLayer,
 	renderSurfaceSetVisible, renderSurfaceSyncFrame,
 	renderSurfaceSetInputRegion, renderSurfaceSetInputRect, renderSurfaceRelease,
-	onFrame, runLoop,
-	SurfaceBelow, InputNone, InputFull, RenderSurfaceInvalid,
+	renderSurfaceSetFramePolicy, renderSurfaceSetFrameWhenInactive, renderSurfaceRequestFrame,
+	onSurfaceFrame, runLoop,
+	SurfaceBelow, InputNone, InputFull, RenderSurfaceInvalid, FrameContinuous,
 } from "../src/index";
 
-function tick(): void {}
+function tick(surface: int32, timeMs: float64): void {}
 
 export function main(): int32 {
 	const win = createWindow("main", defaultOptions("RenderSurface Smoke",
@@ -27,7 +28,10 @@ export function main(): int32 {
 	renderSurfaceSetInputRect(surf, 0 as int32, 0 as int32, 512 as int32, 512 as int32);
 	renderSurfaceSetInputRegion(surf, InputFull);
 
-	onFrame(tick);
+	renderSurfaceSetFramePolicy(surf, FrameContinuous);
+	renderSurfaceSetFrameWhenInactive(surf, false);
+	renderSurfaceRequestFrame(surf);
+	onSurfaceFrame(tick);
 	runLoop();
 	renderSurfaceRelease(surf);
 	return 0;

@@ -25,6 +25,7 @@
 @compile("./platform/common/windowRegistry.c");
 @compile("./platform/common/windowEvents.c");
 @compile("./platform/common/inputEvents.c");
+@compile("./platform/common/frameClock.c");
 @compile("./platform/common/keys.c");
 @compile("./platform/common/navpolicy.c");
 @compile("./platform/common/bootstrap.c");
@@ -185,17 +186,6 @@ export function listen(handler: Handler): void {
 	handlers.push(handler);
 }
 
-// Per-frame callbacks — invoked once per runLoop poll iteration. A render-
-// surface consumer drives its native renderer here (e.g. godotIteration()),
-// keeping the engine tick on the loop thread. Same empty-array + for-of shape
-// as `handlers` (Bug-5-safe; see windowManager). Native vsync-accurate ticking
-// (CVDisplayLink) is a later phase — see docs/RENDER-SURFACE.md.
-const _frameCallbacks: (() => void)[] = [];
-
-export function onFrame(fn: () => void): void {
-	_frameCallbacks.push(fn);
-}
-
 // Input event callbacks — invoked when ionPollEvent surfaces a mouse event
 // (ionPollEvent returns 4). A render-surface consumer forwards these into its
 // native renderer's input. type: 1=button, 2=motion, 3=wheel; (x,y) a fraction
@@ -261,9 +251,6 @@ export function runLoop(): void {
 				const ip2 = ionInputP2();
 				for (const ih of _inputCallbacks) ih(it, ix, iy, ip1, ip2);
 			}
-		}
-		if (running) {
-			for (const fc of _frameCallbacks) fc();
 		}
 	}
 	ionClose();
