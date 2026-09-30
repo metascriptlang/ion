@@ -2,18 +2,13 @@ import { Project, Graph, Platform } from "./description";
 import { resolve } from "./resolve";
 import { xcodeProject } from "./xcode";
 import { gradleProject, GeneratedFile, wrapperFiles } from "./gradle";
-import { exists, isFile, mkdir, writeFile, readFile, chmod, realpath, removeAll } from "std/fs";
+import { exists, isFile, ensureDir, writeFile, readFile, chmod, realpath, removeAll } from "std/fs";
 import { dirname, basename } from "std/fs/path";
 
-function makeDirectories(path: string): Result<string, string> {
-	let built = "";
-	for (const segment of path.split("/")) {
-		if (segment == "") continue;
-		built += "/" + segment;
-		if (exists(built)) continue;
-		if (!mkdir(built).ok) return Result.err("cannot create output: " + built);
-	}
-	return Result.ok(path);
+function makeDirectories(path: string): Result<void, string> {
+	const created = ensureDir(path);
+	if (!created.ok) return Result.err("cannot create output: " + path + ": " + created.error.message);
+	return Result.ok(null);
 }
 
 function isAndroid(graph: Graph): boolean {

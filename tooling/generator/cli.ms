@@ -1,12 +1,12 @@
-import { env, exit, execFileCapture, cwd } from "std/process";
+import { env, exit, execFileCapture, cwd, platform } from "std/process";
 import { dirname, realpath, isFile, writeFile, remove, rmdir } from "std/fs";
-import { relative } from "std/fs/path";
+import { relative, resolve } from "std/fs/path";
 import { writeStderr } from "std/io";
 
 function existingFile(path: string, message: string): Result<string, string> {
 	const resolved = realpath(path);
 	if (resolved == "" || !isFile(resolved)) return Result.err(message);
-	return Result.ok(resolved);
+	return Result.ok(resolve(resolved, cwd()));
 }
 
 function evaluatorSource(runner: string, manifest: string, generator: string, output: string, compiler: string): string {
@@ -27,8 +27,13 @@ function evaluate(runner: string, source: string, compiler: string): Result<stri
 	return Result.ok(result.value.trim());
 }
 
-function absolute(path: string): string {
-	return path.startsWith("/") ? path : cwd() + "/" + path;
+function evaluatorDirectory(): Result<string, string> {
+	const temporary = platform == "windows"
+		? execFileCapture("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+			"$ErrorActionPreference = 'Stop'; $path = Join-Path ([IO.Path]::GetTempPath()) ('ion-generator.' + [Guid]::NewGuid().ToString('N')); [IO.Directory]::CreateDirectory($path).FullName"])
+		: execFileCapture("mktemp", ["-d", setting("TMPDIR", "/tmp") + "/ion-generator.XXXXXX"]);
+	if (!temporary.ok) return Result.err("cannot create evaluator directory: " + temporary.error.errorOutput.trim());
+	return Result.ok(resolve(temporary.value.trim(), cwd()));
 }
 
 function setting(name: string, fallback: string): string {
@@ -38,14 +43,12 @@ function setting(name: string, fallback: string): string {
 
 function run(): Result<string, string> {
 	const manifestPath = setting("ION_GENERATE_MANIFEST", "project.ms");
-	const manifest = try existingFile(absolute(manifestPath), "manifest does not exist: " + manifestPath);
+	const manifest = try existingFile(resolve(manifestPath, cwd()), "manifest does not exist: " + manifestPath);
 	const root = env.get("ION_GENERATE_ROOT");
 	const generator = try existingFile(root + "/tooling/generator/generate.ms", "generator sources do not exist under " + root);
 	const compiler = try existingFile(env.get("MSC"), "MSC must name the compiler");
-	const output = absolute(setting("ION_GENERATE_OUTPUT", dirname(manifest) + "/out/xcode"));
-	const temporary = execFileCapture("/usr/bin/mktemp", ["-d", "/private/tmp/ion-generator.XXXXXX"]);
-	if (!temporary.ok) return Result.err("cannot create evaluator directory");
-	const directory = temporary.value.trim();
+	const output = resolve(setting("ION_GENERATE_OUTPUT", dirname(manifest) + "/out/xcode"), cwd());
+	const directory = try evaluatorDirectory();
 	const runner = directory + "/evaluate.ms";
 	const evaluated = evaluate(runner, evaluatorSource(runner, manifest, generator, output, compiler), compiler);
 	rmdir(directory);
