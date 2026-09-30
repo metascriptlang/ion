@@ -47,8 +47,7 @@ export class ParsedArgs {
 	}
 
 	positional(name: string): string {
-		if (this._positional.has(name)) return this._positional.get(name);
-		return "";
+		return this._positional.get(name) ?? "";
 	}
 
 	flag(name: string): boolean {
@@ -56,12 +55,12 @@ export class ParsedArgs {
 	}
 
 	string(name: string, def: string = ""): string {
-		if (this._strings.has(name)) return this._strings.get(name);
-		return def;
+		return this._strings.get(name) ?? def;
 	}
 
 	multi(name: string): string[] {
-		if (this._multi.has(name)) return this._multi.get(name);
+		const values = this._multi.get(name);
+		if (values !== null) return values;
 		return [] as string[];
 	}
 }
