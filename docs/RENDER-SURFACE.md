@@ -167,7 +167,7 @@ Pragmatic default: drive z-order + input region from app **state** (launcher vs 
 
 macOS is the lead target (matches Ion v0). The adopt path slots into `window.m` right where `ionSetupWebview` adds the webview — same `contentView`, just `positioned:NSWindowBelow relativeTo:webview` and `drawsBackground = NO` on the webview. Windows mirrors via the same MS API; `SetParent` cross-process is allowed on Win32, in-process is trivial.
 
-A new `src/platform/macos/core/renderSurface.m` holds the impl; its `@compile("./platform/macos/core/renderSurface.m", "-fobjc-arc")` line goes in the `@platform("macos")` block of `src/ipc.ms` (the canonical bridge-directive home — directives in re-export-only files get dropped).
+A new `src/platform/macos/core/renderSurface.m` holds the impl; its `@compile("./platform/macos/core/renderSurface.m", "-fobjc-arc")` line goes in the `when (macos)` block of `src/ipc.ms` (the canonical bridge-directive home — directives in re-export-only files get dropped).
 
 ---
 

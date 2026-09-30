@@ -18,12 +18,6 @@
 // Each platform's source files get their own @compile. MS recompiler
 // dedupes by path via _compiledOFiles, so listing the same file twice is
 // safe. We list them all here to keep the build manifest centralized.
-//
-// common/*.c is plain C, shared across all platforms — always compiled.
-// macOS-specific .m files and Windows-specific .c files live behind
-// @platform("...") blocks so cross-compile only pulls the right set.
-// Recompiler's @platform filter (src/checker/checkPass.ms:collectDirectives)
-// drops mismatched blocks at directive-collection time.
 
 @compile("./platform/common/randombytes.c");
 @compile("./platform/common/invokekey.c");

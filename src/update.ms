@@ -21,11 +21,6 @@ import { exec } from "std/process";
 import { sha256, fromBase64 } from "std/crypto";
 import { ed25519Verify } from "std/crypto/ed25519";
 import { isOlderThan } from "./internal/semver";
-
-// Platform install bridge. Implementation lives under src/platform/macos/
-// update/install.m — wired into the build via @platform("macos") @compile
-// in ipc.ms. Linux + Windows install bridges are not implemented yet, so
-// installMacOS() is the only platform path apply() can take today.
 import {
 	ionUpdateMountDmg,
 	ionUpdateFindAppInVolume,

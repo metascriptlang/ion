@@ -1,9 +1,5 @@
 // Ion native bridge — public C contract between MS and the platform layer.
 //
-// Same signatures on every platform; implementations live in
-// src/platform/<os>/. Linker picks the matching .o files based on the
-// @platform("...") block selected at build time (see src/ipc.ms).
-//
 // v0 scope: single window, single webview, polling event loop.
 // Caller (MS) drives the loop via ionPollEvent. Platform callbacks queue
 // IPC messages internally; ionPollEvent surfaces them one at a time.
