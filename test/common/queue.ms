@@ -77,7 +77,7 @@ test "empty payload accepted" {
 
 test "long payload preserved" {
 	drain();
-	const long = "abcdefghijklmnopqrstuvwxyz0123456789".repeat(10 as int64);
+	const long = "abcdefghijklmnopqrstuvwxyz0123456789".repeat(10);
 	ion_queue_push("big", long);
 	assert ion_queue_pop() === 1 as int32;
 	assert msStringFromCStr(ion_queue_last_payload()) === long;

@@ -47,7 +47,7 @@ test "verify rejects wrong key" {
 
 test "verify rejects partial-match prefix" {
 	const key = msStringFromCStr(ion_invoke_key());
-	const prefix = key.slice(0 as int64, 32 as int64);
+	const prefix = key.slice(0, 32);
 	assert ion_invoke_key_verify(prefix) === 0 as int32;
 }
 

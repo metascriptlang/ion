@@ -5,19 +5,19 @@
 import { HotkeyResult, tryRegisterHotkeyKey, ModCmd } from "../src/index";
 
 test "HotkeyResult.Ok is 0" {
-	assert HotkeyResult.Ok === 0;
+	assert (HotkeyResult.Ok as int32) === 0;
 }
 
 test "HotkeyResult.UnknownKey is 1" {
-	assert HotkeyResult.UnknownKey === 1;
+	assert (HotkeyResult.UnknownKey as int32) === 1;
 }
 
 test "HotkeyResult.SlotsFull is 2" {
-	assert HotkeyResult.SlotsFull === 2;
+	assert (HotkeyResult.SlotsFull as int32) === 2;
 }
 
 test "HotkeyResult.Conflict is 3" {
-	assert HotkeyResult.Conflict === 3;
+	assert (HotkeyResult.Conflict as int32) === 3;
 }
 
 test "tryRegisterHotkeyKey unknown name returns UnknownKey" {
