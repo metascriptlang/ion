@@ -18,8 +18,17 @@ const VERSION = "0.0.1";
 
 // ---- helpers ---------------------------------------------------------------
 
+// exec captures output; echo it so the child's output stays visible, and map any
+// failure (non-zero exit, signal, spawn) to a non-zero code.
 function bash(cmd: string): int32 {
-	return exec(cmd) as int32;
+	const r = exec(cmd);
+	if (r.ok) {
+		if (r.value.length > 0) console.log(r.value);
+		return 0;
+	}
+	if (r.error.output.length > 0) console.log(r.error.output);
+	if (r.error.errorOutput.length > 0) console.log(r.error.errorOutput);
+	return r.error.exitCode != 0 ? r.error.exitCode : 1;
 }
 
 function die(msg: string): void {
@@ -105,7 +114,7 @@ function winApp(
 	// ---- Invoke makensis ----
 	if (!cmdExists("makensis")) die("makensis not on PATH (brew install makensis)");
 	console.log("==> running makensis...");
-	const nsiCode = exec(`cd "${buildDir}" && makensis -V2 installer.nsi`);
+	const nsiCode = bash(`cd "${buildDir}" && makensis -V2 installer.nsi`);
 	if (nsiCode !== 0) die(`makensis failed (exit ${nsiCode})`);
 	if (!isFile(outFileUnsigned)) die(`makensis produced no output at ${outFileUnsigned}`);
 
@@ -116,7 +125,7 @@ function winApp(
 		const passArg = pass.length > 0 ? `-pass "${pass}"` : "";
 		console.log(`==> signing with ${signCert}...`);
 		const signCmd = `osslsigncode sign -pkcs12 "${signCert}" ${passArg} -n "${name}" -t http://timestamp.sectigo.com -in "${outFileUnsigned}" -out "${outFileFinal}"`;
-		const signCode = exec(signCmd);
+		const signCode = bash(signCmd);
 		if (signCode !== 0) die(`osslsigncode failed (exit ${signCode})`);
 		removeAll(outFileUnsigned);
 	} else {
