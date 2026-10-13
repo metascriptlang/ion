@@ -212,7 +212,7 @@ and NDK `28.0.13004108`:
 
 - `python tooling/generator/tests/cli.py out/tmp/unifiedCliGuard`, with `MSC`
   set to the installed native compiler, passed all five invocations.
-- `msc check tooling/generator/generate.ms --target=raiser` checked 33 modules;
+- `msc check --target=raiser tooling/generator/generate.ms` checked 33 modules;
   resolver 24 assertions, plugin isolation and Android 18 assertions passed.
   `msc check src/index.ms` checked 72 modules with no type errors and an
   existing unused `invoke` import warning.
@@ -337,15 +337,18 @@ installed iOS simulator runtime/device type are required.
 
 `tooling/generator/tests/cli.py` exercises the common generator entry with
 relative and native absolute paths, fresh-process determinism, overwrite
-preservation, invalid-manifest isolation and nested Android output with spaces.
+preservation, invalid-manifest isolation, nested Android output with spaces,
+the default manifest and output, and that no evaluator directory is left in
+the temporary directory.
 It can run independently of Xcode:
 
 ```bash
 MSC=/absolute/path/to/msc python tooling/generator/tests/cli.py out/generatorTests
 ```
 
-`tooling/generator/tests/android.ms` exercises graph and Android-setting
-refusals and deterministic emission; it does not pin generated source text.
+`tooling/generator/tests/android.ms` pins the typed defaults, every validation
+message, the emitted file set and the contract lines of each file, including
+the Windows `.cmd`/`.exe` NDK tool selection.
 `tooling/generator/tests/android.py` generates twice under paths with spaces and
 compares whole trees, then checks overwrite and invalid-manifest refusal with no
 output, Debug and Release libraries (exports, 16 KiB `PT_LOAD`, stripped
