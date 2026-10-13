@@ -317,6 +317,52 @@ byte for byte. Why the shape is what it is:
   library to add runtimes. Making the `.so` self-contained belongs to the
   package that declares the C++ graph, or to msc.
 
+## Windows and Linux: the shape, decided before the emitters exist
+
+Neither emitter exists yet; this section records why they will have the shape
+they will. Windows keeps the Xcode split: the generator emits a Visual Studio
+solution and project that own what Xcode owns on Apple (metadata, the files
+beside the executable, signing, packaging, launch and debugging), while msc
+keeps the whole executable through one build step, the counterpart of the
+"Compile MetaScript" phase and of `compileMetaScript<Variant>`. The project lists
+no C source. Metadata on Windows is the icon and version resource and the
+application manifest; plugins reach them through the graph, not through
+vcxproj text. Linux has no IDE that owns an application shell, so its emitter
+writes the shell files directly (`.desktop`, AppStream metainfo, the package
+manifest) with the same split.
+
+Rejected, and why:
+
+- **An `Application` vcxproj that compiles the C msc emits**, as React Native
+  Windows does for its C++ (`vnext/templates/cpp-app/windows/MyApp/MyApp.vcxproj`
+  at `1f59db1`: `ClCompile`, `ResourceCompile`, toolset `v145`). It moves compile
+  and link from msc to MSBuild, which the Apple and Android emitters refuse for
+  the same reason.
+- **CMake for both platforms**, as Flutter's `windows/runner/` does. It would
+  only wrap the same msc call in another format and owns no shell.
+- **No IDE project on Windows.** It loses debugging from Visual Studio and the
+  Windows Application Packaging Project (`.wapproj`), which is where Visual
+  Studio edits the MSIX manifest and signing.
+- **RNW's `MakeBundle` pattern as is**
+  (`vnext/PropertySheets/Bundle.Common.targets`): it runs the bundler with
+  `ContinueOnError="true"`, so a failed bundle still builds green. A failed msc
+  build must leave no runnable executable, as on iOS and Android.
+
+What RNW confirms: its `WinMain` (`templates/cpp-app/windows/MyApp/MyApp.cpp`)
+reads content from a folder beside the executable, as `ionResourcePath()` reads
+`<exe dir>/resources`, and sets per-monitor DPI awareness in code rather than in
+a manifest, as `src/platform/windows/core/lifecycle.c` does. Its `run-windows`
+requires Visual Studio 18.6 through `vswhere`
+(`packages/@react-native-windows/cli/src/utils/msbuildtools.ts`), which refuses
+Build Tools 2022 (17.14, toolset `v143`).
+
+The resource is the one place where the split differs from Apple: Info.plist
+sits outside the binary, while the Windows icon and manifest are linked into
+it. MSBuild compiles the `.rc`; how msc then links the `.res` is not measured.
+Measured on tree `dcd8becb7b21f83bbf900c7f1a66a824caf35048`, msc v0.3.3
+`9a4775dc`, Windows 11: `msc build examples/helloWebview.ms` writes
+`out/debug/helloWebview.pdb` beside the executable.
+
 ## Verification
 
 ```bash
