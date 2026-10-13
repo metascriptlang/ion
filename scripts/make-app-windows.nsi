@@ -1,6 +1,6 @@
 ; ion Windows installer — minimal NSIS template.
 ;
-; This file is **rendered** by make-app-windows.sh which substitutes the
+; This file is **rendered** by ion app --target windows (cli/main.ms winApp) which substitutes the
 ; @@VARS@@ placeholders below before invoking makensis. Don't try to compile
 ; this file directly — `${VAR}` ↔ @@VAR@@ substitution must happen first.
 ;
@@ -29,7 +29,7 @@ SetCompressor /SOLID lzma
 !include "Win\Propkey.nsh"
 !include "utils.nsh"
 
-; ---- Parameters (substituted by make-app-windows.sh) ----
+; ---- Parameters (substituted by ion app --target windows (cli/main.ms winApp)) ----
 !define PRODUCTNAME       "@@PRODUCTNAME@@"
 !define BUNDLEID          "@@BUNDLEID@@"
 !define VERSION           "@@VERSION@@"
