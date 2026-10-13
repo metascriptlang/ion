@@ -469,7 +469,7 @@ export function gradleProject(graph: Graph, root: string, compiler: string): Res
 		return Result.err("Android project cannot contain the " + platform + " target '" + target.name + "'");
 	}
 	if (graph.targets.length != 1) {
-		const names: Vec<string> = [];
+		let names: Vec<string> = [];
 		for (const target of graph.targets) names.push(target.name);
 		return Result.err(
 			"Android project holds exactly one application target; got " + graph.targets.length.toString() + ": " + names.join(", "),

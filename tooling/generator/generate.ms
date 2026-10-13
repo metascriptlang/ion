@@ -23,7 +23,7 @@ function render(graph: Graph, sourceRoot: string, compiler: string, tools: strin
 		const pbx = try xcodeProject(graph, sourceRoot, compiler);
 		return Result.ok([{ path: graph.name + ".xcodeproj/project.pbxproj", content: pbx }]);
 	}
-	const files = try gradleProject(graph, sourceRoot, compiler);
+	let files = try gradleProject(graph, sourceRoot, compiler);
 	for (const path of wrapperFiles) {
 		const vendored = readFile(tools + "/android/wrapper/" + basename(path));
 		if (!vendored.ok) return Result.err("cannot read vendored Gradle wrapper file: " + path);

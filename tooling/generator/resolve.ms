@@ -46,7 +46,7 @@ function cyclePath(targets: Span<Target>, ready: Vec<string>): string {
 			break;
 		}
 	}
-	const path: Vec<string> = [];
+	let path: Vec<string> = [];
 	while (!path.includes(current)) {
 		path.push(current);
 		for (const dependency of targets[targetIndex(targets, current)].dependencies) {
@@ -97,7 +97,7 @@ export function resolve(this project: Project): Result<Graph, string> {
 			}
 		}
 	}
-	const ready: Vec<string> = [];
+	let ready: Vec<string> = [];
 	while (ready.length < graph.targets.length) {
 		const before = ready.length;
 		for (const target of graph.targets) {
@@ -115,7 +115,7 @@ export function resolve(this project: Project): Result<Graph, string> {
 	}
 	for (const plugin of project.plugins) {
 		const owner = "plugin " + plugin.name;
-		const input: Vec<Target> = graph.targets;
+		let input: Vec<Target> = graph.targets;
 		for (const id of plugin.contribute(input)) {
 			if (targetIndex(graph.targets, id.target) < 0) return Result.err(owner + " contributes to missing target " + quoted(id.target));
 			if (id.value == "") return Result.err(owner + " contributes an empty bundle identity to " + quoted(id.target));
