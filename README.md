@@ -4,6 +4,16 @@ A native desktop runtime for [MetaScript](https://github.com/metascript). Single
 
 Designed as a thin glue layer — most of ion is platform-native code (Cocoa + WebKit + SDL3 on macOS), with MetaScript as the public API surface.
 
+## Where Ion sits
+
+A game engine owns the window, the events, the frame loop, the renderer and the build in one piece. MetaScript splits that into three pieces that compose:
+
+- **Ion** owns the process and the window: window and webview, global events and input, the frame clock and the native render surface, native chrome, the project generator, build and packaging.
+- **Neon** is the UI framework: it receives Ion's events, runs the reactive tree and drives a renderer through its host contract.
+- **Void** draws GPU pixels into the surface Ion hands out, and owns no window and no loop when embedded.
+
+Each piece is usable without the ones above it: Ion with plain HTML in its webview, Void with its own standalone window. Ion imports neither Neon nor Void. The full split, per concern, is in `neon/docs/VISION.md`; the surface contract is [docs/RENDER-SURFACE.md](docs/RENDER-SURFACE.md).
+
 ## What it is
 
 - **Window + webview shell** (SDL3 + WKWebView). Load assets via `ion://localhost/...` (bundled), `asset://localhost/<abs-path>` (scoped disk file), `http(s)://` (dev server), or `data:`. `file://` is **blocked** — opaque-origin trap breaks pushState / localStorage / SW. See [CUSTOM-PROTOCOL.md](./CUSTOM-PROTOCOL.md).
@@ -16,7 +26,7 @@ Designed as a thin glue layer — most of ion is platform-native code (Cocoa + W
 
 ## What it is not
 
-- **Not a UI framework** — has no opinion on how pixels are drawn. Bring your own React, Vue, RNW, or static HTML.
+- **Not a UI framework** — has no opinion on how pixels are drawn. Bring Neon, your own React, Vue, or static HTML, or a native renderer in the render surface.
 - **Not a Chromium bundler** — uses the system WKWebView, no 100MB browser shipped per app.
 - **Not a multi-window manager** — v0 is single-window. Add later if needed.
 - **Not fully cross-platform yet** — macOS v0 is feature-complete; Windows reaches runtime parity through Phase 4.5 (only NSIS packaging pending); Linux not started.
