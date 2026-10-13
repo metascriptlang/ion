@@ -47,6 +47,13 @@ runtime APIs or integrates Neon. See
 [PROJECT-GENERATOR.md](docs/PROJECT-GENERATOR.md#verification) for the measured
 tree, command and remaining boundaries.
 
+Windows desktop application, measured 2026-10-14 on msc v0.3.3 with Build
+Tools 2022: a `Target.windowsApp` manifest generates a Visual Studio solution
+whose MSBuild Debug and Release builds put the executable, `WebView2Loader.dll`
+and the declared assets in `resources/`; `examples/helloWebviewProject.ms`
+launched from another directory logs `auto-probe: ipc alive`. Visual Studio IDE
+debugging, an icon resource and the NSIS installer run are not measured.
+
 Windows Android build-host boundary, measured 2026-09-30: unified generation
 and the generated NDK tool selection run on Windows. APK construction is
 compiler-blocked by the Windows batch-tool invocation recorded in workspace
