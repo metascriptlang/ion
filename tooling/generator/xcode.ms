@@ -1,4 +1,4 @@
-import { Graph, Target, Platform } from "./description";
+import { Graph, Target, Platform, platformName } from "./description";
 
 export function shellQuote(value: string): string {
 	return "'" + value.replaceAll("'", "'\"'\"'") + "'";
@@ -27,6 +27,7 @@ function buildSettings(target: Target): string {
 			"INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = " + orientations + "; " +
 			"CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 1.0; ",
 		Platform.Android => "",
+		Platform.Windows => "",
 	};
 	return platform + "CODE_SIGNING_ALLOWED = NO; ENABLE_USER_SCRIPT_SANDBOXING = NO; " +
 		"GENERATE_INFOPLIST_FILE = YES; PRODUCT_NAME = " + quote(target.name) + "; " +
@@ -63,7 +64,9 @@ function iosScript(entry: string, compiler: string): string {
 
 export function xcodeProject(graph: Graph, root: string, compiler: string): Result<string, string> {
 	for (const target of graph.targets) {
-		if (target.platform == Platform.Android) return Result.err("Xcode project cannot contain the Android target '" + target.name + "'");
+		if (target.platform == Platform.Android || target.platform == Platform.Windows) {
+			return Result.err("Xcode project cannot contain the " + platformName(target.platform) + " target '" + target.name + "'");
+		}
 		if (target.platform != graph.targets[0].platform) {
 			return Result.err(
 				"Xcode project cannot mix macOS and iOS targets: " +

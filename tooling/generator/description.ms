@@ -1,4 +1,13 @@
-export enum Platform { Macos, Ios, Android }
+export enum Platform { Macos, Ios, Android, Windows }
+
+export function platformName(platform: Platform): string {
+	return match (platform) {
+		Platform.Macos => "macOS",
+		Platform.Ios => "iOS",
+		Platform.Android => "Android",
+		Platform.Windows => "Windows",
+	};
+}
 
 export struct AndroidSettings {
 	minSdk: int32;
@@ -20,6 +29,7 @@ export struct Target {
 	entry: string;
 	bundleId: string;
 	dependencies: Vec<string>;
+	assets: Vec<string>;
 	android: AndroidSettings;
 }
 
@@ -54,20 +64,27 @@ export struct Graph {
 export function app(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Macos, deploymentTarget: "13.0",
-		bundleId: "", dependencies: [], android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], android: androidDefaults,
 	};
 }
 
 export function iosApp(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Ios, deploymentTarget: "15.0",
-		bundleId: "", dependencies: [], android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], android: androidDefaults,
 	};
 }
 
 export function androidApp(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Android, deploymentTarget: "",
-		bundleId: "", dependencies: [], android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], android: androidDefaults,
+	};
+}
+
+export function windowsApp(this typeof Target, name: string, entry: string): Target {
+	return {
+		name, entry, platform: Platform.Windows, deploymentTarget: "",
+		bundleId: "", dependencies: [], assets: [], android: androidDefaults,
 	};
 }

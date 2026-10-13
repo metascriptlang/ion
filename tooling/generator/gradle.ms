@@ -1,4 +1,4 @@
-import { Graph, Target, Platform } from "./description";
+import { Graph, Target, Platform, platformName } from "./description";
 
 export struct GeneratedFile {
 	path: string;
@@ -465,8 +465,7 @@ function nativeApp(): string {
 export function gradleProject(graph: Graph, root: string, compiler: string): Result<Vec<GeneratedFile>, string> {
 	for (const target of graph.targets) {
 		if (target.platform == Platform.Android) continue;
-		const platform = target.platform == Platform.Ios ? "iOS" : "macOS";
-		return Result.err("Android project cannot contain the " + platform + " target '" + target.name + "'");
+		return Result.err("Android project cannot contain the " + platformName(target.platform) + " target '" + target.name + "'");
 	}
 	if (graph.targets.length != 1) {
 		let names: Vec<string> = [];

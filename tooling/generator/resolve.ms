@@ -84,11 +84,15 @@ export function resolve(this project: Project): Result<Graph, string> {
 		const target = graph.targets[i];
 		if (!validName(target.name)) return Result.err("invalid target name: " + quoted(target.name));
 		if (target.entry == "") return Result.err("target " + quoted(target.name) + " has no entry");
-		if (target.platform != Platform.Android && !validDeploymentTarget(target.deploymentTarget)) {
+		const appleTarget = target.platform == Platform.Macos || target.platform == Platform.Ios;
+		if (appleTarget && !validDeploymentTarget(target.deploymentTarget)) {
 			return Result.err(
 				"invalid deployment target for " + quoted(target.name) + ": " +
 				quoted(target.deploymentTarget) + " (expected major.minor or major.minor.patch)",
 			);
+		}
+		if (target.assets.length > 0 && target.platform != Platform.Windows) {
+			return Result.err("assets are copied only for Windows targets; " + quoted(target.name) + " declares " + quoted(target.assets[0]));
 		}
 		if (targetIndex(graph.targets, target.name) != i) return Result.err("the target " + quoted(target.name) + " is declared multiple times");
 		for (const dependency of target.dependencies) {
