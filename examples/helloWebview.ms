@@ -1,20 +1,20 @@
 // Ion v0 demo — open a window, embed webview, round-trip a ping.
 //
 // Usage:
-//   bun ~/metascript/recompiler/bun/run.ts run examples/helloWebview.ms [url] [title]
+//   msc build examples/helloWebview.ms && out/debug/helloWebview [url] [title]
 //
 // Loads the bundled hello.html via `ion://localhost/`. When running as a
-// packaged .app, hello.html lives in Contents/Resources/ and ion auto-
+// packaged app, hello.html lives in the resource directory and ion auto-
 // registers the `ion://` scheme → resourcePath() at open() time. When
 // running unbundled, we explicitly register `ion://` → ./examples/.
 
 import {
 	open, listen, invoke, runLoop, command,
 	installTrayImage, notify, registerHotkeyKey,
-	setContentProtected, registerStaticProtocol,
+	setContentProtected, registerStaticProtocol, resourcePath,
 	ModCmd, ModShift,
 } from "../src/index";
-import { argv, cwd } from "std/process";
+import { argv, cwd, exit } from "std/process";
 import { parseJson } from "std/serialize/json/parser";
 import { asInt32, getDynamicField } from "std/serialize/json/accessors";
 
@@ -34,12 +34,9 @@ function isWebviewUrl(s: string): boolean {
 }
 
 function main(): int32 {
-	// When running unbundled (from source tree), resourcePath() returns "" so
-	// open()'s auto-register of `ion://` skips. Explicitly register it here
-	// pointing at the examples dir so `ion://localhost/hello.html` resolves.
-	// In .app mode this register call is harmless — auto-register already
-	// ran from open() (or this call wins since both target the resources dir).
-	registerStaticProtocol("ion", `${cwd()}/examples`);
+	// Unbundled (from the source tree) there is no resource directory, so
+	// `ion://` points at the examples dir. A packaged app serves its own.
+	if (resourcePath() === "") registerStaticProtocol("ion", `${cwd()}/examples`);
 
 	// Override the bundled URL only if argv[1] is a webview-loadable scheme
 	// (http/https/ion/asset/data). A custom-scheme URL like `myapp://...`
@@ -108,3 +105,5 @@ function main(): int32 {
 	runLoop();
 	return 0;
 }
+
+exit(main());
