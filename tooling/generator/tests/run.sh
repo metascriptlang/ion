@@ -6,9 +6,9 @@ repo=$(cd "$(dirname "$0")/../../.." && pwd)
 results=$(mktemp -d "${TMPDIR:-/tmp}/ion-generator-tests.XXXXXX")
 cd "$repo"
 
-"$compiler" run tooling/generator/tests/resolve.ms --target=raiser > "$results/resolve.log" 2>&1
-"$compiler" run tooling/generator/tests/pluginIsolation.ms --target=raiser > "$results/isolation.log" 2>&1
-"$compiler" run tooling/generator/tests/android.ms --target=raiser > "$results/android-unit.log" 2>&1
+"$compiler" run --target=raiser tooling/generator/tests/resolve.ms > "$results/resolve.log" 2>&1
+"$compiler" run --target=raiser tooling/generator/tests/pluginIsolation.ms > "$results/isolation.log" 2>&1
+"$compiler" run --target=raiser tooling/generator/tests/android.ms > "$results/android-unit.log" 2>&1
 
 python3 tooling/generator/tests/cli.py "$results"
 plutil -lint "$results/first/IonGenerator.xcodeproj/project.pbxproj"

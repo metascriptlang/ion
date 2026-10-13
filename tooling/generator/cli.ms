@@ -21,7 +21,7 @@ function evaluatorSource(runner: string, manifest: string, generator: string, ou
 
 function evaluate(runner: string, source: string, compiler: string): Result<string, string> {
 	if (!writeFile(runner, source).ok) return Result.err("cannot write evaluator: " + runner);
-	const result = execFileCapture(compiler, ["run", runner, "--target=raiser"]);
+	const result = execFileCapture(compiler, ["run", "--target=raiser", runner]);
 	remove(runner);
 	if (!result.ok) return Result.err((result.error.output + result.error.errorOutput).trim());
 	return Result.ok(result.value.trim());
