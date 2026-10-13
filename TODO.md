@@ -51,8 +51,11 @@ Windows desktop application, measured 2026-10-14 on msc v0.3.3 with Build
 Tools 2022: a `Target.windowsApp` manifest generates a Visual Studio solution
 whose MSBuild Debug and Release builds put the executable, `WebView2Loader.dll`
 and the declared assets in `resources/`; `examples/helloWebviewProject.ms`
-launched from another directory logs `auto-probe: ipc alive`. Visual Studio IDE
-debugging, an icon resource and the NSIS installer run are not measured.
+launched from another directory logs `auto-probe: ipc alive`. With NSIS 3.13,
+`ion app <exe> IonHello dev.ion.IonHello --target windows --asset examples/hello.html`
+builds `out/IonHello-setup.exe` (463 KB, unsigned). Not measured: running that
+installer (per-machine, needs elevation), Visual Studio IDE debugging, an icon
+resource.
 
 Windows Android build-host boundary, measured 2026-09-30: unified generation
 and the generated NDK tool selection run on Windows. APK construction is
