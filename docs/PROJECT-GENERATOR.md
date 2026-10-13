@@ -5,8 +5,8 @@ packaging orchestration. Ion runtime owns windows, lifecycle and render-surface
 hosting. Neon remains a UI/rendering consumer and is not required to generate
 or build an Ion application.
 
-The generator emits macOS and iOS Xcode applications and Android Gradle
-applications, using the existing typed-manifest → resolved-graph →
+The generator emits macOS and iOS Xcode applications, Android Gradle
+applications and Windows Visual Studio applications, using the existing typed-manifest → resolved-graph →
 platform-emitter boundary. The emitted project is a deterministic output:
 configure the manifest and regenerate rather than editing it. Manifest evaluation
 uses the Raiser backend; there is no native fallback.
@@ -317,10 +317,50 @@ byte for byte. Why the shape is what it is:
   library to add runtimes. Making the `.so` self-contained belongs to the
   package that declares the C++ graph, or to msc.
 
-## Windows and Linux: the shape, decided before the emitters exist
+## Windows application
 
-Neither emitter exists yet; this section records why they will have the shape
-they will. Windows keeps the Xcode split: the generator emits a Visual Studio
+```bash
+MSC=C:/Users/you/.metascript/bin/msc.exe bash tooling/generator/ion-generate   examples/helloWebviewProject.ms C:/work/ion-hello
+MSBuild C:/work/ion-hello/IonHello.sln -p:Configuration=Debug -p:Platform=x64
+C:/work/ion-hello/bin/IonHello/Debug/IonHello.exe
+```
+
+Open `IonHello.sln` in Visual Studio to build, run and debug the same way.
+`Target.windowsApp` in `description.ms` owns the defaults; `assets` lists files
+under the source directory that the build copies into `resources/` beside the
+executable, keeping their relative paths, which is the directory
+`ionResourcePath()` serves `ion://localhost/` from. `visualStudio.ms` renders the
+solution and, per target, a `Makefile` vcxproj, `build.cmd`, an `.rc`, an
+application manifest and a two-line entry module. Why the shape is what it is:
+
+- **The resource is a declared input.** `build.cmd` compiles the `.rc` with the
+  Windows SDK's `rc.exe`, and the generated entry module links the result with
+  `@link` before importing the application's entry. Measured on msc v0.3.3
+  `9a4775dc`: a changed `.res` passed through `--passL` left the old version in
+  the executable (`Up to date`), while the same file under `@link` relinked. This
+  is the iOS `@link` rule applied to resources.
+- **msc owns the executable and its failure.** `build.cmd` runs msc from the
+  configuration's intermediate directory, so the source tree receives nothing;
+  any failed step deletes the executable, so Visual Studio never launches a stale
+  one. The loader and `resources/` are replaced on every build, so a removed
+  asset leaves the product.
+- **x64 only**, because Ion vendors only the x64 `WebView2Loader.dll`; toolset
+  `v143`, the Build Tools 2022 one. A Windows target has no deployment target and
+  refuses one.
+- **Project GUIDs derive from the target name**, so the output is byte-identical
+  for the same manifest and reordering targets does not renumber them.
+- **An entry calls its `main`.** msc stopped calling an unreferenced `main` on
+  2026-08-16 (`recompiler/docs/BARE.md`); `examples/helloWebview.ms` linked but
+  exited at once until it ended with `exit(main())`.
+- **Keep the output path short.** In a directory about 150 characters deep, msc's
+  object cache passed `MAX_PATH` and failed with `failed to publish object …
+  (target locked by a concurrent reader?)`
+  (`~/metascript/.inbox/compiler/2026-09-23-emit-c-long-path-windows.md`); the
+  same project built under `C:/Users/<you>/ionGen`.
+
+## Windows and Linux: why this shape
+
+The Windows emitter above follows this; Linux has none yet. Windows keeps the Xcode split: the generator emits a Visual Studio
 solution and project that own what Xcode owns on Apple (metadata, the files
 beside the executable, signing, packaging, launch and debugging), while msc
 keeps the whole executable through one build step, the counterpart of the
@@ -358,7 +398,8 @@ Build Tools 2022 (17.14, toolset `v143`).
 
 The resource is the one place where the split differs from Apple: Info.plist
 sits outside the binary, while the Windows icon and manifest are linked into
-it. MSBuild compiles the `.rc`; how msc then links the `.res` is not measured.
+it. MSBuild compiles the `.rc`, and msc links the `.res` through `@link` (see
+"Windows application").
 Measured on tree `dcd8becb7b21f83bbf900c7f1a66a824caf35048`, msc v0.3.3
 `9a4775dc`, Windows 11: `msc build examples/helloWebview.ms` writes
 `out/debug/helloWebview.pdb` beside the executable.
@@ -395,6 +436,25 @@ MSC=/absolute/path/to/msc python tooling/generator/tests/cli.py out/generatorTes
 `tooling/generator/tests/android.ms` pins the typed defaults, every validation
 message, the emitted file set and the contract lines of each file, including
 the Windows `.cmd`/`.exe` NDK tool selection.
+`tooling/generator/tests/windows.ms` pins the Windows defaults, refusals, the
+emitted file set and the contract lines of the solution, project, build script,
+resource and entry module. `tooling/generator/tests/windows.py` generates the
+fixture twice and compares the trees, builds Debug and Release with MSBuild
+(found through `vswhere`), checks each product's executable, loader and
+`resources/`, launches `IonHello.exe` from another directory until it logs
+`auto-probe: ipc alive` and the `addNumbers` round trip, breaks the generated
+entry to prove a failed build leaves no executable and recovers, checks that a
+stale resource is removed, and that `git status` of the checkout is unchanged.
+On a Windows host `run.sh` runs the unit tests, `cli.py` and `windows.py`; on
+macOS it runs the Xcode, iOS and Android lanes as before.
+
+Measured 2026-10-14 on code/test tree `5fa73c5519b92a024896ed18dbdce53727fdfd63`,
+msc v0.3.3 `9a4775dc`, Visual Studio Build Tools 2022 17.14, Windows 11:
+`MSC=C:/Users/metacraft/.metascript/bin/msc.exe bash tooling/generator/tests/run.sh`
+exited 0 (resolver 24, Android 70 and Windows 39 assertions, plugin isolation,
+`cli.py`, `windows.py`). Not run that day: the macOS lanes, the Visual Studio IDE
+(only Build Tools are installed, so F5 debugging is unverified).
+
 `tooling/generator/tests/android.py` generates twice under paths with spaces and
 compares whole trees, then checks overwrite and invalid-manifest refusal with no
 output, Debug and Release libraries (exports, 16 KiB `PT_LOAD`, stripped
@@ -507,6 +567,11 @@ a consumer gate, not a substitute for compiler verification.
   renumbers objects.
 - Plugins contribute bundle identifiers only. Settings, files and new targets
   are not contribution kinds yet.
+- A Windows graph holds only Windows targets, x64 only. No icon resource is
+  emitted yet (the manifest has no icon field), the version is fixed at
+  `1.0.0.0` as on iOS, and nothing is signed or packaged; the installer is
+  `ion app --target windows` (`cli/main.ms` `winApp`). `build.cmd` needs
+  `rc.exe` on `PATH`, which MSBuild and a developer prompt provide.
 - An `androidLibrary` path containing `..` fails at compile time: Raiser's
   `Array.pop` breaks `join` (`~/metascript/.inbox/compiler/2026-09-25-raiser-array-pop-fails.md`).
 
