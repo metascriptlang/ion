@@ -116,7 +116,7 @@ export class Command {
 		// "--strip" → boolean   "--icon <path>" → string with value
 		const parts = spec.split(" ");
 		const flag = parts[0]; // "--strip"
-		const name = flag.startsWith("--") ? flag.slice(2 as int64, flag.length as int64) : flag;
+		const name = flag.startsWith("--") ? flag.slice(2, flag.length) : flag;
 		const hasVal = parts.length > 1;
 		this.optNames.push(name);
 		this.optDescs.push(desc);
@@ -310,7 +310,8 @@ function parseCommand(cmd: Command, args: string[]): ParsedArgs {
 				}
 				if (cmd.optMulti[optIdx]) {
 					let arr: string[] = [];
-					if (parsed._multi.has(name)) arr = parsed._multi.get(name);
+					const prior = parsed._multi.get(name);
+					if (prior !== null) arr = prior;
 					arr.push(value);
 					parsed._multi.set(name, arr);
 				} else {
