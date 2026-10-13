@@ -31,7 +31,7 @@ msc test test/mods.ms                       # one unit test file; test/*.ms and 
 msc build examples/helloWebview.ms          # macOS host build
 msc build examples/helloWebview.ms --os=windows -f   # cross-compile from macOS
 msc check --target=raiser tooling/generator/generate.ms   # type-check the generator
-MSC=<candidate msc> bash tooling/generator/tests/run.sh   # generator suite
+MSC=<candidate msc> bash tooling/generator/tests/run.sh   # generator suite (macOS or Windows lane by host)
 ```
 
 - **The gate before a land**: `msc check src/index.ms`, every file under `test/` and `test/common/` through `msc test`, `msc build examples/helloWebview.ms`, and `msc check --target=raiser tooling/generator/generate.ms`. That last one is the only gate step that compiles the generator: `msc check tooling/generator/cli.ms` stays clean when `generate.ms` breaks, because the CLI only spawns the evaluator that imports it. One `msc` per directory at a time. No `rm -rf out`; switching `--os` needs `-f`, because cached objects are keyed by source path and not by target.
@@ -39,7 +39,7 @@ MSC=<candidate msc> bash tooling/generator/tests/run.sh   # generator suite
 - **Linux builds only on a Linux host** (Parallels Ubuntu): the `when (linux)` block runs `pkg-config` for GTK/WebKitGTK at `@comptime`, and those packages do not exist on macOS.
 - A structural change to window, webview or IPC is smoke-tested by hand: build the `.app` with `scripts/make-app.sh`, launch it, and read its stdout for `auto-probe: ipc alive`, `MS command addNumbers(100, 23)` and `[ion] IPC rejected: invalid invoke_key`.
 
-Measured 2026-10-14 on `msc` v0.3.3 (build `9a4775dc`), Windows 11 host: `msc check src/index.ms` and `msc check --target=raiser tooling/generator/generate.ms` clean, the ten test files green, `examples/helloWebview.ms` links `helloWebview.exe`, and `python tooling/generator/tests/cli.py` passes with `MSC` naming `msc.exe`. v0.3.3 wants `msc run` options before the file. Red that day: `msc check cli/main.ms` reports 6 type errors in ion (`exec` read as an exit code at `cli/main.ms:22,109,120`, int64 narrowing at `src/cli/index.ms:119`, a nullable `_multi.get` at `src/cli/index.ms:313`), so the `ion` CLI does not build; `ion build` and `ion test` also shell out to `recompiler/bun/run.ts`, which no longer exists. Not run: macOS, Linux, `tests/run.sh` (it needs Xcode), the `.app` smoke test.
+Measured 2026-10-14 on `msc` v0.3.3 (build `9a4775dc`), Windows 11 host: `msc check src/index.ms` and `msc check --target=raiser tooling/generator/generate.ms` clean, the ten test files green, `examples/helloWebview.ms` links `helloWebview.exe`, and `python tooling/generator/tests/cli.py` passes with `MSC` naming `msc.exe`. v0.3.3 wants `msc run` options before the file. Later the same day, on `wt/ion-windows-target`: `msc check cli/main.ms` clean, `msc build cli/main.ms` links, `ion app <exe> … --target windows` stages the payload and stops at the missing `makensis`, and `bash tooling/generator/tests/run.sh` passes its Windows lane. Still red: `ion build` and `ion test` shell out to `recompiler/bun/run.ts`, which no longer exists. Not run: macOS, Linux, the macOS generator lanes, the `.app` smoke test.
 
 ## Git
 
