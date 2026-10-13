@@ -30,16 +30,16 @@ msc check src/index.ms                      # type-check the library
 msc test test/mods.ms                       # one unit test file; test/*.ms and test/common/*.ms
 msc build examples/helloWebview.ms          # macOS host build
 msc build examples/helloWebview.ms --os=windows -f   # cross-compile from macOS
-msc check tooling/generator/generate.ms --target=raiser   # type-check the generator
+msc check --target=raiser tooling/generator/generate.ms   # type-check the generator
 MSC=<candidate msc> bash tooling/generator/tests/run.sh   # generator suite
 ```
 
-- **The gate before a land**: `msc check src/index.ms`, every file under `test/` and `test/common/` through `msc test`, `msc build examples/helloWebview.ms`, and `msc check tooling/generator/generate.ms --target=raiser`. That last one is the only gate step that compiles the generator: `msc check tooling/generator/cli.ms` stays clean when `generate.ms` breaks, because the CLI only spawns the evaluator that imports it. One `msc` per directory at a time. No `rm -rf out`; switching `--os` needs `-f`, because cached objects are keyed by source path and not by target.
+- **The gate before a land**: `msc check src/index.ms`, every file under `test/` and `test/common/` through `msc test`, `msc build examples/helloWebview.ms`, and `msc check --target=raiser tooling/generator/generate.ms`. That last one is the only gate step that compiles the generator: `msc check tooling/generator/cli.ms` stays clean when `generate.ms` breaks, because the CLI only spawns the evaluator that imports it. One `msc` per directory at a time. No `rm -rf out`; switching `--os` needs `-f`, because cached objects are keyed by source path and not by target.
 - **A Windows host builds natively**: the same gate commands run as they are; a built `.exe` runs with `WebView2Loader.dll` (from `vendor/webview2/runtime/x64/`) beside it, and `examples/surfaceD3D11.ms` is the by-hand check for the render surface and its input.
 - **Linux builds only on a Linux host** (Parallels Ubuntu): the `when (linux)` block runs `pkg-config` for GTK/WebKitGTK at `@comptime`, and those packages do not exist on macOS.
 - A structural change to window, webview or IPC is smoke-tested by hand: build the `.app` with `scripts/make-app.sh`, launch it, and read its stdout for `auto-probe: ipc alive`, `MS command addNumbers(100, 23)` and `[ion] IPC rejected: invalid invoke_key`.
 
-Measured 2026-09-30 on `msc` v0.2.55 (build `013853dd`): `msc check src/index.ms` and `msc check tooling/generator/generate.ms --target=raiser` clean, the nine test files green, the macOS example builds, the Windows cross-build links `helloWebview.exe`, `msc check cli/main.ms` clean and `src/cli/test/*.ms` green. Red on that day: `msc build cli/main.ms` fails in clang, because `cli/main.ms` still reads `std/process.exec`, which now returns a `Result`, as an exit code; the checker lets that through (`~/metascript/.inbox/compiler/2026-09-30-result-casts-and-compares-with-a-number.md`). `ion build` and `ion test` also shell out to `recompiler/bun/run.ts`, which no longer exists. Not run: Linux, the generator suite, the `.app` smoke test.
+Measured 2026-10-14 on `msc` v0.3.3 (build `9a4775dc`), Windows 11 host: `msc check src/index.ms` and `msc check --target=raiser tooling/generator/generate.ms` clean, the ten test files green, `examples/helloWebview.ms` links `helloWebview.exe`, and `python tooling/generator/tests/cli.py` passes with `MSC` naming `msc.exe`. v0.3.3 wants `msc run` options before the file. Red that day: `msc check cli/main.ms` reports 6 type errors in ion (`exec` read as an exit code at `cli/main.ms:22,109,120`, int64 narrowing at `src/cli/index.ms:119`, a nullable `_multi.get` at `src/cli/index.ms:313`), so the `ion` CLI does not build; `ion build` and `ion test` also shell out to `recompiler/bun/run.ts`, which no longer exists. Not run: macOS, Linux, `tests/run.sh` (it needs Xcode), the `.app` smoke test.
 
 ## Git
 
