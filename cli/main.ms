@@ -112,7 +112,7 @@ function winApp(
 	copyFile(`${here}/scripts/utils.nsh`, `${buildDir}/utils.nsh`);
 
 	// ---- Invoke makensis ----
-	if (!cmdExists("makensis")) die("makensis not on PATH (brew install makensis)");
+	if (!cmdExists("makensis")) die("makensis not on PATH (NSIS: brew install makensis on macOS, nsis.sourceforge.io on Windows)");
 	console.log("==> running makensis...");
 	const nsiCode = bash(`cd "${buildDir}" && makensis -V2 installer.nsi`);
 	if (nsiCode !== 0) die(`makensis failed (exit ${nsiCode})`);
