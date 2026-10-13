@@ -34,12 +34,13 @@ Each piece is usable without the ones above it: Ion with plain HTML in its webvi
 
 ## Quick start
 
-### Generate an Xcode or Gradle project from MetaScript
+### Generate an Xcode, Gradle or Visual Studio project from MetaScript
 
 The generator proof of concept evaluates a typed `project.ms` manifest with
 Raiser, resolves plugins and target dependencies, and emits a deterministic
-macOS or iOS Xcode application project, or an Android Gradle project
-(`examples/generatorAndroid/project.ms`):
+macOS or iOS Xcode application project, an Android Gradle project
+(`examples/generatorAndroid/project.ms`), or a Windows Visual Studio solution
+(`examples/helloWebviewProject.ms`):
 
 ```bash
 tooling/generator/ion-generate examples/generator/project.ms /private/tmp/ion-generated
