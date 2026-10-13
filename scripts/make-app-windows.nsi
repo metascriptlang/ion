@@ -35,7 +35,6 @@ SetCompressor /SOLID lzma
 !define VERSION           "@@VERSION@@"
 !define MAINBINARYNAME    "@@MAINBINARYNAME@@"
 !define URLSCHEME         "@@URLSCHEME@@"
-!define STAGINGDIR        "@@STAGINGDIR@@"
 !define OUTFILE           "@@OUTFILE@@"
 !define WEBVIEW2APPGUID   "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 !define WEBVIEW2BOOTSTRAPURL "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
@@ -98,10 +97,10 @@ VIAddVersionKey "FileDescription" "${PRODUCTNAME} Installer"
 Section "Install" SecInstall
   SetOutPath "$INSTDIR"
 
-  ; Stage all files from the payload dir. Trailing `/*` (POSIX glob) is
-  ; understood by makensis on both macOS and Windows; `\*.*` (Windows shell)
-  ; misbehaves under macOS makensis.
-  File /r "${STAGINGDIR}/*"
+  ; Stage all files from the payload dir. winApp renders the glob with the
+  ; host's separators: `dir/*` for macOS makensis, `dir\*` for Windows makensis,
+  ; which finds nothing under a mixed-separator `/*` glob.
+  File /r "@@STAGINGGLOB@@"
 
   !insertmacro EnsureWebView2Runtime
 

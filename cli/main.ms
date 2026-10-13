@@ -99,13 +99,14 @@ function winApp(
 	const outFileUnsigned = `${outDirAbs}/${name}-setup-unsigned.exe`;
 	const outFileFinal    = `${outDirAbs}/${name}-setup.exe`;
 
+	const stagingGlob = platform === "windows" ? payloadDir.replaceAll("/", "\\") + "\\*" : `${payloadDir}/*`;
 	const rendered = tplRes.value
 		.replaceAll("@@PRODUCTNAME@@",    name)
 		.replaceAll("@@BUNDLEID@@",       bundleId)
 		.replaceAll("@@VERSION@@",        version)
 		.replaceAll("@@MAINBINARYNAME@@", mainBinaryName)
 		.replaceAll("@@URLSCHEME@@",      urlScheme)
-		.replaceAll("@@STAGINGDIR@@",     payloadDir)
+		.replaceAll("@@STAGINGGLOB@@",    stagingGlob)
 		.replaceAll("@@OUTFILE@@",        outFileUnsigned);
 
 	writeFile(`${buildDir}/installer.nsi`, rendered);
