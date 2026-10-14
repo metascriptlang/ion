@@ -59,8 +59,9 @@ written from MetaScript as 94 x 1024 frames at 48 kHz gave `underruns=0`, and `x
 `finished` once). Format set: playback wav, flac, mp3, ogg vorbis (miniaudio decoders + vendored `stb_vorbis`);
 recording WAV only; anything else is a named error and m4a/aac has no decoder. `rate` is pitch (speed and pitch move
 together). macOS and Linux are written and uncompiled: the same `audio.c` plus `-framework CoreFoundation/CoreAudio/AudioToolbox`
-and `-ldl -lpthread -lm` in `src/audio.ms`; neither host was run. Limits: status is polled until `ionWakeLoop`
-lands (the call goes in the sound end callback in `audio.c`); the recording callback writes the file on the device
+and `-ldl -lpthread -lm` in `src/audio.ms`; neither host was run. Limits: status is polled (`setInterval`
+at the app's progress interval, the expo-av model); `audio.c` does not call `ionWakeLoop`, so audio
+links without the window host; the recording callback writes the file on the device
 thread, so a slow disk drops input; no device enumeration, effects or MetaScript audio callback.
 
 Project generation, measured 2026-09-22: macOS and iOS arm64 development
