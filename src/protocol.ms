@@ -12,8 +12,8 @@
 // file:// is BLOCKED by ion's nav delegate — its opaque origin breaks every
 // modern web platform feature that scopes by origin. Use ion:// or asset://.
 //
-// All registrations MUST happen BEFORE open(). The registry freezes at
-// open() time; subsequent calls log a warning and return false.
+// All registrations MUST happen before the first webview is created. The
+// registry freezes then; later calls log a warning and return false.
 
 import {
 	ionRegisterStaticProtocol,
@@ -29,7 +29,7 @@ import {
 //   - MIME autodetected from extension (.html / .js / .css / .png / .woff2 / ...)
 //   - Empty path → /index.html
 //
-// Returns true on success, false if called after open() or scheme/baseDir
+// Returns true on success, false if called after the first webview or scheme/baseDir
 // invalid (warning logged to stderr).
 export function registerStaticProtocol(scheme: string, baseDir: string): boolean {
 	return ionRegisterStaticProtocol(scheme, baseDir) === 1;
@@ -41,10 +41,10 @@ export function registerStaticProtocol(scheme: string, baseDir: string): boolean
 //
 // Typical use:
 //   const picked = await openFile();  // /Users/.../photo.jpg
-//   ion.registerAssetScope(["/Users/.../"]);     // before open()
-//   ion.invoke("show.image", `asset://localhost${picked}`);
+//   ion.registerAssetScope(["/Users/.../"]);     // before the first webview
+//   ion.emit(web, "show.image", `asset://localhost${picked}`);
 //
-// Returns true on success, false if called after open() or already registered.
+// Returns true on success, false if called after the first webview or already registered.
 export function registerAssetScope(allowedRoots: string[]): boolean {
 	const joined = allowedRoots.join("\n");
 	return ionRegisterAssetScope(joined) === 1;

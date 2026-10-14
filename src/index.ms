@@ -6,21 +6,18 @@
 // live in ipc.ms — the canonical bridge consumer — so re-export-only
 // modules like this one don't drop them.
 
-export { open, close, resourcePath, resourceUrl } from "./window";
-export { listen, invoke, eval, runLoop, onInput, Handler, InputHandler } from "./ipc";
+export { resourcePath, resourceUrl } from "./window";
+export { listen, messageWebviewId, runLoop, Handler } from "./ipc";
 export {
-	renderSurfaceCreate, renderSurfaceAdopt, renderSurfaceAdoptLayer, renderSurfaceLayer,
-	renderSurfaceAttachSwapChain, renderSurfaceSetImeRect, webviewSetFrame, webviewSetVisible,
-	renderSurfaceSetVisible, renderSurfaceSyncFrame,
-	renderSurfaceSetInputRegion, renderSurfaceSetInputRect, renderSurfaceRelease,
-	renderSurfaceSetFramePolicy, renderSurfaceSetFrameWhenInactive, renderSurfaceRequestFrame,
-	RenderSurfaceId, RenderSurfaceInvalid,
-	SurfaceBelow, SurfaceAbove, InputNone, InputFull, InputRect, FrameOnDemand, FrameContinuous,
-} from "./renderSurface";
+	createWebview, releaseWebview, getWebview, webviewById, webviewWindowId, webviewNode,
+	setWebviewBounds, setWebviewVisible, setWebviewTransparent,
+	navigate, evalJs, focusWebview, forwardPointer, emit, emitTo, emitAll,
+	Webview, PointerMove, PointerDown, PointerUp, PointerWheel, PointerHWheel, PointerLeave,
+} from "./webview";
 export {
-	onKey, onText, onImePreedit, onSurfaceFocus, onSurfaceResize, onSurfaceFrame, keyName, keyMods,
-	KeyEvent, KeyAction, KeyMod, KeyHandler, TextHandler, PreeditHandler,
-	SurfaceFocusHandler, SurfaceResizeHandler, SurfaceFrameHandler,
+	onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame, keyName, keyMods,
+	PointerEvent, PointerKind, KeyEvent, KeyAction, KeyMod,
+	PointerHandler, KeyHandler, TextHandler, PreeditHandler, FocusHandler, ResizeHandler, FrameHandler,
 } from "./input";
 export { command, Command } from "./command";
 export {
@@ -28,8 +25,10 @@ export {
 	show, hide, focus, minimize, maximize,
 	setTitle, setSize, setPosition, pixelWidth, pixelHeight,
 	setAlwaysOnTop, setDecorations, setWindowContentProtected,
-	fileOpen,
-	emitTo, emitAll, onWindowEvent,
+	fileOpen, onWindowEvent,
+	windowRoot, windowDevice, commit, focusContent, setImeRect, setCursor,
+	setFramePolicy, setFrameWhenInactive, requestFrame, FrameOnDemand, FrameContinuous,
+	CursorArrow, CursorHand, CursorIbeam, CursorCross, CursorResizeH, CursorResizeV, Window, WindowOptions,
 	WindowEventCloseRequested, WindowEventDestroyed,
 	WindowEventFocused, WindowEventBlurred,
 	WindowEventResized, WindowEventMoved,

@@ -1,25 +1,11 @@
-// Multi-window MS API — Tauri-style createWindow + per-window properties +
-// targeted IPC. Wraps the C bridge so apps work with strongly-typed Window
-// handles instead of raw int32 ids.
-//
-// The v0 single-window API (`open()` / `close()` in window.ms) is unchanged
-// — it goes through `ionCreateWindow("main", ...)` internally so legacy
-// apps keep working unchanged. New code uses createWindow.
+// Windows and their content. A window is an empty native root: the app
+// builds its content on the window's compositor (windowRoot / windowDevice)
+// and adds webviews from webview.ms.
 //
 // Usage:
 //
-//   const main = createWindow("main", defaultOptions("MyApp",
-//       1280 as int32, 800 as int32, "ion://localhost/index.html"));
+//   const main = createWindow("main", defaultOptions("MyApp", 1280 as int32, 800 as int32));
 //   if (main === null) return 1;
-//
-//   const panel = createWindow("quick-panel", {
-//       title: "", width: 680 as int32, height: 420 as int32,
-//       url: "ion://localhost/panel.html",
-//       resizable: true, decorations: false,
-//       alwaysOnTop: true, transparent: false,
-//       visible: false, center: true,
-//       x: 0 as int32, y: 0 as int32,
-//   });
 
 import {
     ionInit, ionCreateWindow, ionCloseWindow, ionWindowCount, ionFindWindow,
@@ -29,11 +15,11 @@ import {
     ionSetWindowAlwaysOnTop, ionSetWindowDecorations,
     ionSetWindowContentProtected,
     ionWindowPixelWidth, ionWindowPixelHeight,
-    ionEvalJSWindow, ionFileOpenWindow,
+    ionFileOpenWindow,
+    ionWindowDevice, ionWindowRoot, ionWindowCommit,
+    ionWindowFocusContent, ionWindowSetImeRect, ionWindowSetCursor,
+    ionWindowSetFramePolicy, ionWindowSetFrameWhenInactive, ionWindowRequestFrame,
 } from "./platform/bridge.h";
-import { jsEscape } from "./internal/jsEscape";
-import { parseJson } from "std/serialize/json/parser";
-import { JsonKind } from "std/serialize/json/types";
 
 // ---- Window flags (mirror bridge.h) ---------------------------------------
 
@@ -60,7 +46,6 @@ export interface WindowOptions {
     title: string;
     width: int32;
     height: int32;
-    url: string;
     resizable: boolean;
     decorations: boolean;
     alwaysOnTop: boolean;
@@ -79,11 +64,9 @@ export interface Window {
 
 export type WindowEventHandler = (label: string, eventType: int32) => void;
 
-// Build a WindowOptions with sensible defaults — decorated, resizable,
-// visible, OS-positioned. Override fields after.
-export function defaultOptions(title: string, width: int32, height: int32, url: string): WindowOptions {
+export function defaultOptions(title: string, width: int32, height: int32): WindowOptions {
     return {
-        title, width, height, url,
+        title, width, height,
         resizable: true, decorations: true,
         alwaysOnTop: false, transparent: false,
         visible: true, center: false, fullscreen: false,
@@ -109,7 +92,7 @@ export function createWindow(label: string, options: WindowOptions): Window | nu
     if (ionInit() === (0 as int32)) return null as unknown as Window | null;
     const id = ionCreateWindow(label, options.title,
                                options.width, options.height,
-                               options.url, flagsFromOptions(options));
+                               flagsFromOptions(options));
     if (id < (0 as int32)) return null as unknown as Window | null;
     if ((options.x !== (0 as int32) || options.y !== (0 as int32)) && !options.center) {
         ionSetWindowPosition(id, options.x, options.y);
@@ -153,37 +136,29 @@ export function fileOpen(win: Window): string {
     return ionFileOpenWindow(win.id);
 }
 
-// ---- IPC (MS → JS) --------------------------------------------------------
+// ---- Content ----------------------------------------------------------------
 
-// Build the JS dispatch string the same way ipc.ms#invoke does, so MS-emitted
-// events reach the same `_dispatch(name, payload)` slot that bootstrap.c
-// installs on `window.__ion__`. The npm package's on(name, handler) routes
-// from there.
-function buildDispatchJS(event: string, payload: string): string {
-    const safeName = jsEscape(event);
-    const safePayload = jsEscape(payload);
-    return `if(window.__ion__&&window.__ion__._dispatch)window.__ion__._dispatch("${safeName}","${safePayload}")`;
-}
+export const FrameOnDemand: int32 = 0 as int32;
+export const FrameContinuous: int32 = 1 as int32;
 
-// Send an event to a specific window by label. Silently no-op if no window
-// has that label.
-export function emitTo(label: string, event: string, payload: string): void {
-    const id = ionFindWindow(label);
-    if (id < (0 as int32)) return;
-    ionEvalJSWindow(id, buildDispatchJS(event, payload));
-}
+export const CursorArrow: int32 = 0 as int32;
+export const CursorHand: int32 = 1 as int32;
+export const CursorIbeam: int32 = 2 as int32;
+export const CursorCross: int32 = 3 as int32;
+export const CursorResizeH: int32 = 4 as int32;
+export const CursorResizeV: int32 = 5 as int32;
 
-// Broadcast to every live window. Iteration uses the C registry's order;
-// new windows created during dispatch are NOT included in the current call.
-export function emitAll(event: string, payload: string): void {
-    const js = buildDispatchJS(event, payload);
-    // Iterate by id 0..ION_MAX_WINDOWS-1; ionEvalJSWindow is a no-op for
-    // inactive slots, so we don't need a separate active-id iterator on
-    // the MS side.
-    for (let i = 0 as int32; i < (16 as int32); i = (i + 1) as int32) {
-        ionEvalJSWindow(i, js);
-    }
+export function windowRoot(win: Window): Ptr<void> { return ionWindowRoot(win.id); }
+export function windowDevice(win: Window): Ptr<void> { return ionWindowDevice(win.id); }
+export function commit(win: Window): void { ionWindowCommit(win.id); }
+export function focusContent(win: Window): void { ionWindowFocusContent(win.id); }
+export function setImeRect(win: Window, x: int32, y: int32, w: int32, h: int32): void { ionWindowSetImeRect(win.id, x, y, w, h); }
+export function setCursor(win: Window, cursor: int32): void { ionWindowSetCursor(win.id, cursor); }
+export function setFramePolicy(win: Window, policy: int32): void { ionWindowSetFramePolicy(win.id, policy); }
+export function setFrameWhenInactive(win: Window, enabled: boolean): void {
+    ionWindowSetFrameWhenInactive(win.id, enabled ? (1 as int32) : (0 as int32));
 }
+export function requestFrame(win: Window): void { ionWindowRequestFrame(win.id); }
 
 // ---- Window event handler registration ------------------------------------
 
@@ -202,27 +177,4 @@ export function onWindowEvent(handler: WindowEventHandler): void {
 // Called by ipc.ms runLoop when ionPollEvent returns 3. Internal.
 export function dispatchWindowEvent(label: string, eventType: int32): void {
     for (const h of _windowEventHandlers) h(label, eventType);
-}
-
-// Called by ipc.ms runLoop when an IPC message arrives on the reserved
-// "__emit" channel. Parses the envelope, then routes via emitTo (specific
-// target) or emitAll (broadcast when target is empty). Internal.
-export function routeEmit(envelope: string): void {
-    const r = parseJson(envelope);
-    if (!r.ok) return;
-    const v = r.value;
-    if (v.kind !== JsonKind.Object) return;
-    let target = "";
-    let event = "";
-    let payload = "";
-    for (let i = 0; i < v.keys.length; i = i + 1) {
-        const k = v.keys[i];
-        const val = v.values[i];
-        if (val.kind !== JsonKind.String) continue;
-        if      (k === "target")  target  = val.strVal;
-        else if (k === "event")   event   = val.strVal;
-        else if (k === "payload") payload = val.strVal;
-    }
-    if (target === "") emitAll(event, payload);
-    else               emitTo(target, event, payload);
 }

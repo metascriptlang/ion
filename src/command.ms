@@ -22,8 +22,8 @@
 // JS bootstrap intercepts "__response" inside its closure and resolves the
 // matching pending Promise — users can't override the response handler.
 
-import { listen, invoke } from "./ipc";
-import { ionEvalJS } from "./platform/bridge.h";
+import { listen } from "./ipc";
+import { ionWebviewEval, ionMessageWebviewId } from "./platform/bridge.h";
 import { jsEscape } from "./internal/jsEscape";
 import { parseJson } from "std/serialize/json/parser";
 import { stringify } from "std/serialize/json/stringify";
@@ -52,9 +52,10 @@ function ensureCmdDispatch(): void {
 // Standalone fn (not inline lambda) so `return;` is unambiguously void.
 // Inline-lambda variant trips MS lambda return-type inference (Bug 5 family).
 function dispatchCall(payload: string): void {
+	const source = ionMessageWebviewId();
 	const parsed = parseJson(payload);
 	if (!parsed.ok) {
-		respondError("?", `bad envelope: ${parsed.error}`);
+		respondError(source, "?", `bad envelope: ${parsed.error}`);
 		return;
 	}
 	const env = parsed.value;
@@ -72,20 +73,20 @@ function dispatchCall(payload: string): void {
 		if (_cmdNames[i] === cmdName) {
 			const fn = _cmdFns[i];
 			const result = fn(argsJson);
-			respondValue(id, result);
+			respondValue(source, id, result);
 			return;
 		}
 	}
-	respondError(id, `no command: ${cmdName}`);
+	respondError(source, id, `no command: ${cmdName}`);
 }
 
-function respondValue(id: string, valueJson: string): void {
+function respondValue(source: int32, id: string, valueJson: string): void {
 	// {"id":"<id>","value":<valueJson>} — value is raw JSON, not re-encoded.
 	const env = `{"id":"${jsEscape(id)}","value":${valueJson}}`;
-	ionEvalJS(`if(window.__ion__&&window.__ion__._dispatch)window.__ion__._dispatch("__response","${jsEscape(env)}")`);
+	ionWebviewEval(source, `if(window.__ion__&&window.__ion__._dispatch)window.__ion__._dispatch("__response","${jsEscape(env)}")`);
 }
 
-function respondError(id: string, message: string): void {
+function respondError(source: int32, id: string, message: string): void {
 	const env = `{"id":"${jsEscape(id)}","error":"${jsEscape(message)}"}`;
-	ionEvalJS(`if(window.__ion__&&window.__ion__._dispatch)window.__ion__._dispatch("__response","${jsEscape(env)}")`);
+	ionWebviewEval(source, `if(window.__ion__&&window.__ion__._dispatch)window.__ion__._dispatch("__response","${jsEscape(env)}")`);
 }
