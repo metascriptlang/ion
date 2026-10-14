@@ -3,8 +3,8 @@
 // ionPollEvent blocks until it has something to return: an IPC message, an
 // input or frame record, a reason to run msc's loop, or quit. While waiting it
 // sleeps in MsgWaitForMultipleObjectsEx on the message queue, the msc-ready
-// event, and, only while a window is due a frame, the vsync thread's tick
-// event. The wait times out when msc's next timer is due.
+// event, the wake event and, only while a window is due a frame, the vsync
+// thread's tick event. The wait times out when msc's next timer is due.
 //
 // msc's loop waits on an I/O completion port, which MsgWait cannot see. A
 // watcher thread blocks on that port instead; when an entry arrives it puts
@@ -33,6 +33,8 @@ static volatile LONG64 s_tickCounter;
 static LARGE_INTEGER s_freq;
 static int           s_clockFailed;
 
+static HANDLE        s_wake;
+static INIT_ONCE     s_wakeOnce = INIT_ONCE_STATIC_INIT;
 static HANDLE        s_mscReady;
 static HANDLE        s_mscDrained;
 static int           s_mscTimed;
@@ -82,6 +84,26 @@ static int startClock(void) {
 
 static double tickMs(void) {
     return (double)InterlockedCompareExchange64(&s_tickCounter, 0, 0) * 1000.0 / (double)s_freq.QuadPart;
+}
+
+static BOOL CALLBACK createWake(PINIT_ONCE once, PVOID param, PVOID *ctx) {
+    (void)once; (void)param; (void)ctx;
+    s_wake = CreateEventW(NULL, FALSE, FALSE, NULL);
+    return s_wake != NULL;
+}
+
+static void wakeEvent(void) {
+    if (!InitOnceExecuteOnce(&s_wakeOnce, createWake, NULL, NULL)) {
+        fprintf(stderr, "[ion] wake event: create failed (%lu)\n", GetLastError());
+        abort();
+    }
+}
+
+// winit's EventLoopProxy posts a message to its window (event_loop.rs:912);
+// an event in the wait list does the same without needing a window.
+void ionWakeLoop(void) {
+    wakeEvent();
+    SetEvent(s_wake);
 }
 
 static DWORD WINAPI mscWatcher(void *arg) {
@@ -142,8 +164,10 @@ int ionPollEvent(void) {
         if (s_mainHwnd == NULL) return 1;
 
         int wanted = ion_frame_wanted() && startClock();
-        HANDLE handles[2];
+        wakeEvent();
+        HANDLE handles[3];
         DWORD count = 0;
+        handles[count++] = s_wake;
         handles[count++] = s_mscReady;
         DWORD tickIndex = (DWORD)-1;
         if (s_tick != NULL) {
@@ -163,7 +187,8 @@ int ionPollEvent(void) {
             fprintf(stderr, "[ion] MsgWaitForMultipleObjectsEx failed (%lu)\n", GetLastError());
             abort();
         }
-        if (r == WAIT_TIMEOUT || r == WAIT_OBJECT_0) return 5;
+        if (r == WAIT_OBJECT_0) return 6;
+        if (r == WAIT_TIMEOUT || r == WAIT_OBJECT_0 + 1) return 5;
         if (r == WAIT_OBJECT_0 + tickIndex) ion_frame_emit(tickMs());
     }
 }

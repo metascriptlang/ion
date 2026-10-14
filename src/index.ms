@@ -19,6 +19,7 @@ export {
 	PointerEvent, PointerKind, KeyEvent, KeyAction, KeyMod,
 	PointerHandler, KeyHandler, TextHandler, PreeditHandler, FocusHandler, ResizeHandler, FrameHandler,
 } from "./input";
+export { onWake, WakeHandler } from "./wake";
 export { command, Command } from "./command";
 export {
 	createWindow, closeWindow, getWindow, windowCount, defaultOptions,

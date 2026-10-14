@@ -11,6 +11,17 @@
 static IonWindowId s_lastWevtId   = ION_WINDOW_INVALID;
 static int         s_lastWevtType = 0;
 
+static GMutex   s_wakeLock;
+static GCond    s_wakeCond;
+static gboolean s_wakePending;
+
+void ionWakeLoop(void) {
+    g_mutex_lock(&s_wakeLock);
+    s_wakePending = TRUE;
+    g_cond_signal(&s_wakeCond);
+    g_mutex_unlock(&s_wakeLock);
+}
+
 static int drain(void) {
     if (ion_wevt_pop(&s_lastWevtId, &s_lastWevtType)) return 3;
     if (ion_queue_pop()) return 2;
@@ -30,7 +41,13 @@ int ionPollEvent(void) {
     got = drain();
     if (got) return got;
 
-    g_usleep(16000);  // 16ms — match macOS SDL_WaitEventTimeout(16) cadence
+    // 16ms — match macOS SDL_WaitEventTimeout(16) cadence; ionWakeLoop ends it early
+    g_mutex_lock(&s_wakeLock);
+    if (!s_wakePending) g_cond_wait_until(&s_wakeCond, &s_wakeLock, g_get_monotonic_time() + 16000);
+    gboolean woken = s_wakePending;
+    s_wakePending = FALSE;
+    g_mutex_unlock(&s_wakeLock);
+    if (woken) return 6;
     if (ion_frame_emit((double)g_get_monotonic_time() / 1000.0) > 0 && ion_input_next()) return 4;
     return 0;
 }

@@ -218,6 +218,7 @@ void         ionWebviewForwardPointer(IonWebviewId id, int kind, double x, doubl
 //   3  window lifecycle event — read via ionWindowEventId / ionWindowEventType
 //   4  input record — read via ionInputType / ionInputWindow / ionInputX / ...
 //   5  msc's loop has work due (a timer expired or a completion arrived)
+//   6  ionWakeLoop was called — run the onWake handlers
 int  ionPollEvent(void);
 
 // Call after msRunOnce(0), before ionPollEvent, every turn. Tells the pump
@@ -225,6 +226,12 @@ int  ionPollEvent(void);
 // a timeout, plus a watcher on msc's completion port; macOS and Linux poll
 // every 16 ms and need nothing).
 void ionLoopArm(void);
+
+// Makes ionPollEvent return 6 once, so the loop thread runs the onWake
+// handlers. Callable from any thread, with or without a window; calls made
+// before the loop runs them coalesce into one. An idle loop stays asleep
+// until it is called.
+void ionWakeLoop(void);
 
 // Valid only after ionPollEvent returned 2, until the next ionPollEvent call.
 msString     ionMessageName(void);

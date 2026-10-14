@@ -38,6 +38,16 @@ static IonWindowId windowIdForSdlWindowId(SDL_WindowID sdlWindowId) {
     return ION_WINDOW_INVALID;
 }
 
+void ionWakeLoop(void) {
+    SDL_Event ev;
+    SDL_zero(ev);
+    ev.type = SDL_EVENT_USER;
+    if (!SDL_PushEvent(&ev)) {
+        fprintf(stderr, "[ion] ionWakeLoop: SDL_PushEvent failed: %s\n", SDL_GetError());
+        abort();
+    }
+}
+
 int ionPollEvent(void) {
     if (ion_wevt_pop(&s_last_wevt_id, &s_last_wevt_type)) return 3;
     if (ion_queue_pop()) return 2;
@@ -48,6 +58,7 @@ int ionPollEvent(void) {
     if (got) {
         if (ev.type == SDL_EVENT_QUIT) return 1;
         if (ev.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) return 1;
+        if (ev.type == SDL_EVENT_USER) return 6;
 
         IonWindowId wid;
         switch (ev.type) {
