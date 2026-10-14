@@ -47,5 +47,13 @@ export {
 	tryRegisterHotkey, tryRegisterHotkeyKey, HotkeyResult,
 	unregisterHotkey, keyCodeFromName,
 } from "./hotkey";
+export {
+	loadSound, unloadSound, playSound, pauseSound, stopSound, seekSound,
+	setSoundVolume, setSoundMuted, setSoundLooping, setSoundRate, soundStatus,
+	openAudioOutput, writeAudioOutput, audioOutputUnderruns, closeAudioOutput,
+	openAudioInput, readAudioInput, audioInputOverruns, closeAudioInput,
+	startRecording, pauseRecording, resumeRecording, stopRecording, closeRecording, recordingStatus,
+	SoundStatus, RecordingStatus, PcmStream,
+} from "./audio";
 export { ModCmd, ModShift, ModAlt, ModCtrl } from "./mods";
 export { check, download, apply, checkWebview, applyWebview, UpdateConfig, UpdateInfo } from "./update";
