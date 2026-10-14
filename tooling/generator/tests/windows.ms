@@ -61,8 +61,8 @@ if (first.ok && second.ok) {
 	for (const generated of files) paths.push(generated.path);
 	check(paths.join(",") == [
 		"Desk.sln",
-		"Desk/Desk.vcxproj", "Desk/Desk.rc", "Desk/Desk.manifest", "Desk/Desk.ms", "Desk/build.cmd",
-		"Tool/Tool.vcxproj", "Tool/Tool.rc", "Tool/Tool.manifest", "Tool/Tool.ms", "Tool/build.cmd",
+		"Desk/Desk.vcxproj", "Desk/Desk.rc", "Desk/Desk.manifest", "Desk/build.cmd",
+		"Tool/Tool.vcxproj", "Tool/Tool.rc", "Tool/Tool.manifest", "Tool/build.cmd",
 	].join(","), "emitted file set: " + paths.join(","));
 
 	const sln = file(files, "Desk.sln");
@@ -81,7 +81,8 @@ if (first.ok && second.ok) {
 	const script = file(files, "Desk/build.cmd");
 	check(script.includes("rc.exe /nologo /fo \"%~dp0obj\\Desk.res\" \"%~dp0Desk.rc\" || goto fail"), "resource compiled by the Windows SDK");
 	check(script.includes("pushd \"%work%msc\""), "msc works in the intermediate directory, not the source tree");
-	check(script.includes("\"C:\\tools\\msc.exe\" build \"%~dp0Desk.ms\" %mode% \"--output=%out%Desk.exe\" || goto fail"), "msc builds the executable");
+	check(script.includes("\"C:\\tools\\msc.exe\" build \"C:\\source with spaces\\app\\main.ms\" %mode% \"--link=%~dp0obj\\Desk.res\" \"--output=%out%Desk.exe\" || goto fail"), "msc builds the app's own entry and links the resource as a tracked input");
+	check(!script.includes("--passL") && !project.includes("Desk.ms"), "no entry wrapper");
 	check(script.includes("(set \"mode=--release\")"), "Release passes --release");
 	check(script.includes(":fail\r\ndel /q \"%out%Desk.exe\" 2>nul\r\nexit /b 1"), "a failed step removes the executable");
 	check(script.includes("copy /y \"C:\\ion\\vendor\\webview2\\runtime\\x64\\WebView2Loader.dll\" \"%out%\""), "loader beside the executable");
@@ -90,8 +91,7 @@ if (first.ok && second.ok) {
 	check(script.includes("if not exist \"%out%resources\\web\" mkdir"), "asset directories are created");
 	check(!file(files, "Tool/build.cmd").includes("resources\\"), "a target without assets copies none");
 
-	const entry = file(files, "Desk/Desk.ms");
-	check(entry == "@link(\"./obj/Desk.res\");\nimport \"C:/source with spaces/app/main\";\n", "entry links the resource as a declared input: " + entry);
+	check(script.includes("\"--link=%~dp0obj\\Desk.res\""), "--link names the compiled .res");
 	check(file(files, "Desk/Desk.rc").includes("VALUE \"InternalName\", \"dev.ion.Desk\""), "version resource carries the bundle identity");
 	check(file(files, "Desk/Desk.manifest").includes("name=\"dev.ion.Desk\""), "manifest identity is the bundle identity");
 }
@@ -108,6 +108,7 @@ for (const asset of ["../secret.txt", "C:/abs.html", "/abs.html", "web//app.js"]
 	expectError([{ ...app, assets: [asset] }], "asset of 'Desk' must be a relative path inside the source directory: " + asset);
 }
 expectError([{ ...app, assets: ["100%.html"] }], "asset cannot be used in a cmd build script: C:/source with spaces/100%.html");
+expectError([{ ...app, entry: "100%.ms" }], "entry cannot be used in a cmd build script: C:/source with spaces/100%.ms");
 const mac: Target = { ...Target.app("Mac", "main.ms"), assets: ["index.html"] };
 const macAssets = resolve({ name: "Desk", targets: [mac], plugins: [bundlePrefix("dev.ion")] });
 check(!macAssets.ok && macAssets.error == "assets are copied only for Windows targets; 'Mac' declares 'index.html'", "assets refused off Windows");
