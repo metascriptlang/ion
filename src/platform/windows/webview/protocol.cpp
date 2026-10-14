@@ -370,8 +370,8 @@ public:
         }
         if (!mime) mime = "application/octet-stream";
 
-        WebView2State *st = ionGetWebView2State();
-        if (!st || !st->env) {
+        ICoreWebView2Environment *env = ionWebView2Env();
+        if (!env) {
             if (body) free(body);
             return S_OK;
         }
@@ -400,7 +400,7 @@ public:
                                                 : L"";
 
         ComPtr<ICoreWebView2WebResourceResponse> response;
-        HRESULT hr = st->env->CreateWebResourceResponse(stream, status, reason, headers, &response);
+        HRESULT hr = env->CreateWebResourceResponse(stream, status, reason, headers, &response);
         stream->Release();
         if (FAILED(hr) || !response) return S_OK;
 

@@ -2,15 +2,12 @@
 //
 // ionPollEvent blocks until it has something to return: an IPC message, an
 // input or frame record, or quit. While waiting it sleeps in
-// MsgWaitForMultipleObjectsEx on the message queue and, only while a surface
+// MsgWaitForMultipleObjectsEx on the message queue and, only while a window
 // is due a frame, on the vsync thread's tick event.
 //
 // WebView2 async callbacks (env created, controller created, web message
 // received, navigation starting) are delivered through the Win32 message
 // pump — DispatchMessageW below drives them.
-//
-// `ionEvalJS` is owned by webview/eval.cpp (C++ side touches the COM
-// objects). This file only handles Win32 plumbing + queue drain.
 
 #include "../state.h"
 #include "../internal.h"

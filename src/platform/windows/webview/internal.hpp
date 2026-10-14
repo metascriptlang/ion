@@ -1,8 +1,5 @@
 // Ion Windows — WebView2 C++ shared types.
 //
-// Only included from .cpp files under webview/. C-side state.h carries an
-// opaque `void *s_webview2State` that gets cast to `WebView2State *` here.
-//
 // MinGW gap: zig's bundled MinGW ships `wrl/client.h` (ComPtr) but NOT
 // `wrl/event.h` (Callback<>). Each event-handler interface gets a
 // hand-rolled class implementing IUnknown + the matching `Invoke()` — the
@@ -16,38 +13,42 @@
 #include <windows.h>
 #include <wrl/client.h>
 #include <WebView2.h>
+#include <dcomp.h>
 
 #include "../state.h"
+#include "../../common/windowRegistry.h"
 
 struct WebView2State {
-    Microsoft::WRL::ComPtr<ICoreWebView2Environment> env;
-    Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller;
-    Microsoft::WRL::ComPtr<ICoreWebView2CompositionController> composition;
-    Microsoft::WRL::ComPtr<ICoreWebView2>           webview;
+    int                  id         { -1 };
+    IonWindowId          window     { ION_WINDOW_INVALID };
+    HWND                 hwnd       { nullptr };
+    IDCompositionVisual *visual     { nullptr };
+    bool                 requested  { false };
+    bool                 released   { false };
 
-    // Tokens for the events we subscribe to — kept so Shutdown can `remove_*`
-    // them deterministically before releasing the webview ComPtr.
+    Microsoft::WRL::ComPtr<ICoreWebView2Controller>            controller;
+    Microsoft::WRL::ComPtr<ICoreWebView2CompositionController> composition;
+    Microsoft::WRL::ComPtr<ICoreWebView2>                      webview;
+
     EventRegistrationToken navStartingToken       { 0 };
     EventRegistrationToken messageToken           { 0 };
     EventRegistrationToken resourceRequestedToken { 0 };
     EventRegistrationToken cursorChangedToken     { 0 };
     HCURSOR cursor { nullptr };
 
-    // URL to navigate to once the controller is ready. strdup'd in
-    // ionWebView2Start; freed after Navigate() fires.
-    char *pendingUrl { nullptr };
+    char *pendingUrl  { nullptr };
+    RECT  bounds      { 0, 0, 0, 0 };
+    bool  visible     { true };
+    bool  transparent { false };
 };
 
-// Accessor for the C++ side of files. Returns nullptr if WebView2 isn't
-// initialized yet (init not started, or post-shutdown).
-inline WebView2State *ionGetWebView2State() {
-    return static_cast<WebView2State *>(s_webview2State);
-}
+WebView2State *ionWebView2At(int id);
+ICoreWebView2Environment *ionWebView2Env();
 
 // Attach the WebMessageReceived handler. Defined in webview/messaging.cpp.
-// Validates invoke_key per message; enqueues `(name, payload)` to the ion
-// queue on success. Returns 0 on success, non-zero on attach failure.
-HRESULT ionAttachMessageHandler(ICoreWebView2 *webview, EventRegistrationToken *outToken);
+// Validates invoke_key per message; enqueues `(name, payload)` tagged with
+// the webview id on success.
+HRESULT ionAttachMessageHandler(ICoreWebView2 *webview, int id, EventRegistrationToken *outToken);
 
 // Attach the NavigationStarting handler. Defined in webview/nav.cpp.
 // Allows ion://, asset://, http(s)://, about:, data:; routes user-clicked

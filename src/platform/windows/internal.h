@@ -11,55 +11,34 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "../common/strconv.h"  // cStringToMs / MS_EMPTY_STRING
+#include "../common/windowRegistry.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// core/window.c
-HWND       ionGetMainHwnd(void);
+HWND        ionGetMainHwnd(void);
+IonWindowId ionGetMainWindowId(void);
+HWND        ionWinHwnd(IonWindowId id);
 
-// webview/controller.cpp — extern "C" entry points called from C code.
-// `ionWebView2Start` kicks off async WebView2 init bound to the main HWND
-// and pointed at `url`. Returns 1 on init request OK (controller becomes
-// ready later via the message pump), 0 on synchronous failure (loader DLL
-// missing, runtime not installed). Caller (core/window.c) calls this after
-// CreateWindowExW.
-int  ionWebView2Start(HWND hwnd, const char *url);
-// Tear down: closes controller, releases COM refs, NULLs s_webview2State.
-void ionWebView2Shutdown(void);
-void    ionWebView2SetBounds(int x, int y, int width, int height);
-void    ionWebView2SetVisible(int visible);
-void    ionWebView2SetTransparent(int transparent);
-void    ionWebView2Focus(void);
-void    ionWebView2ParentMoved(void);
-void    ionWebView2SendMouse(UINT msg, WPARAM wParam, DWORD mouseData, int x, int y);
-HCURSOR ionWebView2Cursor(void);
+int   ionCompInit(HWND hwnd);
+void  ionCompShutdown(void);
+void *ionCompDevice(void);
+void  ionCompCommit(void);
+
+void    ionWebView2CloseWindow(IonWindowId win);
+void    ionWebView2ParentMoved(IonWindowId win);
+HCURSOR ionWebView2Cursor(int id);
+int     ionWebView2LastPointerTarget(void);
+
 void    ionWebView2RegisterDrop(HWND host);
 void    ionWebView2RevokeDrop(HWND host);
-int     ionWebView2PointerMessage(HWND host, UINT msg, WPARAM wParam, LPARAM lParam);
 int     ionWebView2HostAutomation(HWND host, WPARAM wParam, LPARAM lParam, LRESULT *result);
 void    ionWebView2DetachAutomation(HWND host);
 
-#define ION_COMP_ROUTE_NONE    (-1)
-#define ION_COMP_ROUTE_WEBVIEW (-2)
-int   ionCompInit(HWND hwnd);
-void  ionCompShutdown(void);
-void *ionCompWebviewVisual(void);
-void  ionCompCommit(void);
-void  ionCompClientResized(int width, int height);
-void  ionCompDpiChanged(void);
-int   ionCompRoute(int x, int y);
-void  ionCompWebviewOrigin(int *x, int *y);
-void  ionCompPointer(int surf, int type, int px, int py, double p1, double p2);
-int   ionCompFocusedSurface(void);
-void  ionCompFocusSurface(int surf, int hostHasFocus);
-void  ionCompHostFocus(int gained);
-int   ionCompImeRect(int surf, RECT *out);
-
 int  ionWinHandleInput(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT *result);
 void ionWinKeyFlush(void);
-void ionWinImeReposition(void);
+void ionWinPushResize(void);
 
 // chrome/tray.c + chrome/notify.c — Shell_NotifyIcon callbacks route to the
 // main HWND (HWND_MESSAGE windows don't reliably receive these on Win10/11).

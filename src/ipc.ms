@@ -23,6 +23,7 @@
 @compile("./platform/common/invokekey.c");
 @compile("./platform/common/queue.c");
 @compile("./platform/common/windowRegistry.c");
+@compile("./platform/common/webviewRegistry.c");
 @compile("./platform/common/windowEvents.c");
 @compile("./platform/common/inputEvents.c");
 @compile("./platform/common/frameClock.c");
@@ -37,11 +38,12 @@ when (macos) {
 	@compile("./platform/macos/state.m", "-fobjc-arc");
 	@compile("./platform/macos/core/lifecycle.m", "-fobjc-arc");
 	@compile("./platform/macos/core/window.m", "-fobjc-arc");
-	@compile("./platform/macos/core/renderSurface.m", "-fobjc-arc");
+	@compile("./platform/macos/core/contentHost.m", "-fobjc-arc");
 	@compile("./platform/macos/core/shell.m", "-fobjc-arc");
 	@compile("./platform/macos/webview/bootstrap.m", "-fobjc-arc");
 	@compile("./platform/macos/webview/nav_delegate.m", "-fobjc-arc");
 	@compile("./platform/macos/webview/eval.m", "-fobjc-arc");
+	@compile("./platform/macos/webview/webview.m", "-fobjc-arc");
 	@compile("./platform/macos/webview/poll.m", "-fobjc-arc");
 	@compile("./platform/macos/webview/protocol.m", "-fobjc-arc");
 	@compile("./platform/macos/ipc/url_scheme.m", "-fobjc-arc");
@@ -86,6 +88,7 @@ when (linux) {
 	@compile("./platform/linux/chrome/notify.c");
 	@compile("./platform/linux/chrome/dialog.c");
 	@compile("./platform/linux/input/hotkey.c");
+	@compile("./platform/linux/input/input.c");
 	@compile("./platform/linux/security/content_protect.c");
 	@compile("./platform/linux/security/keychain.c");
 	@compile("./platform/linux/update/install.c");
@@ -149,6 +152,9 @@ when (windows) {
 	@passL("-luuid");
 	@passL("-ladvapi32");  // Credential Manager: CredWriteW / CredReadW / CredDeleteW
 	@passL("-ldcomp");
+	@passL("-ld3d11");
+	@passL("-ld2d1");
+	@passL("-ldxgi");
 	@passL("-limm32");
 	@passL("-luiautomationcore");
 	@passL("-loleaut32");
@@ -165,14 +171,13 @@ when (windows) {
 
 import {
 	ionPollEvent,
-	ionMessageName, ionMessagePayload,
+	ionMessageName, ionMessagePayload, ionMessageWebviewId,
 	ionWindowEventId, ionWindowEventType, ionWindowLabel,
-	ionInputType, ionInputX, ionInputY, ionInputP1, ionInputP2,
-	ionEvalJS,
-	ionClose, ionQuit,
+	ionInputType,
+	ionQuit,
 } from "./platform/bridge.h";
-import { jsEscape } from "./internal/jsEscape";
-import { dispatchWindowEvent, routeEmit } from "./windowManager";
+import { dispatchWindowEvent } from "./windowManager";
+import { routeEmit } from "./webview";
 import { dispatchInput } from "./input";
 
 export type Handler = (name: string, payload: string) => void;
@@ -186,31 +191,10 @@ export function listen(handler: Handler): void {
 	handlers.push(handler);
 }
 
-// Input event callbacks — invoked when ionPollEvent surfaces a mouse event
-// (ionPollEvent returns 4). A render-surface consumer forwards these into its
-// native renderer's input. type: 1=button, 2=motion, 3=wheel; (x,y) a fraction
-// (0..1) of the surface; (p1,p2) carry button/pressed, relX/relY, or wheel dx/dy per type (see
-// bridge.h ionInput*). Same empty-array + for-of shape as the other hooks.
-export type InputHandler = (type: int32, x: float64, y: float64, p1: float64, p2: float64) => void;
-
-const _inputCallbacks: InputHandler[] = [];
-
-export function onInput(fn: InputHandler): void {
-	_inputCallbacks.push(fn);
-}
-
-// Send a MS→JS message. JS-side handlers registered via on(name, h) from
-// @metascriptlang/ion receive the payload string.
-export function invoke(name: string, payload: string): void {
-	const safeName = jsEscape(name);
-	const safePayload = jsEscape(payload);
-	const js = `if(window.__ion__&&window.__ion__._dispatch)window.__ion__._dispatch("${safeName}","${safePayload}")`;
-	ionEvalJS(js);
-}
-
-// Raw JS evaluation, escape hatch when invoke()'s shape doesn't fit.
-export function eval(js: string): void {
-	ionEvalJS(js);
+// The webview that sent the message being dispatched, or -1 for app-global
+// producers (tray, hotkey, notification, deep link). Valid inside a listener.
+export function messageWebviewId(): int32 {
+	return ionMessageWebviewId();
 }
 
 // Reserved channel — JS-side emit/emitTo posts here; MS routes via
@@ -241,18 +225,8 @@ export function runLoop(): void {
 			const label = ionWindowLabel(id);
 			dispatchWindowEvent(label, type);
 		} else if (evt === 4) {
-			const it  = ionInputType();
-			if (it > (3 as int32)) {
-				dispatchInput(it);
-			} else {
-				const ix  = ionInputX();
-				const iy  = ionInputY();
-				const ip1 = ionInputP1();
-				const ip2 = ionInputP2();
-				for (const ih of _inputCallbacks) ih(it, ix, iy, ip1, ip2);
-			}
+			dispatchInput(ionInputType());
 		}
 	}
-	ionClose();
 	ionQuit();
 }

@@ -7,7 +7,7 @@
 //   1. Parse the JSON to extract `__key`, `name`, `payload` (string fields).
 //   2. Verify __key via ion_invoke_key_verify (drop on mismatch — defense
 //      against scripts injected outside our bootstrap closure).
-//   3. ionEnqueueMessage(name, payload) → MS-side listen() picks it up.
+//   3. ion_queue_push_w(webview id, name, payload) → MS-side listen() picks it up.
 //
 // JSON parsing: hand-rolled minimal extractor. We only need 3 fixed string
 // fields with a known shape (matches bootstrap.c's `{__key, name, payload}`
@@ -18,6 +18,7 @@
 #include "../../common/invokekey.h"
 #include "../../common/protocol.h"
 #include "../../common/json_extract.h"
+#include "../../common/queue.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -26,7 +27,7 @@
 class MessageReceivedCallback final
     : public ICoreWebView2WebMessageReceivedEventHandler {
 public:
-    MessageReceivedCallback() : m_refs(1) {}
+    explicit MessageReceivedCallback(int id) : m_refs(1), m_id(id) {}
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppv) override {
         if (!ppv) return E_POINTER;
@@ -76,7 +77,7 @@ public:
         char *name    = ion_json_extract_string(jsonU8, "name");
         char *payload = ion_json_extract_string(jsonU8, "payload");
         if (name != nullptr) {
-            ionEnqueueMessage(name, payload ? payload : "");
+            ion_queue_push_w(m_id, name, payload ? payload : "");
         }
         free(name);
         free(payload);
@@ -86,11 +87,12 @@ public:
 
 private:
     LONG m_refs;
+    int  m_id;
 };
 
-HRESULT ionAttachMessageHandler(ICoreWebView2 *webview, EventRegistrationToken *outToken) {
+HRESULT ionAttachMessageHandler(ICoreWebView2 *webview, int id, EventRegistrationToken *outToken) {
     if (webview == nullptr) return E_INVALIDARG;
-    auto *cb = new MessageReceivedCallback();
+    auto *cb = new MessageReceivedCallback(id);
     HRESULT hr = webview->add_WebMessageReceived(cb, outToken);
     cb->Release();
     return hr;

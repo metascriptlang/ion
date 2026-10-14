@@ -7,7 +7,7 @@
 //   2. **Cold-start deep link** — if argv contains a `scheme://...` URL
 //      (registered scheme launched the app), stash it in s_coldStartUrl.
 //      Replayed as a "deeplink" IPC after the window is created
-//      (see core/window.c ionOpen).
+//      (see core/window.c ionCreateWindow).
 //   3. **HINSTANCE** — needed for window class registration.
 
 #include "../state.h"

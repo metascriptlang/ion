@@ -22,11 +22,6 @@ extern "C" {
 extern HWND      s_mainHwnd;
 extern HINSTANCE s_hInstance;
 
-// Opaque pointer to webview/internal.hpp `WebView2State` (C++ struct holding
-// ComPtr<ICoreWebView2Controller> + ComPtr<ICoreWebView2> + event tokens).
-// C code only sees it as `void *` — only the .cpp files under webview/
-// dereference it. NULL when WebView2 isn't initialized yet.
-extern void     *s_webview2State;
 
 // Cold-start deep link URL captured at ionInit time (argv[1] matching the
 // `<scheme>://...` pattern registered by the installer). Empty when no URL

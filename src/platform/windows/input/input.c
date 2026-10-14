@@ -10,11 +10,10 @@
 
 #define ION_TEXT_CAP 64
 
-static int  s_captureActive = 0;
-static int  s_captureTarget = ION_COMP_ROUTE_NONE;
-static int  s_hover = ION_COMP_ROUTE_NONE;
 static int  s_tracking = 0;
 static int  s_lastX = 0, s_lastY = 0;
+static int  s_cursor = ION_CURSOR_ARROW;
+static RECT s_imeRect;
 
 static int            s_pendingActive = 0;
 static IonInputRecord s_pending;
@@ -232,11 +231,11 @@ static int utf16ToUtf8(const WCHAR *w, int n, char *out, int cap) {
     return len;
 }
 
-static void pushText(int type, int surf, const char *utf8, double p1) {
+static void pushText(int type, int win, const char *utf8, double p1) {
     IonInputRecord r;
     memset(&r, 0, sizeof r);
     r.type = type;
-    r.surface = surf;
+    r.window = win;
     r.p1 = p1;
     r.text = utf8;
     ion_input_push_record(&r);
@@ -258,7 +257,7 @@ void ionWinKeyFlush(void) {
     ion_input_push_record(&s_pending);
 }
 
-static void appendChar(int surf, WCHAR unit) {
+static void appendChar(int win, WCHAR unit) {
     WCHAR w[2];
     int n = 0;
     if (IS_HIGH_SURROGATE(unit)) { s_highSurrogate = unit; return; }
@@ -271,19 +270,19 @@ static void appendChar(int surf, WCHAR unit) {
     if (s_pendingActive) {
         size_t have = strlen(s_pendingText);
         if (have + (size_t)len < sizeof s_pendingText) memcpy(s_pendingText + have, utf8, (size_t)len + 1);
-        else { ionWinKeyFlush(); pushText(ION_INPUT_TEXT, surf, utf8, 0); }
+        else { ionWinKeyFlush(); pushText(ION_INPUT_TEXT, win, utf8, 0); }
     } else {
-        pushText(ION_INPUT_TEXT, surf, utf8, 0);
+        pushText(ION_INPUT_TEXT, win, utf8, 0);
     }
 }
 
-static void keyEvent(int surf, UINT msg, WPARAM vk, LPARAM lParam) {
+static void keyEvent(int win, UINT msg, WPARAM vk, LPARAM lParam) {
     ionWinKeyFlush();
     unsigned sc = scancodeOf(vk, lParam);
     IonInputRecord r;
     memset(&r, 0, sizeof r);
     r.type = ION_INPUT_KEY;
-    r.surface = surf;
+    r.window = win;
     r.key = scancodeToKey(sc);
     r.scancode = (int)sc;
     r.mods = currentMods();
@@ -299,10 +298,10 @@ static void keyEvent(int surf, UINT msg, WPARAM vk, LPARAM lParam) {
     s_pendingActive = 1;
 }
 
-void ionWinImeReposition(void) {
+static void imeReposition(void) {
     HWND hwnd = ionGetMainHwnd();
-    RECT rc;
-    if (hwnd == NULL || !ionCompImeRect(ionCompFocusedSurface(), &rc)) return;
+    RECT rc = s_imeRect;
+    if (hwnd == NULL) return;
     HIMC himc = ImmGetContext(hwnd);
     if (himc == NULL) return;
     COMPOSITIONFORM cf;
@@ -332,15 +331,15 @@ static int imeString(HIMC himc, DWORD kind, char *out, int cap, WCHAR *wbuf, int
     return n;
 }
 
-static void imeComposition(HWND hwnd, int surf, LPARAM lParam) {
+static void imeComposition(HWND hwnd, int win, LPARAM lParam) {
     static WCHAR wbuf[512];
     static char  utf8[2048];
     HIMC himc = ImmGetContext(hwnd);
     if (himc == NULL) return;
     if (lParam & GCS_RESULTSTR) {
         imeString(himc, GCS_RESULTSTR, utf8, sizeof utf8, wbuf, 512);
-        if (s_preeditActive) { pushText(ION_INPUT_PREEDIT, surf, "", 0); s_preeditActive = 0; }
-        if (utf8[0] != '\0') pushText(ION_INPUT_TEXT, surf, utf8, 0);
+        if (s_preeditActive) { pushText(ION_INPUT_PREEDIT, win, "", 0); s_preeditActive = 0; }
+        if (utf8[0] != '\0') pushText(ION_INPUT_TEXT, win, utf8, 0);
     }
     if (lParam & GCS_COMPSTR) {
         int n = imeString(himc, GCS_COMPSTR, utf8, sizeof utf8, wbuf, 512);
@@ -349,35 +348,35 @@ static void imeComposition(HWND hwnd, int surf, LPARAM lParam) {
         if (cursor < 0 || cursor > n) cursor = n;
         char head[2048];
         int offset = utf16ToUtf8(wbuf, (int)cursor, head, sizeof head);
-        pushText(ION_INPUT_PREEDIT, surf, utf8, offset);
+        pushText(ION_INPUT_PREEDIT, win, utf8, offset);
         s_preeditActive = utf8[0] != '\0';
     }
     if (lParam == 0 && s_preeditActive) {
-        pushText(ION_INPUT_PREEDIT, surf, "", 0);
+        pushText(ION_INPUT_PREEDIT, win, "", 0);
         s_preeditActive = 0;
     }
     ImmReleaseContext(hwnd, himc);
 }
 
-static void sendToSurface(int surf, UINT msg, WPARAM wParam, int x, int y) {
+static void pushPointer(int type, int x, int y, double p1, double p2) {
+    IonInputRecord r;
+    memset(&r, 0, sizeof r);
+    r.type = type;
+    r.window = ionGetMainWindowId();
+    r.x = x;
+    r.y = y;
+    r.p1 = p1;
+    r.p2 = p2;
+    ion_input_push_record(&r);
+}
+
+static int buttonOf(UINT msg, WPARAM wParam) {
     switch (msg) {
-        case WM_MOUSEMOVE:
-            ionCompPointer(surf, ION_INPUT_MOTION, x, y, x - s_lastX, y - s_lastY);
-            break;
-        case WM_LBUTTONDOWN: ionCompPointer(surf, ION_INPUT_BUTTON, x, y, 1, 1); break;
-        case WM_LBUTTONUP:   ionCompPointer(surf, ION_INPUT_BUTTON, x, y, 1, 0); break;
-        case WM_RBUTTONDOWN: ionCompPointer(surf, ION_INPUT_BUTTON, x, y, 2, 1); break;
-        case WM_RBUTTONUP:   ionCompPointer(surf, ION_INPUT_BUTTON, x, y, 2, 0); break;
-        case WM_MBUTTONDOWN: ionCompPointer(surf, ION_INPUT_BUTTON, x, y, 3, 1); break;
-        case WM_MBUTTONUP:   ionCompPointer(surf, ION_INPUT_BUTTON, x, y, 3, 0); break;
-        case WM_MOUSEWHEEL:
-            ionCompPointer(surf, ION_INPUT_WHEEL, x, y, 0, (double)GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA);
-            break;
-        case WM_MOUSEHWHEEL:
-            ionCompPointer(surf, ION_INPUT_WHEEL, x, y, (double)GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA, 0);
-            break;
-        default:
-            break;
+        case WM_LBUTTONDOWN: case WM_LBUTTONUP: return 1;
+        case WM_RBUTTONDOWN: case WM_RBUTTONUP: return 2;
+        case WM_MBUTTONDOWN: case WM_MBUTTONUP: return 3;
+        case WM_XBUTTONDOWN: case WM_XBUTTONUP: return GET_XBUTTON_WPARAM(wParam) == XBUTTON1 ? 4 : 5;
+        default: return 0;
     }
 }
 
@@ -385,12 +384,8 @@ static int isButtonDown(UINT msg) {
     return msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN || msg == WM_XBUTTONDOWN;
 }
 
-static int isButtonUp(UINT msg) {
-    return msg == WM_LBUTTONUP || msg == WM_RBUTTONUP || msg == WM_MBUTTONUP || msg == WM_XBUTTONUP;
-}
-
-static void leaveWebview(void) {
-    if (s_hover == ION_COMP_ROUTE_WEBVIEW) ionWebView2SendMouse(WM_MOUSELEAVE, 0, 0, 0, 0);
+static int anyButtonHeld(WPARAM wParam) {
+    return (GET_KEYSTATE_WPARAM(wParam) & (MK_LBUTTON | MK_RBUTTON | MK_MBUTTON | MK_XBUTTON1 | MK_XBUTTON2)) != 0;
 }
 
 static void mouseMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -399,7 +394,7 @@ static void mouseMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
     if (msg == WM_MOUSELEAVE) {
         s_tracking = 0;
-        if (!s_captureActive) { leaveWebview(); s_hover = ION_COMP_ROUTE_NONE; }
+        if (GetCapture() != hwnd) pushPointer(ION_INPUT_LEAVE, s_lastX, s_lastY, 0, 0);
         return;
     }
     if (msg == WM_MOUSEMOVE && !s_tracking) {
@@ -408,45 +403,85 @@ static void mouseMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         s_tracking = 1;
     }
 
-    int target = s_captureActive ? s_captureTarget : ionCompRoute(pt.x, pt.y);
-    if (target != s_hover) { leaveWebview(); s_hover = target; }
-
-    if (isButtonDown(msg)) {
-        if (!s_captureActive) {
-            s_captureActive = 1;
-            s_captureTarget = target;
-            SetCapture(hwnd);
-        }
-        if (target == ION_COMP_ROUTE_WEBVIEW) {
-            ionWebView2Focus();
-        } else if (target >= 0) {
-            ionCompFocusSurface(target, GetFocus() == hwnd);
-            if (GetFocus() != hwnd) SetFocus(hwnd);
-        }
-    }
-
-    if (target == ION_COMP_ROUTE_WEBVIEW) {
-        int ox, oy;
-        ionCompWebviewOrigin(&ox, &oy);
-        DWORD data = 0;
-        if (msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL) data = (DWORD)GET_WHEEL_DELTA_WPARAM(wParam);
-        else if (msg == WM_XBUTTONDOWN || msg == WM_XBUTTONUP) data = GET_XBUTTON_WPARAM(wParam);
-        ionWebView2SendMouse(msg, wParam, data, pt.x - ox, pt.y - oy);
-    } else if (target >= 0) {
-        sendToSurface(target, msg, wParam, pt.x, pt.y);
+    switch (msg) {
+        case WM_MOUSEMOVE:
+            pushPointer(ION_INPUT_MOTION, pt.x, pt.y, pt.x - s_lastX, pt.y - s_lastY);
+            break;
+        case WM_MOUSEWHEEL:
+            pushPointer(ION_INPUT_WHEEL, pt.x, pt.y, 0, (double)GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA);
+            break;
+        case WM_MOUSEHWHEEL:
+            pushPointer(ION_INPUT_WHEEL, pt.x, pt.y, (double)GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA, 0);
+            break;
+        default:
+            if (isButtonDown(msg) && GetCapture() != hwnd) SetCapture(hwnd);
+            pushPointer(ION_INPUT_BUTTON, pt.x, pt.y, buttonOf(msg, wParam), isButtonDown(msg));
+            if (!isButtonDown(msg) && !anyButtonHeld(wParam) && GetCapture() == hwnd) ReleaseCapture();
+            break;
     }
     s_lastX = pt.x;
     s_lastY = pt.y;
+}
 
-    if (isButtonUp(msg) && s_captureActive &&
-        (GET_KEYSTATE_WPARAM(wParam) & (MK_LBUTTON | MK_RBUTTON | MK_MBUTTON | MK_XBUTTON1 | MK_XBUTTON2)) == 0) {
-        s_captureActive = 0;
-        ReleaseCapture();
+static LPCWSTR cursorShape(int cursor) {
+    switch (cursor) {
+        case ION_CURSOR_HAND:     return IDC_HAND;
+        case ION_CURSOR_IBEAM:    return IDC_IBEAM;
+        case ION_CURSOR_CROSS:    return IDC_CROSS;
+        case ION_CURSOR_RESIZE_H: return IDC_SIZEWE;
+        case ION_CURSOR_RESIZE_V: return IDC_SIZENS;
+        default:                  return IDC_ARROW;
     }
 }
 
+void ionWinPushResize(void) {
+    HWND hwnd = ionGetMainHwnd();
+    if (hwnd == NULL) return;
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    UINT dpi = GetDpiForWindow(hwnd);
+    IonInputRecord r;
+    memset(&r, 0, sizeof r);
+    r.type = ION_INPUT_RESIZE;
+    r.window = ionGetMainWindowId();
+    r.x = (double)(dpi ? dpi : 96) / 96.0;
+    r.p1 = rc.right - rc.left;
+    r.p2 = rc.bottom - rc.top;
+    ion_input_push_record(&r);
+    ionWindowRequestFrame(r.window);
+}
+
+static void pushFocus(int gained) {
+    IonInputRecord r;
+    memset(&r, 0, sizeof r);
+    r.type = ION_INPUT_FOCUS;
+    r.window = ionGetMainWindowId();
+    r.p1 = gained;
+    ion_input_push_record(&r);
+}
+
+void ionWindowFocusContent(IonWindowId id) {
+    HWND hwnd = ionWinHwnd(id);
+    if (hwnd != NULL && GetFocus() != hwnd) SetFocus(hwnd);
+}
+
+void ionWindowSetImeRect(IonWindowId id, int x, int y, int w, int h) {
+    if (ionWinHwnd(id) == NULL) return;
+    s_imeRect.left = x;
+    s_imeRect.top = y;
+    s_imeRect.right = x + w;
+    s_imeRect.bottom = y + h;
+    if (GetFocus() == ionGetMainHwnd()) imeReposition();
+}
+
+void ionWindowSetCursor(IonWindowId id, int cursor) {
+    if (ionWinHwnd(id) == NULL) return;
+    s_cursor = cursor;
+    if (ionWebView2LastPointerTarget() == ION_WEBVIEW_INVALID) SetCursor(LoadCursorW(NULL, cursorShape(cursor)));
+}
+
 int ionWinHandleInput(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT *result) {
-    int surf = ionCompFocusedSurface();
+    int win = ionGetMainWindowId();
     *result = 0;
     switch (msg) {
         case WM_MOUSEMOVE:
@@ -460,56 +495,46 @@ int ionWinHandleInput(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT
             if (msg == WM_XBUTTONDOWN || msg == WM_XBUTTONUP) *result = TRUE;
             return 1;
 
-        case WM_POINTERDOWN: case WM_POINTERUP: case WM_POINTERUPDATE:
-        case WM_POINTERENTER: case WM_POINTERLEAVE: case WM_POINTERCAPTURECHANGED:
-            return ionWebView2PointerMessage(hwnd, msg, wParam, lParam);
-
-        case WM_SETCURSOR:
-            if (LOWORD(lParam) == HTCLIENT && s_hover == ION_COMP_ROUTE_WEBVIEW && ionWebView2Cursor() != NULL) {
-                SetCursor(ionWebView2Cursor());
-                *result = TRUE;
-                return 1;
-            }
-            return 0;
+        case WM_SETCURSOR: {
+            if (LOWORD(lParam) != HTCLIENT) return 0;
+            HCURSOR web = ionWebView2Cursor(ionWebView2LastPointerTarget());
+            SetCursor(web != NULL ? web : LoadCursorW(NULL, cursorShape(s_cursor)));
+            *result = TRUE;
+            return 1;
+        }
 
         case WM_SETFOCUS:
-            ionCompHostFocus(1);
+            pushFocus(1);
             return 1;
         case WM_KILLFOCUS:
             ionWinKeyFlush();
-            ionCompHostFocus(0);
+            pushFocus(0);
             return 1;
 
         case WM_KEYDOWN: case WM_SYSKEYDOWN:
         case WM_KEYUP:   case WM_SYSKEYUP:
-            if (surf < 0) return 0;
             if (msg == WM_SYSKEYDOWN && wParam == VK_F4) return 0;
             if (wParam == VK_PROCESSKEY || wParam == VK_PACKET) { ionWinKeyFlush(); return 1; }
-            keyEvent(surf, msg, wParam, lParam);
+            keyEvent(win, msg, wParam, lParam);
             return 1;
 
         case WM_CHAR: case WM_SYSCHAR:
-            if (surf < 0) return 0;
-            appendChar(surf, (WCHAR)wParam);
+            appendChar(win, (WCHAR)wParam);
             return 1;
         case WM_DEADCHAR: case WM_SYSDEADCHAR:
-            return surf >= 0;
+            return 1;
 
         case WM_IME_SETCONTEXT:
-            if (surf < 0) return 0;
             *result = DefWindowProcW(hwnd, msg, wParam, lParam & ~(LPARAM)ISC_SHOWUICOMPOSITIONWINDOW);
             return 1;
         case WM_IME_STARTCOMPOSITION:
-            if (surf < 0) return 0;
-            ionWinImeReposition();
+            imeReposition();
             return 1;
         case WM_IME_COMPOSITION:
-            if (surf < 0) return 0;
-            imeComposition(hwnd, surf, lParam);
+            imeComposition(hwnd, win, lParam);
             return 1;
         case WM_IME_ENDCOMPOSITION:
-            if (surf < 0) return 0;
-            if (s_preeditActive) { pushText(ION_INPUT_PREEDIT, surf, "", 0); s_preeditActive = 0; }
+            if (s_preeditActive) { pushText(ION_INPUT_PREEDIT, win, "", 0); s_preeditActive = 0; }
             return 1;
 
         default:

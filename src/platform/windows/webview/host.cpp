@@ -1,5 +1,9 @@
 #include "internal.hpp"
 #include "../internal.h"
+#include "../../common/webviewRegistry.h"
+extern "C" {
+#include "../../bridge.h"
+}
 
 #include <ole2.h>
 #include <uiautomationcore.h>
@@ -11,23 +15,35 @@
 
 using Microsoft::WRL::ComPtr;
 
-static ComPtr<ICoreWebView2CompositionController3> composition3() {
+static int webviewAt(HWND host, POINT client) {
+    int last = ionWebView2LastPointerTarget();
+    WebView2State *st = ionWebView2At(last);
+    if (st != nullptr && st->hwnd == host && st->visible && PtInRect(&st->bounds, client)) return last;
+    int found = ION_WEBVIEW_INVALID;
+    for (int id = ion_webview_next(ION_WEBVIEW_INVALID); id != ION_WEBVIEW_INVALID; id = ion_webview_next(id)) {
+        st = ionWebView2At(id);
+        if (st != nullptr && st->hwnd == host && st->visible && PtInRect(&st->bounds, client)) found = id;
+    }
+    return found;
+}
+
+static ComPtr<ICoreWebView2CompositionController3> composition3(int id) {
     ComPtr<ICoreWebView2CompositionController3> c3;
-    WebView2State *st = ionGetWebView2State();
+    WebView2State *st = ionWebView2At(id);
     if (st == nullptr || !st->composition) return c3;
     st->composition->QueryInterface(IID_ICoreWebView2CompositionController3, (void **)&c3);
     return c3;
 }
 
-static bool toWebview(HWND host, POINTL screen, POINT *out) {
+static int toWebview(HWND host, POINTL screen, POINT *out) {
     POINT p = { screen.x, screen.y };
     ScreenToClient(host, &p);
-    if (ionCompRoute(p.x, p.y) != ION_COMP_ROUTE_WEBVIEW) return false;
-    int ox, oy;
-    ionCompWebviewOrigin(&ox, &oy);
-    out->x = p.x - ox;
-    out->y = p.y - oy;
-    return true;
+    int id = webviewAt(host, p);
+    WebView2State *st = ionWebView2At(id);
+    if (st == nullptr) return ION_WEBVIEW_INVALID;
+    out->x = p.x - st->bounds.left;
+    out->y = p.y - st->bounds.top;
+    return id;
 }
 
 class HostDropTarget final : public IDropTarget {
@@ -62,16 +78,17 @@ public:
     }
     HRESULT STDMETHODCALLTYPE Drop(IDataObject *data, DWORD keys, POINTL pt, DWORD *effect) override {
         POINT p;
-        auto c3 = composition3();
+        int id = toWebview(m_host, pt, &p);
+        auto c3 = composition3(id);
         HRESULT hr = S_OK;
-        if (c3 && toWebview(m_host, pt, &p)) {
-            if (!m_inWebview) c3->DragEnter(data, keys, p, effect);
+        if (c3) {
+            if (m_target != id) { leave(); c3->DragEnter(data, keys, p, effect); }
             hr = c3->Drop(data, keys, p, effect);
         } else {
             leave();
             *effect = DROPEFFECT_NONE;
         }
-        m_inWebview = false;
+        m_target = ION_WEBVIEW_INVALID;
         m_data.Reset();
         return hr;
     }
@@ -79,139 +96,35 @@ public:
 private:
     HRESULT route(DWORD keys, POINTL pt, DWORD *effect) {
         POINT p;
-        auto c3 = composition3();
-        if (!c3 || !toWebview(m_host, pt, &p)) {
+        int id = toWebview(m_host, pt, &p);
+        auto c3 = composition3(id);
+        if (!c3) {
             leave();
             *effect = DROPEFFECT_NONE;
             return S_OK;
         }
-        if (!m_inWebview) {
-            m_inWebview = true;
+        if (m_target != id) {
+            leave();
+            m_target = id;
             return c3->DragEnter(m_data.Get(), keys, p, effect);
         }
         return c3->DragOver(keys, p, effect);
     }
 
     void leave() {
-        if (!m_inWebview) return;
-        m_inWebview = false;
-        auto c3 = composition3();
+        if (m_target == ION_WEBVIEW_INVALID) return;
+        auto c3 = composition3(m_target);
+        m_target = ION_WEBVIEW_INVALID;
         if (c3) c3->DragLeave();
     }
 
     LONG                 m_refs;
     HWND                 m_host;
-    bool                 m_inWebview = false;
+    int                  m_target = ION_WEBVIEW_INVALID;
     ComPtr<IDataObject>  m_data;
 };
 
 static HostDropTarget *s_dropTarget = nullptr;
-
-static const int ION_MAX_POINTERS = 16;
-static UINT32 s_webviewPointers[ION_MAX_POINTERS];
-static int    s_webviewPointerCount = 0;
-
-static bool pointerInWebview(UINT32 id) {
-    for (int i = 0; i < s_webviewPointerCount; i++)
-        if (s_webviewPointers[i] == id) return true;
-    return false;
-}
-
-static void trackPointer(UINT32 id, bool on) {
-    for (int i = 0; i < s_webviewPointerCount; i++) {
-        if (s_webviewPointers[i] != id) continue;
-        if (!on) s_webviewPointers[i] = s_webviewPointers[--s_webviewPointerCount];
-        return;
-    }
-    if (on && s_webviewPointerCount < ION_MAX_POINTERS) s_webviewPointers[s_webviewPointerCount++] = id;
-}
-
-static POINT toFrame(HWND host, POINT screen) {
-    int ox, oy;
-    ionCompWebviewOrigin(&ox, &oy);
-    ScreenToClient(host, &screen);
-    screen.x -= ox;
-    screen.y -= oy;
-    return screen;
-}
-
-static RECT toFrameRect(HWND host, RECT r) {
-    POINT tl = toFrame(host, POINT{ r.left, r.top });
-    POINT br = toFrame(host, POINT{ r.right, r.bottom });
-    return RECT{ tl.x, tl.y, br.x, br.y };
-}
-
-static HRESULT fillPointerInfo(HWND host, UINT32 id, ICoreWebView2PointerInfo *out) {
-    POINTER_INFO pi;
-    if (!GetPointerInfo(id, &pi)) return HRESULT_FROM_WIN32(GetLastError());
-    out->put_PointerKind(pi.pointerType);
-    out->put_PointerId(pi.pointerId);
-    out->put_FrameId(pi.frameId);
-    out->put_PointerFlags(pi.pointerFlags);
-    RECT device, display;
-    if (GetPointerDeviceRects(pi.sourceDevice, &device, &display)) {
-        out->put_PointerDeviceRect(device);
-        out->put_DisplayRect(display);
-    }
-    out->put_PixelLocation(toFrame(host, pi.ptPixelLocation));
-    out->put_PixelLocationRaw(toFrame(host, pi.ptPixelLocationRaw));
-    out->put_HimetricLocation(pi.ptHimetricLocation);
-    out->put_HimetricLocationRaw(pi.ptHimetricLocationRaw);
-    out->put_Time(pi.dwTime);
-    out->put_HistoryCount(pi.historyCount);
-    out->put_InputData(pi.InputData);
-    out->put_KeyStates(pi.dwKeyStates);
-    out->put_PerformanceCount(pi.PerformanceCount);
-    out->put_ButtonChangeKind((INT32)pi.ButtonChangeType);
-    if (pi.pointerType == PT_PEN) {
-        POINTER_PEN_INFO pen;
-        if (GetPointerPenInfo(id, &pen)) {
-            out->put_PenFlags(pen.penFlags);
-            out->put_PenMask(pen.penMask);
-            out->put_PenPressure(pen.pressure);
-            out->put_PenRotation(pen.rotation);
-            out->put_PenTiltX(pen.tiltX);
-            out->put_PenTiltY(pen.tiltY);
-        }
-    } else if (pi.pointerType == PT_TOUCH) {
-        POINTER_TOUCH_INFO touch;
-        if (GetPointerTouchInfo(id, &touch)) {
-            out->put_TouchFlags(touch.touchFlags);
-            out->put_TouchMask(touch.touchMask);
-            out->put_TouchContact(toFrameRect(host, touch.rcContact));
-            out->put_TouchContactRaw(toFrameRect(host, touch.rcContactRaw));
-            out->put_TouchOrientation(touch.orientation);
-            out->put_TouchPressure(touch.pressure);
-        }
-    }
-    return S_OK;
-}
-
-extern "C" int ionWebView2PointerMessage(HWND host, UINT msg, WPARAM wParam, LPARAM lParam) {
-    WebView2State *st = ionGetWebView2State();
-    if (st == nullptr || !st->composition || !st->env) return 0;
-    UINT32 id = GET_POINTERID_WPARAM(wParam);
-    POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
-    ScreenToClient(host, &pt);
-    bool started = pointerInWebview(id);
-    if (!started && ionCompRoute(pt.x, pt.y) != ION_COMP_ROUTE_WEBVIEW) return 0;
-    if (msg == WM_POINTERDOWN || msg == WM_POINTERENTER) trackPointer(id, true);
-    if (msg == WM_POINTERDOWN) ionWebView2Focus();
-
-    ComPtr<ICoreWebView2Environment3> env3;
-    ComPtr<ICoreWebView2PointerInfo> info;
-    if (FAILED(st->env->QueryInterface(IID_ICoreWebView2Environment3, (void **)&env3)) ||
-        FAILED(env3->CreateCoreWebView2PointerInfo(&info)) ||
-        FAILED(fillPointerInfo(host, id, info.Get()))) return 0;
-    st->composition->SendPointerInput((COREWEBVIEW2_POINTER_EVENT_KIND)msg, info.Get());
-
-    if (msg == WM_POINTERUP || msg == WM_POINTERLEAVE || msg == WM_POINTERCAPTURECHANGED) {
-        POINTER_INFO pi;
-        if (msg != WM_POINTERUP || !GetPointerInfo(id, &pi) || !(pi.pointerFlags & POINTER_FLAG_INRANGE))
-            trackPointer(id, false);
-    }
-    return 1;
-}
 
 extern "C" void ionWebView2RegisterDrop(HWND host) {
     if (s_dropTarget != nullptr) return;
@@ -255,16 +168,20 @@ static BOOL CALLBACK findBrowserWindow(HWND hwnd, LPARAM arg) {
 // With a CompositionController the page's UIA tree lives on a top-level
 // Chrome_WidgetWin_1 popup of the WebView2 browser process placed over the
 // webview frame (measured 2026-09-23, WebView2 Runtime 153.0.4234.48); no Ion window parents it.
-static HWND browserWindow(HWND host) {
-    WebView2State *st = ionGetWebView2State();
-    if (st == nullptr || !st->webview) return nullptr;
+static HWND browserWindow(HWND host, int id);
+
+static int nextWebview(HWND host, int from, int step) {
+    for (int id = from + step; id >= 0 && id < ION_MAX_WEBVIEWS; id += step)
+        if (browserWindow(host, id) != nullptr) return id;
+    return ION_WEBVIEW_INVALID;
+}
+
+static HWND browserWindow(HWND host, int id) {
+    WebView2State *st = ionWebView2At(id);
+    if (st == nullptr || st->hwnd != host || !st->webview) return nullptr;
     UINT32 pid = 0;
     if (FAILED(st->webview->get_BrowserProcessId(&pid)) || pid == 0) return nullptr;
-    int ox, oy;
-    ionCompWebviewOrigin(&ox, &oy);
-    RECT client;
-    GetClientRect(host, &client);
-    POINT tl = { ox, oy };
+    POINT tl = { st->bounds.left, st->bounds.top };
     ClientToScreen(host, &tl);
     BrowserWindowSearch s = { pid, { tl.x, tl.y, tl.x + 1, tl.y + 1 }, nullptr };
     EnumWindows(findBrowserWindow, (LPARAM)&s);
@@ -273,7 +190,9 @@ static HWND browserWindow(HWND host) {
 
 class WebviewUiaElement final : public IRawElementProviderSimple, public IRawElementProviderFragment {
 public:
-    WebviewUiaElement(IRawElementProviderFragmentRoot *root, HWND host) : m_refs(1), m_root(root), m_host(host) {}
+    WebviewUiaElement(IRawElementProviderFragmentRoot *root, HWND host, int id)
+        : m_refs(1), m_root(root), m_host(host), m_id(id) { m_root->AddRef(); }
+    ~WebviewUiaElement() { m_root->Release(); }
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppv) override {
         if (!ppv) return E_POINTER;
@@ -309,7 +228,7 @@ public:
     }
     HRESULT STDMETHODCALLTYPE get_HostRawElementProvider(IRawElementProviderSimple **out) override {
         *out = nullptr;
-        HWND browser = browserWindow(m_host);
+        HWND browser = browserWindow(m_host, m_id);
         return browser ? UiaHostProviderFromHwnd(browser, out) : S_OK;
     }
 
@@ -317,10 +236,14 @@ public:
         *out = nullptr;
         if (direction == NavigateDirection_Parent)
             return m_root->QueryInterface(IID_IRawElementProviderFragment, (void **)out);
+        int sibling = direction == NavigateDirection_NextSibling ? nextWebview(m_host, m_id, 1)
+                    : direction == NavigateDirection_PreviousSibling ? nextWebview(m_host, m_id, -1)
+                    : ION_WEBVIEW_INVALID;
+        if (sibling != ION_WEBVIEW_INVALID) *out = new WebviewUiaElement(m_root, m_host, sibling);
         return S_OK;
     }
     HRESULT STDMETHODCALLTYPE GetRuntimeId(SAFEARRAY **out) override {
-        int id[] = { UiaAppendRuntimeId, 1 };
+        int id[] = { UiaAppendRuntimeId, m_id + 1 };
         *out = SafeArrayCreateVector(VT_I4, 0, 2);
         if (*out == nullptr) return E_OUTOFMEMORY;
         for (LONG i = 0; i < 2; i++) SafeArrayPutElement(*out, &i, &id[i]);
@@ -328,7 +251,7 @@ public:
     }
     HRESULT STDMETHODCALLTYPE get_BoundingRectangle(UiaRect *out) override {
         *out = UiaRect{ 0, 0, 0, 0 };
-        HWND browser = browserWindow(m_host);
+        HWND browser = browserWindow(m_host, m_id);
         RECT r;
         if (browser && GetWindowRect(browser, &r))
             *out = UiaRect{ (double)r.left, (double)r.top, (double)(r.right - r.left), (double)(r.bottom - r.top) };
@@ -339,7 +262,7 @@ public:
         return S_OK;
     }
     HRESULT STDMETHODCALLTYPE SetFocus() override {
-        ionWebView2Focus();
+        ionWebviewFocus(m_id);
         return S_OK;
     }
     HRESULT STDMETHODCALLTYPE get_FragmentRoot(IRawElementProviderFragmentRoot **out) override {
@@ -352,6 +275,7 @@ private:
     LONG                             m_refs;
     IRawElementProviderFragmentRoot *m_root;
     HWND                             m_host;
+    int                              m_id;
 };
 
 class HostUiaProvider final : public IRawElementProviderSimple,
@@ -359,7 +283,6 @@ class HostUiaProvider final : public IRawElementProviderSimple,
                               public IRawElementProviderFragmentRoot {
 public:
     explicit HostUiaProvider(HWND host) : m_refs(1), m_host(host) {}
-    ~HostUiaProvider() { if (m_webview) m_webview->Release(); }
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppv) override {
         if (!ppv) return E_POINTER;
@@ -401,8 +324,9 @@ public:
 
     HRESULT STDMETHODCALLTYPE Navigate(NavigateDirection direction, IRawElementProviderFragment **out) override {
         *out = nullptr;
-        if (direction != NavigateDirection_FirstChild && direction != NavigateDirection_LastChild) return S_OK;
-        return webview(out);
+        if (direction == NavigateDirection_FirstChild) return webview(nextWebview(m_host, -1, 1), out);
+        if (direction == NavigateDirection_LastChild) return webview(nextWebview(m_host, ION_MAX_WEBVIEWS, -1), out);
+        return S_OK;
     }
     HRESULT STDMETHODCALLTYPE GetRuntimeId(SAFEARRAY **out) override {
         *out = nullptr;
@@ -427,8 +351,7 @@ public:
         *out = nullptr;
         POINT p = { (LONG)x, (LONG)y };
         ScreenToClient(m_host, &p);
-        if (ionCompRoute(p.x, p.y) != ION_COMP_ROUTE_WEBVIEW) return S_OK;
-        return webview(out);
+        return webview(webviewAt(m_host, p), out);
     }
     HRESULT STDMETHODCALLTYPE GetFocus(IRawElementProviderFragment **out) override {
         *out = nullptr;
@@ -436,17 +359,14 @@ public:
     }
 
 private:
-    HRESULT webview(IRawElementProviderFragment **out) {
-        if (browserWindow(m_host) == nullptr) return S_OK;
-        if (m_webview == nullptr) m_webview = new WebviewUiaElement(this, m_host);
-        *out = m_webview;
-        m_webview->AddRef();
+    HRESULT webview(int id, IRawElementProviderFragment **out) {
+        if (browserWindow(m_host, id) == nullptr) return S_OK;
+        *out = new WebviewUiaElement(this, m_host, id);
         return S_OK;
     }
 
-    LONG               m_refs;
-    HWND               m_host;
-    WebviewUiaElement *m_webview = nullptr;
+    LONG m_refs;
+    HWND m_host;
 };
 
 static HostUiaProvider *s_uiaProvider = nullptr;

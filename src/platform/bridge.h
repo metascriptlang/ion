@@ -1,8 +1,14 @@
 // Ion native bridge — public C contract between MS and the platform layer.
 //
-// v0 scope: single window, single webview, polling event loop.
+// Ion is the platform: it owns the OS window, the message pump, the
+// compositor root, raw input, the webview engine and OS services. The app
+// framework (Neon) builds and drives the content: its own native views and
+// Void areas on the window's compositor, and webviews placed wherever its
+// tree puts them. Ion does no hit-testing; see "Windows and their content".
+//
 // Caller (MS) drives the loop via ionPollEvent. Platform callbacks queue
-// IPC messages internally; ionPollEvent surfaces them one at a time.
+// IPC messages and input records internally; ionPollEvent surfaces them one
+// at a time.
 //
 // Pure C — no Cocoa/Win32/WebView types in signatures so MS-side import
 // stays portable.
@@ -21,18 +27,17 @@
 int  ionInit(void);
 void ionQuit(void);
 
-// ---- Single-window (legacy v0 API) ---------------------------------------
+// ---- Windows and their content -------------------------------------------
 //
-// These wrappers operate on the window with label "main". They exist for
-// backward compatibility with v0 apps. Multi-window apps should use the
-// ionCreateWindow / ionEvalJSWindow / ionCloseWindow path below.
-//
-// ionOpen: creates (or replaces) the "main" window. Returns 1 on success,
-// 0 on failure. ionClose closes "main" if present.
-int  ionOpen(const char *title, int width, int height, const char *url);
-void ionClose(void);
-
-// ---- Multi-window API ----------------------------------------------------
+// A window is an empty native root. The app builds everything inside it on
+// the window's compositor: its native views, its Void areas (a visual whose
+// content is a swapchain or a layer) and webviews (below). Ion composites
+// what the app attaches, delivers the window's raw input as records
+// (ionPollEvent returns 4) in device pixels of the client area, and never
+// decides which piece of content a point belongs to. When the app's
+// hit-test lands on a webview it forwards the event with
+// ionWebviewForwardPointer, and it moves keyboard focus with
+// ionWebviewFocus / ionWindowFocusContent.
 //
 // Each window is identified by a unique string `label`. The registry holds
 // up to ION_MAX_WINDOWS slots. Operations on a destroyed/unknown id are no-ops.
@@ -47,14 +52,14 @@ void ionClose(void);
 #define ION_WIN_FULLSCREEN     (1 << 6)
 #define ION_WIN_DEFAULT        (ION_WIN_RESIZABLE | ION_WIN_DECORATIONS | ION_WIN_VISIBLE)
 
-// Create a window. Returns the window id or ION_WINDOW_INVALID if:
+// Create an empty window. Returns the window id or ION_WINDOW_INVALID if:
 //   - label is NULL/empty/duplicate/over ION_LABEL_MAX
-//   - all ION_MAX_WINDOWS slots are taken
+//   - all ION_MAX_WINDOWS slots are taken (Windows: one window today)
 //   - native creation failed
 IonWindowId ionCreateWindow(const char *label, const char *title,
-                            int width, int height, const char *url, int flags);
+                            int width, int height, int flags);
 
-// Close a window by id. Safe to call with ION_WINDOW_INVALID.
+// Close a window by id, releasing its webviews. Safe with ION_WINDOW_INVALID.
 void        ionCloseWindow(IonWindowId id);
 
 // Number of live windows.
@@ -67,9 +72,42 @@ IonWindowId ionFindWindow(const char *label);
 // Get the label of a live window, or "" if the id is invalid.
 msString    ionWindowLabel(IonWindowId id);
 
-// Evaluate `js` in the target window's webview. No-op if id is invalid.
-// Replaces ionEvalJS for multi-window callers; ionEvalJS targets "main".
-void        ionEvalJSWindow(IonWindowId id, const char *js);
+// The compositor the content is built on. NULL for an invalid id.
+//   ionWindowDevice  Windows: IDCompositionDevice* created on a D2D device
+//                    (DCompositionCreateDevice2), so QueryInterface gives
+//                    IDCompositionDevice2 / IDCompositionDesktopDevice and
+//                    CreateSurface hands out D2D-drawable surfaces.
+//                    macOS, Linux: NULL (the toolkit is the compositor).
+//   ionWindowRoot    Windows: the IDCompositionVisual* targeted at the window.
+//                    macOS: the window's contentView (NSView*).
+//                    Linux: a GtkFixed (GtkWidget*) filling the window.
+// Ion adds nothing to the root; the app parents its content and webview
+// visuals there or below.
+void       *ionWindowDevice(IonWindowId id);
+void       *ionWindowRoot(IonWindowId id);
+
+// Commit the app's compositor changes as one transaction. Windows:
+// IDCompositionDevice::Commit. macOS, Linux: no-op (the toolkit commits).
+void        ionWindowCommit(IonWindowId id);
+
+// Keyboard focus goes back to the app's content (key, text and IME records)
+// after a webview held it.
+void        ionWindowFocusContent(IonWindowId id);
+
+// Where the IME draws its candidate window while the content has focus: the
+// caret rect in device pixels of the client area. Set it whenever the caret
+// moves.
+void        ionWindowSetImeRect(IonWindowId id, int x, int y, int w, int h);
+
+// Pointer shape over the content (a webview sets its own while the app
+// forwards pointer events to it).
+#define ION_CURSOR_ARROW    0
+#define ION_CURSOR_HAND     1
+#define ION_CURSOR_IBEAM    2
+#define ION_CURSOR_CROSS    3
+#define ION_CURSOR_RESIZE_H 4
+#define ION_CURSOR_RESIZE_V 5
+void        ionWindowSetCursor(IonWindowId id, int cursor);
 
 // Window properties. All silently no-op when id is invalid.
 void        ionShowWindow(IonWindowId id);
@@ -85,8 +123,6 @@ void        ionSetWindowDecorations(IonWindowId id, int on);
 void        ionSetWindowContentProtected(IonWindowId id, int on);
 
 // Current drawable size of the window in PIXELS (content area × backing scale).
-// A render-surface consumer reads this on a resize event to re-size its native
-// renderer (e.g. Godot's embedded display server) to the new window size.
 // 0 if the id is invalid.
 int         ionWindowPixelWidth(IonWindowId id);
 int         ionWindowPixelHeight(IonWindowId id);
@@ -96,95 +132,81 @@ int         ionWindowPixelHeight(IonWindowId id);
 // ionFileOpen. Empty string on cancel.
 msString    ionFileOpenWindow(IonWindowId id);
 
-// ---- Render surface ------------------------------------------------------
-//
-// A native rendering layer (Metal / GL / a whole engine view) hosted in a
-// window, z-ordered against the webview. Ion only hosts + composites — it
-// never draws into the surface. The renderer (a game engine, a custom Metal
-// pass, a video decoder) owns the pixels. See docs/RENDER-SURFACE.md.
-//
-// The adopted native view crosses the boundary as an opaque void* (NSView*
-// on macOS, HWND on Windows) — same pure-C rule as the rest of the bridge.
-
-typedef int IonRenderSurfaceId;
-#define ION_RENDER_SURFACE_INVALID (-1)
-
-// z-order relative to the window's webview.
-#define ION_SURFACE_BELOW 0
-#define ION_SURFACE_ABOVE 1
-
-// input-region modes — where OS pointer/keyboard input is routed.
-#define ION_INPUT_NONE 0   // all input → webview (surface is a passive backdrop)
-#define ION_INPUT_FULL 1   // all input → surface (game primary)
-#define ION_INPUT_RECT 2   // input inside (x,y,w,h) → surface, else webview
-
-// Create a surface in `win`, positioned below/above its webview. Returns
-// ION_RENDER_SURFACE_INVALID if the window id is unknown/closed or no slot
-// is free.
-IonRenderSurfaceId ionRenderSurfaceCreate(IonWindowId win, int z);
-
-// Mode A — adopt a native view the renderer already owns. Ion reparents it
-// into the window at the surface's z-slot. No-op if surf invalid or view NULL.
-void  ionRenderSurfaceAdopt(IonRenderSurfaceId surf, void *nativeView);
-
-// Mode A2 (macOS) — adopt a CALayer the renderer draws into (e.g. an embedded
-// engine's CAMetalLayer), embedding it directly into the window at the
-// surface's z-slot. In-process layer sharing — no NSView, no CAContext.
-// caLayer is the CALayer pointer passed as an integer (raw value across the MS
-// boundary — a Ptr would be boxed/refcounted).
-void  ionRenderSurfaceAdoptLayer(IonRenderSurfaceId surf, long long caLayer);
-
-// Mode B — Ion owns the surface; returns a layer the renderer draws into
-// (CAMetalLayer* on macOS). NULL on Windows, where Mode B is
-// ionRenderSurfaceAttachSwapChain.
-void *ionRenderSurfaceLayer(IonRenderSurfaceId surf);
-
-// Mode B (Windows) — the renderer creates an IDXGISwapChain1 with
-// CreateSwapChainForComposition (premultiplied alpha, flip model) on its own
-// D3D11 device, sized to the ION_INPUT_RESIZE pixel size; Ion makes it the
-// content of the surface's DirectComposition visual. The pointer crosses as
-// an integer for the same reason as caLayer above. Returns 1 on success, 0 on
-// an invalid surface or swapchain; always 0 on macOS and Linux.
-int   ionRenderSurfaceAttachSwapChain(IonRenderSurfaceId surf, long long dxgiSwapChain1);
-
-// Where the IME draws its candidate window: the caret rect in device pixels,
-// top-left of the surface. Set it whenever the caret moves.
-void  ionRenderSurfaceSetImeRect(IonRenderSurfaceId surf, int x, int y, int w, int h);
-
-// Low-latency input: a sink the surface host view calls DIRECTLY (main thread,
-// inside event processing) for each mouse event, bypassing the ionPollEvent
-// queue + MS round-trip. The renderer injects straight into its input buffer,
-// flushed on its next frame. Set NULL to fall back to the polled queue (return
-// 4 from ionPollEvent). type: 1=button, 2=motion, 3=wheel.
-//   x,y: position as a FRACTION (0..1) of the surface, top-left origin — the
-//        renderer scales by its own resolution (DPI/resize-independent).
-//   p1/p2: button=(button,pressed); motion=(relX,relY as surface fractions);
-//          wheel=(dx,dy scroll deltas).
-typedef void (*IonInputSink)(int type, double x, double y, double p1, double p2);
-void  ionRenderSurfaceSetInputSink(IonInputSink sink);
-
-// Composite + lifecycle. All silently no-op when surf is invalid.
-void  ionRenderSurfaceSetVisible(IonRenderSurfaceId surf, int visible);
-void  ionRenderSurfaceSyncFrame(IonRenderSurfaceId surf);   // match content-view bounds
-void  ionRenderSurfaceSetInputRegion(IonRenderSurfaceId surf,
-                                     int mode, int x, int y, int w, int h);
-void  ionRenderSurfaceRelease(IonRenderSurfaceId surf);     // detach + destroy
-
+// Frame clock, per window. A window asks for frames on demand (one per
+// ionWindowRequestFrame) or continuously (every display refresh while it is
+// active, or always with ionWindowSetFrameWhenInactive); a minimized or
+// hidden window gets none. Each frame is an input record of type 9.
 #define ION_FRAME_ON_DEMAND  0
 #define ION_FRAME_CONTINUOUS 1
 
-void  ionRenderSurfaceSetFramePolicy(IonRenderSurfaceId surf, int policy);
-void  ionRenderSurfaceSetFrameWhenInactive(IonRenderSurfaceId surf, int enabled);
-void  ionRenderSurfaceRequestFrame(IonRenderSurfaceId surf);
+void  ionWindowSetFramePolicy(IonWindowId id, int policy);
+void  ionWindowSetFrameWhenInactive(IonWindowId id, int enabled);
+void  ionWindowRequestFrame(IonWindowId id);
 
-// ---- Webview as an element ------------------------------------------------
+// ---- Webviews ------------------------------------------------------------
 //
-// The webview's frame in device pixels, top-left of the window's client area.
-// Until the first call it fills the client area and follows resizes; after it,
-// native layout owns the frame. Pointer input inside the frame goes to the
-// webview unless an ION_SURFACE_ABOVE surface's input region claims the point.
-void  ionWebviewSetFrame(IonWindowId win, int x, int y, int w, int h);
-void  ionWebviewSetVisible(IonWindowId win, int visible);
+// A webview is one element of the app's content: an embedded browser engine
+// (WebView2, WKWebView, WebKitGTK) with its own JS runtime that talks to the
+// app over Ion's IPC. Ion creates it inside a window and hands out its
+// native node; the app parents that node wherever its tree puts it and
+// tells Ion the webview's bounds. A webview shows nothing until then.
+//
+// `label` names the webview for IPC: messages it sends carry its id
+// (ionMessageWebviewId), and replies go back to it. Labels are unique per
+// process.
+
+typedef int IonWebviewId;
+#define ION_WEBVIEW_INVALID (-1)
+
+// Create a webview in `win` that loads `url` once the engine is ready.
+// Returns ION_WEBVIEW_INVALID for an unknown window, a missing/duplicate
+// label, a full table, or a missing engine (WebView2Loader.dll / runtime).
+// The first webview freezes the scheme registry (ionRegisterStaticProtocol,
+// ionRegisterAssetScope).
+IonWebviewId ionWebviewCreate(IonWindowId win, const char *label, const char *url);
+
+// Close the webview and free its id. Its node is detached from wherever the
+// app put it.
+void         ionWebviewRelease(IonWebviewId id);
+
+IonWebviewId ionFindWebview(const char *label);
+msString     ionWebviewLabel(IonWebviewId id);
+IonWindowId  ionWebviewWindow(IonWebviewId id);
+
+// The native node to parent. Windows: IDCompositionVisual* (Ion owns it and
+// the browser renders into it). macOS: the WKWebView (NSView*). Linux: the
+// WebKitWebView (GtkWidget*).
+void        *ionWebviewNode(IonWebviewId id);
+
+// The webview's rect in device pixels of the window's client area. The app
+// positions the node in its own tree; Ion needs the absolute rect for the
+// engine's size, popups and the IME.
+void         ionWebviewSetBounds(IonWebviewId id, int x, int y, int w, int h);
+void         ionWebviewSetVisible(IonWebviewId id, int visible);
+// Transparent: the page's default background is clear, so content below it
+// in the app's tree shows through where the page draws nothing.
+void         ionWebviewSetTransparent(IonWebviewId id, int transparent);
+
+void         ionWebviewNavigate(IonWebviewId id, const char *url);
+// MS → JS. Evaluates `js` in the webview's main world.
+void         ionWebviewEval(IonWebviewId id, const char *js);
+
+// Keyboard focus into the webview; key and text input then reach the page
+// directly and produce no input records until ionWindowFocusContent.
+void         ionWebviewFocus(IonWebviewId id);
+
+// Forward one pointer event the app's hit-test gave to this webview.
+// x,y in device pixels relative to the webview's top-left. button:
+// 1 left, 2 right, 3 middle, 4 back, 5 forward (button kinds only).
+// delta: wheel notches, positive = away from the user / to the right.
+#define ION_POINTER_MOVE    1
+#define ION_POINTER_DOWN    2
+#define ION_POINTER_UP      3
+#define ION_POINTER_WHEEL   4
+#define ION_POINTER_HWHEEL  5
+#define ION_POINTER_LEAVE   6
+void         ionWebviewForwardPointer(IonWebviewId id, int kind, double x, double y,
+                                      int button, double delta);
 
 // Pump platform events (SDL+Cocoa on macOS, Win32 on Windows). Caller (MS)
 // calls this in a loop. Windows blocks until it has something to return;
@@ -194,30 +216,31 @@ void  ionWebviewSetVisible(IonWindowId win, int visible);
 //   1  quit requested
 //   2  IPC message popped — read via ionMessageName / ionMessagePayload
 //   3  window lifecycle event — read via ionWindowEventId / ionWindowEventType
-//   4  input event — read via ionInputType / ionInputX / ... (render surface)
+//   4  input record — read via ionInputType / ionInputWindow / ionInputX / ...
 int  ionPollEvent(void);
 
 // Valid only after ionPollEvent returned 2, until the next ionPollEvent call.
-msString    ionMessageName(void);
-msString    ionMessagePayload(void);
-// Which window the IPC message came from, or ION_WINDOW_INVALID for
-// app-global producers (tray, hotkey, notification).
-IonWindowId ionMessageWindowId(void);
+msString     ionMessageName(void);
+msString     ionMessagePayload(void);
+// Which webview sent the IPC message, or ION_WEBVIEW_INVALID for app-global
+// producers (tray, hotkey, notification, deep link).
+IonWebviewId ionMessageWebviewId(void);
 
 // Valid only after ionPollEvent returned 3, until the next ionPollEvent call.
 // Window lifecycle events. Event types: see ION_EVT_* in common/windowEvents.h.
 IonWindowId ionWindowEventId(void);
 int         ionWindowEventType(void);
 
-// Valid only after ionPollEvent returned 4 (input event), until the next call.
-// A render-surface consumer forwards these into its native renderer's input.
-// ionInputSurface is the surface the event belongs to (-1 when the platform
-// does not attribute it yet).
-//   1 button  x,y = position as a FRACTION (0..1) of the surface, top-left
-//             origin (same values the IonInputSink fast path delivers);
-//             p1 = button (1=left, 2=right, 3=middle), p2 = pressed (1/0)
-//   2 motion  x,y as above; p1,p2 = relX,relY as surface fractions
-//   3 wheel   x,y as above; p1,p2 = dx,dy scroll deltas
+// Valid only after ionPollEvent returned 4 (input record), until the next
+// call. Records describe the window's content, never a webview that holds
+// keyboard focus. ionInputWindow is the window the record belongs to.
+// Pointer coordinates are device pixels, top-left of the client area.
+//   1 button  x,y = pointer; p1 = button (1 left, 2 right, 3 middle, 4 back,
+//             5 forward), p2 = pressed (1/0)
+//   2 motion  x,y = pointer; p1,p2 = movement since the previous pointer
+//             record, in device pixels
+//   3 wheel   x,y = pointer; p1,p2 = dx,dy in notches (positive = right /
+//             away from the user)
 //   4 key     p1 = ION_KEY_RELEASE/PRESS/REPEAT; key = ION_KEY code (W3C
 //             KeyboardEvent.code, name via ionKeyName); scancode = native;
 //             mods / consumedMods = ION_MOD_* bits; unshifted = the codepoint
@@ -226,9 +249,10 @@ int         ionWindowEventType(void);
 //   5 text    text = UTF-8 not tied to a key press (IME commit, injected input)
 //   6 preedit text = the IME composition in progress (empty = cleared);
 //             p1 = caret offset in bytes into text
-//   7 focus   p1 = 1 gained / 0 lost
-//   8 resize  p1,p2 = surface width,height in device pixels; x = scale (DPI/96)
+//   7 focus   p1 = 1 the content gained keyboard focus / 0 lost it
+//   8 resize  p1,p2 = client width,height in device pixels; x = scale (DPI/96)
 //   9 frame   x = tick time in ms, monotonic
+//  10 leave   the pointer left the client area
 #define ION_KEY_RELEASE 0
 #define ION_KEY_PRESS   1
 #define ION_KEY_REPEAT  2
@@ -244,25 +268,22 @@ int         ionWindowEventType(void);
 #define ION_MOD_ALT_RIGHT   (1 << 8)
 #define ION_MOD_SUPER_RIGHT (1 << 9)
 
-int      ionInputType(void);
-int      ionInputSurface(void);
-double   ionInputX(void);
-double   ionInputY(void);
-double   ionInputP1(void);
-double   ionInputP2(void);
-int      ionInputKey(void);
-int      ionInputScancode(void);
-int      ionInputMods(void);
-int      ionInputConsumedMods(void);
-int      ionInputUnshifted(void);
-msString ionInputText(void);
+int         ionInputType(void);
+IonWindowId ionInputWindow(void);
+double      ionInputX(void);
+double      ionInputY(void);
+double      ionInputP1(void);
+double      ionInputP2(void);
+int         ionInputKey(void);
+int         ionInputScancode(void);
+int         ionInputMods(void);
+int         ionInputConsumedMods(void);
+int         ionInputUnshifted(void);
+msString    ionInputText(void);
 
 // W3C KeyboardEvent.code name of an ION_KEY code ("KeyA", "ArrowUp"); "" when
 // out of range. The table lives in common/keys.c.
 msString ionKeyName(int key);
-
-// MS → JS. Evaluates `js` in the webview's main world.
-void ionEvalJS(const char *js);
 
 // Open a native file picker (single file, any type). Returns the selected
 // path or "" if the user cancelled. The returned buffer is valid until the
@@ -303,11 +324,11 @@ int      ionKeychainDelete(const char *service, const char *account);
 
 // Register a static-mapping URI scheme: <scheme>://localhost/<path> serves
 // `<baseDir>/<path>` from disk with auto-detected Content-Type. MUST be
-// called BEFORE ionOpen(); subsequent calls after open() return 0.
+// called before the first ionWebviewCreate; later calls return 0.
 //
 // Returns:
 //   1 — registered
-//   0 — frozen (open() already called) / duplicate scheme / invalid baseDir
+//   0 — frozen (a webview exists) / duplicate scheme / invalid baseDir
 //
 // Path-traversal (`..`) blocked. Query string + fragment stripped. URL
 // percent-decoded. Empty path → /index.html. See protoreg.{h,c} for details.
@@ -316,7 +337,7 @@ int ionRegisterStaticProtocol(const char *scheme, const char *baseDir);
 // Register the asset:// scheme with an allowlist of root paths. Requests
 // to `asset://localhost/<abs-path>` are served only if `<abs-path>` is
 // under one of `allowedRoots` (newline-separated absolute paths). MUST be
-// called BEFORE ionOpen().
+// called before the first ionWebviewCreate.
 //
 // Returns:
 //   1 — registered

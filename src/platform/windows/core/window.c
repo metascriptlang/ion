@@ -1,15 +1,10 @@
-// Ion Windows — window lifecycle: ionOpen, ionClose, ionResourcePath.
-//
-// Phase 2: creates the host HWND and kicks off WebView2 child controller
-// init via `ionWebView2Start` (webview/controller.cpp). The async init
-// chain runs through the Win32 message pump (PeekMessageW in poll.c).
-
 #include "../state.h"
 #include "../utf8.h"
 #include "../internal.h"
 #include "../../bridge.h"
 #include "../../common/protoReg.h"
 #include "../../common/frameClock.h"
+#include "../../common/windowRegistry.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,9 +16,10 @@ static int s_active = 1;
 static int s_minimized = 0;
 static int s_cloaked = 0;
 static HWINEVENTHOOK s_cloakHook = NULL;
+static IonWindowId s_mainId = ION_WINDOW_INVALID;
 
 static void reportFrameWindow(void) {
-    ion_frame_window_state(0, s_active, !s_minimized && !s_cloaked);
+    ion_frame_window_state(s_mainId, s_active, !s_minimized && !s_cloaked);
 }
 
 static void CALLBACK onCloak(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject,
@@ -60,8 +56,7 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             s_minimized = wParam == SIZE_MINIMIZED;
             reportFrameWindow();
             if (s_minimized) return 0;
-            ionCompClientResized((int)(short)LOWORD(lParam),
-                                 (int)(short)HIWORD(lParam));
+            ionWinPushResize();
             return 0;
         case WM_DPICHANGED: {
             const RECT *r = (const RECT *)lParam;
@@ -70,11 +65,11 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             SetWindowPos(hwnd, NULL, r->left, r->top, r->right - r->left, r->bottom - r->top,
                          SWP_NOZORDER | SWP_NOACTIVATE);
             GetClientRect(hwnd, &after);
-            if (EqualRect(&before, &after)) ionCompDpiChanged();
+            if (EqualRect(&before, &after)) ionWinPushResize();
             return 0;
         }
         case WM_MOVE:
-            ionWebView2ParentMoved();
+            ionWebView2ParentMoved(s_mainId);
             return 0;
         case WM_GETOBJECT:
             if (ionWebView2HostAutomation(hwnd, wParam, lParam, &handled)) return handled;
@@ -116,8 +111,11 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
                 s_cloaked = 0;
                 ionWebView2RevokeDrop(hwnd);
                 ionWebView2DetachAutomation(hwnd);
-                ionWebView2Shutdown();
+                ionWebView2CloseWindow(s_mainId);
                 ionCompShutdown();
+                ion_frame_window_close(s_mainId);
+                ion_registry_free(s_mainId);
+                s_mainId = ION_WINDOW_INVALID;
                 s_mainHwnd = NULL;
                 PostQuitMessage(0);
             }
@@ -145,72 +143,56 @@ static int ensureWindowClass(void) {
     return 1;
 }
 
-int ionOpen(const char *title, int width, int height, const char *url) {
-    if (s_mainHwnd != NULL) ionClose();
-    if (!ensureWindowClass()) return 0;
-
-    // Freeze custom-protocol registry — no more registerStaticProtocol /
-    // registerAssetScope calls past this point. ionBuildEnvOptions reads
-    // the now-immutable registry inside ionWebView2Start below.
-    ionProtoFreeze();
+IonWindowId ionCreateWindow(const char *label, const char *title, int width, int height, int flags) {
+    if (s_mainHwnd != NULL) {
+        fprintf(stderr, "[ion] ionCreateWindow '%s': Windows hosts one window today\n", label ? label : "");
+        return ION_WINDOW_INVALID;
+    }
+    if (!ensureWindowClass()) return ION_WINDOW_INVALID;
+    IonWindowId id = ion_registry_alloc(label);
+    if (id == ION_WINDOW_INVALID) return ION_WINDOW_INVALID;
 
     UINT dpi = GetDpiForSystem();
     int w = MulDiv(width  > 0 ? width  : 1280, (int)dpi, 96);
     int h = MulDiv(height > 0 ? height : 720,  (int)dpi, 96);
+    DWORD style = (flags & ION_WIN_DECORATIONS) ? WS_OVERLAPPEDWINDOW : WS_POPUP;
+    if (!(flags & ION_WIN_RESIZABLE)) style &= ~(DWORD)(WS_THICKFRAME | WS_MAXIMIZEBOX);
+    DWORD exStyle = (flags & ION_WIN_ALWAYS_ON_TOP) ? WS_EX_TOPMOST : 0;
 
     wchar_t *wtitle = ionUtf8ToWide(title && title[0] ? title : "ion");
-    if (wtitle == NULL) return 0;
-
-    HWND hwnd = CreateWindowExW(
-        0,
-        kIonClassName,
-        wtitle,
-        WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT,
-        w, h,
-        NULL, NULL,
-        s_hInstance,
-        NULL
-    );
+    if (wtitle == NULL) { ion_registry_free(id); return ION_WINDOW_INVALID; }
+    HWND hwnd = CreateWindowExW(exStyle, kIonClassName, wtitle, style,
+                                CW_USEDEFAULT, CW_USEDEFAULT, w, h, NULL, NULL, s_hInstance, NULL);
     free(wtitle);
+    if (hwnd == NULL) { ion_registry_free(id); return ION_WINDOW_INVALID; }
 
-    if (hwnd == NULL) return 0;
     s_mainHwnd = hwnd;
+    s_mainId = id;
     if (!ionCompInit(hwnd)) {
         DestroyWindow(hwnd);
-        s_mainHwnd = NULL;
-        return 0;
+        return ION_WINDOW_INVALID;
     }
+    ion_frame_window_open(id);
     ionWebView2RegisterDrop(hwnd);
     s_cloakHook = SetWinEventHook(EVENT_OBJECT_CLOAKED, EVENT_OBJECT_UNCLOAKED, NULL, onCloak,
                                   GetCurrentProcessId(), 0, WINEVENT_OUTOFCONTEXT);
     if (s_cloakHook == NULL) fprintf(stderr, "[ion] cloak hook failed (%lu)\n", GetLastError());
-    ShowWindow(hwnd, SW_SHOW);
-    UpdateWindow(hwnd);
+    if (flags & ION_WIN_VISIBLE) {
+        ShowWindow(hwnd, SW_SHOW);
+        UpdateWindow(hwnd);
+    }
+    ionWinPushResize();
 
-    // Kick off WebView2 init — async, will complete via the message pump.
-    // A 0 return here means the loader DLL is missing or the runtime isn't
-    // installed; we still keep the window open so the user can see a clear
-    // failure surface (white window + stderr message) rather than nothing.
-    ionWebView2Start(hwnd, url);
-
-    // Replay any cold-start deep link captured in ionInit. The IPC queue
-    // persists across runLoop entry, so this fires when MS-side listeners
-    // get drained for the first time. Matches mac's NSAppleEventManager
-    // behavior where queued AppleEvents fire on first run-loop pump.
     if (s_coldStartUrl[0] != '\0') {
         ionEnqueueMessage("deeplink", s_coldStartUrl);
         s_coldStartUrl[0] = '\0';
     }
-    return 1;
+    return id;
 }
 
-void ionClose(void) {
-    if (s_mainHwnd != NULL) {
-        // WM_DESTROY handler will call ionWebView2Shutdown + clear s_mainHwnd.
-        DestroyWindow(s_mainHwnd);
-        s_mainHwnd = NULL;
-    }
+void ionCloseWindow(IonWindowId id) {
+    HWND hwnd = ionWinHwnd(id);
+    if (hwnd != NULL) DestroyWindow(hwnd);
 }
 
 HWND ionGetMainHwnd(void) {
@@ -257,34 +239,28 @@ msString ionResourcePath(void) {
     return cStringToMs(s_resourcePath);
 }
 
-// ---- Multi-window stubs ---------------------------------------------------
-//
-// Windows multi-window port is deferred — these keep the cross-compile link
-// step happy while macOS implements the real registry. Apps using only the
-// legacy ionOpen/ionClose path are unaffected.
-
-IonWindowId ionCreateWindow(const char *label, const char *title,
-                            int width, int height, const char *url, int flags) {
-    (void)label; (void)flags;
-    return ionOpen(title, width, height, url) ? 0 : ION_WINDOW_INVALID;
+IonWindowId ionGetMainWindowId(void) {
+    return s_mainId;
 }
 
-void ionCloseWindow(IonWindowId id) {
-    (void)id;
-    ionClose();
+HWND ionWinHwnd(IonWindowId id) {
+    return id != ION_WINDOW_INVALID && id == s_mainId ? s_mainHwnd : NULL;
 }
 
 int ionWindowCount(void) {
     return s_mainHwnd ? 1 : 0;
 }
 
-void ionEvalJSWindow(IonWindowId id, const char *js) {
-    (void)id;
-    ionEvalJS(js);
+int ionWindowPixelWidth(IonWindowId id) {
+    RECT rc;
+    HWND hwnd = ionWinHwnd(id);
+    return hwnd && GetClientRect(hwnd, &rc) ? rc.right - rc.left : 0;
 }
 
-IonWindowId ionMessageWindowId(void) {
-    return ION_WINDOW_INVALID;
+int ionWindowPixelHeight(IonWindowId id) {
+    RECT rc;
+    HWND hwnd = ionWinHwnd(id);
+    return hwnd && GetClientRect(hwnd, &rc) ? rc.bottom - rc.top : 0;
 }
 
 void ionShowWindow(IonWindowId id)                          { (void)id; }
