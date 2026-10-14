@@ -34,6 +34,9 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 | `ionWakeLoop` from any thread, `onWake` | ✍️ written, uncompiled | ✅ measured 2026-10-15 | ✍️ written, uncompiled | event in the Win32 wait list / `SDL_PushEvent(SDL_EVENT_USER)` / `GCond` signalled into the 16 ms wait |
 | Text clipboard (`readClipboardText`, `writeClipboardText`) | ✍️ written, uncompiled | ✅ measured 2026-10-15 | ✍️ written, uncompiled | `CF_UNICODETEXT` / `NSPasteboard` / `GtkClipboard` |
 | IME preedit cursor in UTF-16 units | ✍️ written, uncompiled | ✍️ written, not driven (needs an IME) | ✍️ written, uncompiled | the conversion `ion_utf16_units` is tested (`test/common/utf16.ms`); `GCS_CURSORPOS` and `NSRange` are already UTF-16 |
+| Audio file playback (`loadSound`, play, pause, stop, seek, volume, loop, mute, rate, status) | ⛔ unbuilt | ✅ | ⛔ unbuilt | `common/audio.c` on miniaudio `ma_engine`; same C file on all three |
+| Audio PCM streams (`openAudioOutput` / `openAudioInput`, ring buffer, underrun counter) | ⛔ unbuilt | ✅ | ⛔ unbuilt | `common/audio.c`: `ma_device` + SPSC `ma_pcm_rb`, C-only device callback |
+| Audio recording (`startRecording`, pause, resume, stop, status) | ⛔ unbuilt | ✅ | ⛔ unbuilt | `common/audio.c`: capture `ma_device` into `ma_encoder`, WAV 16-bit only |
 | OTA `check` / `download` / verify | ✅ | ✅ | ✅ | pure MS (`src/update.ms`) |
 | OTA `apply` (install + relaunch) | ✅ | ⛔ stub | ⛔ stub | `update/install.{m,c}` |
 
@@ -47,6 +50,18 @@ driven by a real IME.
 
 Native LOC: macOS 1715 · Windows 2119 · Linux 1508 · shared C 1392.
 MetaScript LOC: 2016 across 20 modules.
+
+Audio, measured 2026-10-15 on a Windows 11 host with `msc` v0.3.3, default devices: `examples/audio.ms` recorded
+2 s mono 48 kHz (`out/rec.wav`, 192044 bytes, 96000 frames, nonzero samples, read back with Python `wave`), loaded it
+at `durationMs=2000`, seek to 1200 ms landed at 1200, `finished` flipped true once at position 2000, a 440 Hz sine
+written from MetaScript as 94 x 1024 frames at 48 kHz gave `underruns=0`, and `x.m4a` returned
+`unsupported audio format .m4a`. A probe decoded wav, flac, mp3 and ogg vorbis (ffmpeg-made, 2 s each; duration 2000 ms,
+`finished` once). Format set: playback wav, flac, mp3, ogg vorbis (miniaudio decoders + vendored `stb_vorbis`);
+recording WAV only; anything else is a named error and m4a/aac has no decoder. `rate` is pitch (speed and pitch move
+together). macOS and Linux are written and uncompiled: the same `audio.c` plus `-framework CoreFoundation/CoreAudio/AudioToolbox`
+and `-ldl -lpthread -lm` in `src/audio.ms`; neither host was run. Limits: status is polled until `ionWakeLoop`
+lands (the call goes in the sound end callback in `audio.c`); the recording callback writes the file on the device
+thread, so a slow disk drops input; no device enumeration, effects or MetaScript audio callback.
 
 Project generation, measured 2026-09-22: macOS and iOS arm64 development
 applications build through Xcode. iOS simulator Debug/Release launch, ad-hoc
