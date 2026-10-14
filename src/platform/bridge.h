@@ -322,6 +322,11 @@ void ionSetContentProtected(int on);
 // URL. Used by OAuth loopback flows to launch the provider's consent page.
 void ionOpenExternal(const char *url);
 
+// Text clipboard, UTF-8. Read returns "" when there is no text or the
+// clipboard could not be opened. Write returns 1 on success, 0 on failure.
+msString ionClipboardRead(void);
+int      ionClipboardWrite(const char *text);
+
 // Keychain — secure secret store (macOS only in Phase 4.6; Win/Linux fall
 // back to file storage in MS-side wrapper). Items are indexed by
 // (service, account). `value` is a UTF-8 string.

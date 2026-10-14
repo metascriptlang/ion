@@ -35,6 +35,7 @@ export {
 	WindowEventResized, WindowEventMoved,
 } from "./windowManager";
 export { openFile } from "./dialog";
+export { readClipboardText, writeClipboardText } from "./clipboard";
 export { openExternal } from "./shell";
 export { setContentProtected } from "./security";
 export { setSecret, getSecret, deleteSecret } from "./keychain";
