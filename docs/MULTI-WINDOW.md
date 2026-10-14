@@ -1,5 +1,11 @@
 # Multi-Window Design
 
+> Superseded on 2026-10-15 for window content and IPC targeting: a window no longer takes a
+> `url` and has no webview of its own, `open()` / `close()` / `ionEvalJSWindow` are gone, and
+> emit and command replies route by webview label. The contract and its reasons are in
+> [WINDOW-CONTENT.md](WINDOW-CONTENT.md); the code examples below that pass a `url` or target a
+> window label describe the earlier design.
+
 Tauri-style generic multi-window support for ion. Every window is a peer —
 each has a unique label, its own webview, its own IPC channel. No
 "main vs secondary" distinction at the framework level.
@@ -144,13 +150,8 @@ Mirrors the existing `__call` / `__response` pair (protocol.ts ↔ protocol.h):
 
 ### Backward Compatibility
 
-v0 `open()` / `close()` / `runLoop()` keep working — they map to:
-
-```ms
-// open("Title", 1280, 800, url) → createWindow("main", { ... })
-// close() → closeWindow(getWindow("main"))
-// runLoop() → unchanged (already pumps events)
-```
+`open()` / `close()` were removed on 2026-10-15; a window is created empty and the app adds
+webviews (`src/webview.ms`).
 
 ## C Bridge
 
