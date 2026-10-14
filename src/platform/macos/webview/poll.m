@@ -114,3 +114,5 @@ int ionWindowPixelHeight(IonWindowId id) {
     SDL_GetWindowSizeInPixels(st->sdlWindow, &w, &h);
     return h;
 }
+
+void ionLoopArm(void) {}

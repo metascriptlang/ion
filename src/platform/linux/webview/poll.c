@@ -39,3 +39,5 @@ msString    ionMessageName(void)     { return cStringToMs(ion_queue_last_name())
 msString    ionMessagePayload(void)  { return cStringToMs(ion_queue_last_payload()); }
 IonWindowId ionWindowEventId(void)   { return s_lastWevtId; }
 int         ionWindowEventType(void) { return s_lastWevtType; }
+
+void ionLoopArm(void) {}

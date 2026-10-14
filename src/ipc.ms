@@ -33,6 +33,7 @@
 @compile("./platform/common/json_extract.c");
 @compile("./platform/common/mime.c");
 @compile("./platform/common/protoReg.c");
+@compile("./platform/common/mscLoop.c");
 
 when (macos) {
 	@compile("./platform/macos/state.m", "-fobjc-arc");
@@ -170,7 +171,7 @@ when (windows) {
 }
 
 import {
-	ionPollEvent,
+	ionPollEvent, ionLoopArm,
 	ionMessageName, ionMessagePayload, ionMessageWebviewId,
 	ionWindowEventId, ionWindowEventType, ionWindowLabel,
 	ionInputType,
@@ -179,6 +180,10 @@ import {
 import { dispatchWindowEvent } from "./windowManager";
 import { routeEmit } from "./webview";
 import { dispatchInput } from "./input";
+
+// msc's own loop: timers, spawn and actor completions. Ion's loop runs it
+// without blocking each turn; ionLoopArm then tells the pump when to wake for it.
+extern function msRunOnce(timeoutMs: int32): boolean;
 
 export type Handler = (name: string, payload: string) => void;
 
@@ -202,12 +207,14 @@ export function messageWebviewId(): int32 {
 // and src/platform/common/protocol.h (ION_CHANNEL_EMIT).
 const CHANNEL_EMIT = "__emit";
 
-// Block on the SDL event loop, dispatching IPC messages to registered
-// listeners. Returns when the user closes the window (or Cmd+Q). Tears
-// down ion afterwards.
+// Block on the platform event loop, dispatching IPC messages to registered
+// listeners and running msc's timers and completions. Returns when the
+// user closes the window (or Cmd+Q). Tears down ion afterwards.
 export function runLoop(): void {
 	let running = true;
 	while (running) {
+		msRunOnce(0 as int32);
+		ionLoopArm();
 		const evt = ionPollEvent();
 		if (evt === 1) {
 			running = false;

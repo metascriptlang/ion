@@ -217,7 +217,14 @@ void         ionWebviewForwardPointer(IonWebviewId id, int kind, double x, doubl
 //   2  IPC message popped — read via ionMessageName / ionMessagePayload
 //   3  window lifecycle event — read via ionWindowEventId / ionWindowEventType
 //   4  input record — read via ionInputType / ionInputWindow / ionInputX / ...
+//   5  msc's loop has work due (a timer expired or a completion arrived)
 int  ionPollEvent(void);
+
+// Call after msRunOnce(0), before ionPollEvent, every turn. Tells the pump
+// when msc's loop next needs to run so ionPollEvent can wake for it (Windows:
+// a timeout, plus a watcher on msc's completion port; macOS and Linux poll
+// every 16 ms and need nothing).
+void ionLoopArm(void);
 
 // Valid only after ionPollEvent returned 2, until the next ionPollEvent call.
 msString     ionMessageName(void);

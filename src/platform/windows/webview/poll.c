@@ -1,9 +1,16 @@
 // Ion Windows — event pump + IPC message accessor.
 //
 // ionPollEvent blocks until it has something to return: an IPC message, an
-// input or frame record, or quit. While waiting it sleeps in
-// MsgWaitForMultipleObjectsEx on the message queue and, only while a window
-// is due a frame, on the vsync thread's tick event.
+// input or frame record, a reason to run msc's loop, or quit. While waiting it
+// sleeps in MsgWaitForMultipleObjectsEx on the message queue, the msc-ready
+// event, and, only while a window is due a frame, the vsync thread's tick
+// event. The wait times out when msc's next timer is due.
+//
+// msc's loop waits on an I/O completion port, which MsgWait cannot see. A
+// watcher thread blocks on that port instead; when an entry arrives it puts
+// the entry back, signals s_mscReady and parks until the loop thread has run
+// msc (ionLoopArm), so it does not spin on the entry it just re-posted. This
+// is Electron's NodeBindingsWin shape.
 //
 // WebView2 async callbacks (env created, controller created, web message
 // received, navigation starting) are delivered through the Win32 message
@@ -15,6 +22,8 @@
 #include "../../common/queue.h"
 #include "../../common/inputEvents.h"
 #include "../../common/frameClock.h"
+#include "../../common/mscLoop.h"
+#include "runtime/promise/dispatch.h"
 
 #include <stdio.h>
 
@@ -23,6 +32,11 @@ static HANDLE        s_tick;
 static volatile LONG64 s_tickCounter;
 static LARGE_INTEGER s_freq;
 static int           s_clockFailed;
+
+static HANDLE        s_mscReady;
+static HANDLE        s_mscDrained;
+static int           s_mscTimed;
+static ULONGLONG     s_mscDeadline;
 
 typedef DWORD (WINAPI *WaitCompositorClockFn)(UINT count, const HANDLE *handles, DWORD timeoutMs);
 static WaitCompositorClockFn s_waitCompositorClock;
@@ -70,6 +84,43 @@ static double tickMs(void) {
     return (double)InterlockedCompareExchange64(&s_tickCounter, 0, 0) * 1000.0 / (double)s_freq.QuadPart;
 }
 
+static DWORD WINAPI mscWatcher(void *arg) {
+    HANDLE iocp = (HANDLE)arg;
+    for (;;) {
+        DWORD bytes;
+        ULONG_PTR key;
+        OVERLAPPED *ov;
+        BOOL ok = GetQueuedCompletionStatus(iocp, &bytes, &key, &ov, INFINITE);
+        if (!ok && ov == NULL) return 0;
+        // Reset before re-posting: a drain that sees the entry then comes
+        // after the reset, so the wait below cannot pass on a stale signal.
+        ResetEvent(s_mscDrained);
+        PostQueuedCompletionStatus(iocp, bytes, key, ov);
+        SetEvent(s_mscReady);
+        WaitForSingleObject(s_mscDrained, INFINITE);
+    }
+}
+
+static void startWatcher(void) {
+    if (s_mscReady != NULL) return;
+    s_mscReady = CreateEventW(NULL, FALSE, FALSE, NULL);
+    s_mscDrained = CreateEventW(NULL, FALSE, FALSE, NULL);
+    HANDLE thread = CreateThread(NULL, 0, mscWatcher, msGetDispatcher()->iocp, 0, NULL);
+    if (s_mscReady == NULL || s_mscDrained == NULL || thread == NULL) {
+        fprintf(stderr, "[ion] msc watcher: start failed (%lu)\n", GetLastError());
+        abort();
+    }
+    CloseHandle(thread);
+}
+
+void ionLoopArm(void) {
+    startWatcher();
+    int delay = ion_msc_next_delay_ms();
+    s_mscTimed = delay >= 0;
+    if (s_mscTimed) s_mscDeadline = GetTickCount64() + (ULONGLONG)delay;
+    SetEvent(s_mscDrained);
+}
+
 int ionPollEvent(void) {
     for (;;) {
         if (ion_queue_pop()) return 2;
@@ -91,14 +142,29 @@ int ionPollEvent(void) {
         if (s_mainHwnd == NULL) return 1;
 
         int wanted = ion_frame_wanted() && startClock();
-        if (s_tick == NULL) {
-            MsgWaitForMultipleObjectsEx(0, NULL, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
-            continue;
+        HANDLE handles[2];
+        DWORD count = 0;
+        handles[count++] = s_mscReady;
+        DWORD tickIndex = (DWORD)-1;
+        if (s_tick != NULL) {
+            if (wanted) SetEvent(s_want);
+            else ResetEvent(s_want);
+            tickIndex = count;
+            handles[count++] = s_tick;
         }
-        if (wanted) SetEvent(s_want);
-        else ResetEvent(s_want);
-        DWORD r = MsgWaitForMultipleObjectsEx(1, &s_tick, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
-        if (r == WAIT_OBJECT_0) ion_frame_emit(tickMs());
+        DWORD timeout = INFINITE;
+        if (s_mscTimed) {
+            ULONGLONG now = GetTickCount64();
+            if (s_mscDeadline <= now) return 5;
+            timeout = (DWORD)(s_mscDeadline - now);
+        }
+        DWORD r = MsgWaitForMultipleObjectsEx(count, handles, timeout, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        if (r == WAIT_FAILED) {
+            fprintf(stderr, "[ion] MsgWaitForMultipleObjectsEx failed (%lu)\n", GetLastError());
+            abort();
+        }
+        if (r == WAIT_TIMEOUT || r == WAIT_OBJECT_0) return 5;
+        if (r == WAIT_OBJECT_0 + tickIndex) ion_frame_emit(tickMs());
     }
 }
 
