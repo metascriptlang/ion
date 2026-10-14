@@ -346,9 +346,7 @@ static void imeComposition(HWND hwnd, int win, LPARAM lParam) {
         LONG cursor = n;
         if (lParam & GCS_CURSORPOS) cursor = ImmGetCompositionStringW(himc, GCS_CURSORPOS, NULL, 0);
         if (cursor < 0 || cursor > n) cursor = n;
-        char head[2048];
-        int offset = utf16ToUtf8(wbuf, (int)cursor, head, sizeof head);
-        pushText(ION_INPUT_PREEDIT, win, utf8, offset);
+        pushText(ION_INPUT_PREEDIT, win, utf8, (double)cursor);
         s_preeditActive = utf8[0] != '\0';
     }
     if (lParam == 0 && s_preeditActive) {

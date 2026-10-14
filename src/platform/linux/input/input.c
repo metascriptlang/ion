@@ -8,6 +8,7 @@
 #include "../../bridge.h"
 #include "../../common/inputEvents.h"
 #include "../../common/keys.h"
+#include "../../common/utf16.h"
 
 #include <gdk/gdk.h>
 #include <gdk/gdkkeysyms.h>
@@ -308,7 +309,7 @@ static void onPreeditChanged(GtkIMContext *im, gpointer data) {
     r.type = ION_INPUT_PREEDIT;
     r.window = st->id;
     r.text = str ? str : "";
-    r.p1 = str ? (double)(g_utf8_offset_to_pointer(str, cursor) - str) : 0;
+    r.p1 = str ? (double)ion_utf16_units(str, cursor) : 0;
     ion_input_push_record(&r);
     g_free(str);
 }

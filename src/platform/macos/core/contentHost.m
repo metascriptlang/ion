@@ -369,8 +369,7 @@ static void installPointerMonitor(void) {
         ? [(NSAttributedString *)string string] : (NSString *)string;
     self.marked = s;
     NSUInteger loc = MIN(selected.location == NSNotFound ? s.length : selected.location, s.length);
-    pushText(ION_INPUT_PREEDIT, self.win, s,
-             (double)[[s substringToIndex:loc] lengthOfBytesUsingEncoding:NSUTF8StringEncoding]);
+    pushText(ION_INPUT_PREEDIT, self.win, s, (double)loc);
 }
 
 - (void)unmarkText {

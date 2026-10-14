@@ -92,6 +92,8 @@ const _frameHandlers: FrameHandler[] = [];
 export function onPointer(fn: PointerHandler): void { _pointerHandlers.push(fn); }
 export function onKey(fn: KeyHandler): void { _keyHandlers.push(fn); }
 export function onText(fn: TextHandler): void { _textHandlers.push(fn); }
+// `cursor` is in UTF-16 code units into `text`, the unit of every MetaScript string index.
+// An empty `text` ends the composition.
 export function onImePreedit(fn: PreeditHandler): void { _preeditHandlers.push(fn); }
 export function onFocus(fn: FocusHandler): void { _focusHandlers.push(fn); }
 export function onResize(fn: ResizeHandler): void { _resizeHandlers.push(fn); }
