@@ -143,7 +143,6 @@ function vcxproj(target: Target, root: string): string {
 	]);
 	for (const asset of target.assets) out.push("    <None Include=\"" + xml(windowsPath(root + "/" + asset)) + "\" />");
 	out = out.concat([
-		"    <None Include=\"" + target.name + ".ms\" />",
 		"    <None Include=\"" + target.name + ".rc\" />",
 		"    <None Include=\"" + target.name + ".manifest\" />",
 		"    <None Include=\"build.cmd\" />",
@@ -204,15 +203,10 @@ function manifest(target: Target): string {
 	]);
 }
 
-function entryModule(target: Target, root: string): string {
-	const entry = (root + "/" + target.entry.slice(0, target.entry.length - 3)).replaceAll("\\", "/");
-	return "@link(" + JSON.stringify("./obj/" + target.name + ".res") + ");\n" +
-		"import " + JSON.stringify(entry) + ";\n";
-}
-
 function buildScript(target: Target, root: string, compiler: string, ionRoot: string): Result<string, string> {
 	const msc = try cmdSafe("compiler path", compiler);
 	const loader = try cmdSafe("Ion checkout", ionRoot + "/vendor/webview2/runtime/x64/WebView2Loader.dll");
+	const entry = try cmdSafe("entry", root + "/" + target.entry);
 	const exe = "\"%out%" + target.name + ".exe\"";
 	let out: string[] = [
 		"@echo off",
@@ -227,7 +221,7 @@ function buildScript(target: Target, root: string, compiler: string, ionRoot: st
 		"if not exist \"%out%\" mkdir \"%out%\"",
 		"rc.exe /nologo /fo \"%~dp0obj\\" + target.name + ".res\" \"%~dp0" + target.name + ".rc\" || goto fail",
 		"pushd \"%work%msc\"",
-		"\"" + msc + "\" build \"%~dp0" + target.name + ".ms\" %mode% \"--output=%out%" + target.name + ".exe\" || goto fail",
+		"\"" + msc + "\" build \"" + entry + "\" %mode% \"--link=%~dp0obj\\" + target.name + ".res\" \"--output=%out%" + target.name + ".exe\" || goto fail",
 		"popd",
 		"copy /y \"" + loader + "\" \"%out%\" >nul || goto fail",
 		"if exist \"%out%resources\" rmdir /s /q \"%out%resources\"",
@@ -265,7 +259,6 @@ export function visualStudioProject(graph: Graph, root: string, compiler: string
 		files.push({ path: directory + target.name + ".vcxproj", content: vcxproj(target, root) });
 		files.push({ path: directory + target.name + ".rc", content: resource(target) });
 		files.push({ path: directory + target.name + ".manifest", content: manifest(target) });
-		files.push({ path: directory + target.name + ".ms", content: entryModule(target, root) });
 		const script = try buildScript(target, root, compiler, ionRoot);
 		files.push({ path: directory + "build.cmd", content: script });
 	}
