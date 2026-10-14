@@ -1,5 +1,6 @@
 #include "inputEvents.h"
 #include "strconv.h"
+#include "windowRegistry.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -36,7 +37,7 @@ int ion_input_push(int type, double x, double y, double p1, double p2) {
     IonInputRecord r;
     memset(&r, 0, sizeof r);
     r.type = type;
-    r.surface = -1;
+    r.window = -1;
     r.x = x;
     r.y = y;
     r.p1 = p1;
@@ -54,7 +55,7 @@ int ion_input_next(void) {
 }
 
 int      ionInputType(void)         { return s_current.type; }
-int      ionInputSurface(void)      { return s_current.surface; }
+IonWindowId ionInputWindow(void)  { return s_current.window; }
 double   ionInputX(void)            { return s_current.x; }
 double   ionInputY(void)            { return s_current.y; }
 double   ionInputP1(void)           { return s_current.p1; }

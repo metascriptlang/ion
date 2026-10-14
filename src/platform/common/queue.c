@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 typedef struct ion_msg_node {
-    IonWindowId          windowId;
+    int                  webview;
     char                *name;     // strdup'd
     char                *payload;  // strdup'd
     struct ion_msg_node *next;
@@ -14,16 +14,16 @@ static ion_msg_node_t *s_head = NULL;
 static ion_msg_node_t *s_tail = NULL;
 static char           *s_last_name      = NULL;
 static char           *s_last_payload   = NULL;
-static IonWindowId     s_last_window_id = ION_WINDOW_INVALID;
+static int             s_last_webview   = -1;
 
-int ion_queue_push_w(IonWindowId windowId, const char *name, const char *payload) {
+int ion_queue_push_w(int webview, const char *name, const char *payload) {
     if (name == NULL) return -1;
     ion_msg_node_t *node = (ion_msg_node_t *)malloc(sizeof(ion_msg_node_t));
     if (node == NULL) {
         fprintf(stderr, "[ion] queue_push: malloc failed; message dropped (name=%s)\n", name);
         return -1;
     }
-    node->windowId = windowId;
+    node->webview  = webview;
     node->name     = strdup(name);
     node->payload  = strdup(payload ? payload : "");
     if (node->name == NULL || node->payload == NULL) {
@@ -44,7 +44,7 @@ int ion_queue_push_w(IonWindowId windowId, const char *name, const char *payload
 }
 
 int ion_queue_push(const char *name, const char *payload) {
-    return ion_queue_push_w(ION_WINDOW_INVALID, name, payload);
+    return ion_queue_push_w(-1, name, payload);
 }
 
 int ion_queue_pop(void) {
@@ -54,7 +54,7 @@ int ion_queue_pop(void) {
     ion_msg_node_t *node = s_head;
     s_last_name      = node->name;
     s_last_payload   = node->payload;
-    s_last_window_id = node->windowId;
+    s_last_webview   = node->webview;
     s_head = node->next;
     if (s_head == NULL) s_tail = NULL;
     free(node);
@@ -69,6 +69,10 @@ const char *ion_queue_last_payload(void) {
     return s_last_payload ? s_last_payload : "";
 }
 
-IonWindowId ion_queue_last_window_id(void) {
-    return s_last_window_id;
+int ion_queue_last_webview(void) {
+    return s_last_webview;
+}
+
+int ionMessageWebviewId(void) {
+    return s_last_webview;
 }

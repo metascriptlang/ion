@@ -9,7 +9,7 @@
 extern function ion_input_push(type: int32, x: float64, y: float64, p1: float64, p2: float64): int32;
 extern function ion_input_next(): int32;
 extern function ionInputType(): int32;
-extern function ionInputSurface(): int32;
+extern function ionInputWindow(): int32;
 extern function ionInputX(): float64;
 extern function ionInputP1(): float64;
 extern function ionInputP2(): float64;
@@ -42,7 +42,7 @@ test "a pointer shorthand record has no surface and no text" {
 	drain();
 	ion_input_push(2 as int32, 0.1, 0.2, 0.01, 0.02);
 	assert ion_input_next() === 1 as int32;
-	assert ionInputSurface() === -1 as int32;
+	assert ionInputWindow() === -1 as int32;
 	assert ionInputText() === "";
 }
 

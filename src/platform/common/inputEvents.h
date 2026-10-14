@@ -1,13 +1,13 @@
 // Input event queue — small ring buffer, single-threaded FIFO.
 //
-// Producers: the platform's render-surface host (pointer, key, text, IME
-// preedit, focus, resize). Consumer: ionPollEvent → ion_input_next → returns 4
-// → MS reads the current record through the ionInput* accessors, defined once
-// in inputEvents.c for every platform.
+// Producers: the platform's window host (pointer, key, text, IME preedit,
+// focus, resize, leave) and the frame clock. Consumer: ionPollEvent →
+// ion_input_next → returns 4 → MS reads the current record through the
+// ionInput* accessors, defined once in inputEvents.c for every platform.
 //
-// Pointer coordinates are a FRACTION (0..1) of the surface, top-left origin —
-// the same values the IonInputSink fast path delivers. Field meaning per type
-// is documented beside the accessors in bridge.h.
+// Every record names its window. Pointer coordinates are device pixels of the
+// window's client area. Field meaning per type is documented beside the
+// accessors in bridge.h.
 
 #ifndef ION_INPUT_EVENTS_H
 #define ION_INPUT_EVENTS_H
@@ -25,10 +25,11 @@ extern "C" {
 #define ION_INPUT_FOCUS   7
 #define ION_INPUT_RESIZE  8
 #define ION_INPUT_FRAME   9
+#define ION_INPUT_LEAVE   10
 
 typedef struct {
     int         type;
-    int         surface;
+    int         window;
     double      x, y, p1, p2;
     int         key;
     int         scancode;

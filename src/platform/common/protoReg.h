@@ -2,7 +2,7 @@
 // + asset:// scope allowlist. Platform impls (macOS WKURLSchemeHandler, Windows
 // WebView2 WebResourceRequested) call ionProtoLookup() to serve a request.
 //
-// Registry is mutable until ionProtoFreeze() is called (at ionOpen() time),
+// Registry is mutable until ionProtoFreeze() is called (when the first webview is created),
 // then read-only. Reads after freeze are thread-safe by construction — the
 // platform callback (WebKit main thread / WebView2 COM thread) reads immutable
 // memory.
@@ -38,7 +38,7 @@ IonProtoStatus ionProtoRegister(const char *scheme, const char *baseDir);
 IonProtoStatus ionProtoRegisterAsset(const char *roots);
 
 // Freeze the registry — subsequent register calls fail with IonProtoFrozen.
-// Called from ionOpen().
+// Called when the first webview is created.
 void ionProtoFreeze(void);
 
 // True after freeze. Used by bridge wrappers to log a clear "register too

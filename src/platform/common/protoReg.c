@@ -315,7 +315,7 @@ int ionRegisterStaticProtocol(const char *scheme, const char *baseDir) {
     if (s == IonProtoOk) return 1;
     if (s == IonProtoFrozen) {
         fprintf(stderr,
-            "[ion] ionRegisterStaticProtocol(\"%s\") called after ionOpen() — ignored\n",
+            "[ion] ionRegisterStaticProtocol(\"%s\") called after the first webview — ignored\n",
             scheme ? scheme : "(null)");
     }
     return 0;
@@ -325,7 +325,7 @@ int ionRegisterAssetScope(const char *allowedRoots) {
     IonProtoStatus s = ionProtoRegisterAsset(allowedRoots);
     if (s == IonProtoOk) return 1;
     if (s == IonProtoFrozen) {
-        fprintf(stderr, "[ion] ionRegisterAssetScope called after ionOpen() — ignored\n");
+        fprintf(stderr, "[ion] ionRegisterAssetScope called after the first webview — ignored\n");
     }
     return 0;
 }
