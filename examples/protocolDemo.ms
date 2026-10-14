@@ -16,10 +16,11 @@
 // counter persists across reload. Stdout shows "MS ← demo.ready: demo://localhost".
 
 import {
-	open, listen, runLoop,
+	listen, runLoop,
 	registerStaticProtocol,
 } from "../src/index";
-import { cwd } from "std/process";
+import { openPage } from "./content/page";
+import { cwd, exit } from "std/process";
 
 function main(): int32 {
 	// Absolute baseDir — examples/demoAssets/ relative to wherever we ran from.
@@ -32,8 +33,7 @@ function main(): int32 {
 		return 1;
 	}
 
-	if (!open("ion custom-protocol demo", 900 as int32, 700 as int32,
-	          "demo://localhost/index.html")) {
+	if (openPage("ion custom-protocol demo", 900 as int32, 700 as int32, "main", "demo://localhost/index.html") === null) {
 		console.log("ion: failed to open window");
 		return 1;
 	}
@@ -50,3 +50,5 @@ function main(): int32 {
 	runLoop();
 	return 0;
 }
+
+exit(main());

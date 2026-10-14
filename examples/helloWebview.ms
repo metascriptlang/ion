@@ -5,22 +5,23 @@
 //
 // Loads the bundled hello.html via `ion://localhost/`. When running as a
 // packaged app, hello.html lives in the resource directory and ion auto-
-// registers the `ion://` scheme → resourcePath() at open() time. When
+// registers the `ion://` scheme → resourcePath() with its first webview. When
 // running unbundled, we explicitly register `ion://` → ./examples/.
 
 import {
-	open, listen, invoke, runLoop, command,
+	listen, emit, runLoop, command,
 	installTrayImage, notify, registerHotkeyKey,
 	setContentProtected, registerStaticProtocol, resourcePath,
 	ModCmd, ModShift,
 } from "../src/index";
+import { openPage } from "./content/page";
 import { argv, cwd, exit } from "std/process";
 import { parseJson } from "std/serialize/json/parser";
 import { asInt32, getDynamicField } from "std/serialize/json/accessors";
 
 // argv[1] can be either a webview URL override (dev/testing) or a deep link
 // URL (from the OS routing a `myapp://...` link to our app). Distinguish
-// by scheme: webview schemes go to open(), deep links are dispatched by
+// by scheme: webview schemes are loaded, deep links are dispatched by
 // native via the "deeplink" IPC, so we just load the normal app shell.
 //
 // Note: file:// is intentionally NOT in this allowlist — ion's nav delegate
@@ -46,29 +47,31 @@ function main(): int32 {
 	if (argv.length > 1 && isWebviewUrl(argv[1])) url = argv[1];
 	const title = argv.length > 2 ? argv[2] : "Ion v0";
 
-	if (!open(title, 1280 as int32, 800 as int32, url)) {
+	const page = openPage(title, 1280 as int32, 800 as int32, "main", url);
+	if (page === null) {
 		console.log("ion: failed to open window");
 		return 1;
 	}
+	const web = page.webview;
 
 	listen((name, payload) => {
 		if (name === "ping") {
 			console.log(`MS ← ping: ${payload}`);
-			invoke("pong", `echoing: ${payload}`);
+			emit(web, "pong", `echoing: ${payload}`);
 			// Demo notification on each ping.
 			notify("Ping received", `payload: ${payload}`, "demo-ping");
 		} else if (name === "deeplink") {
 			console.log(`MS ← deeplink: ${payload}`);
 			notify("Deep link received", payload, "demo-deeplink");
-			invoke("deeplink", payload);
+			emit(web, "deeplink", payload);
 		} else if (name === "tray.click") {
 			console.log("MS ← tray clicked");
-			invoke("trayClick", "ok");
+			emit(web, "trayClick", "ok");
 		} else if (name === "notification.click") {
 			console.log(`MS ← notification clicked: ${payload}`);
 		} else if (name === "hotkey") {
 			console.log(`MS ← hotkey id=${payload}`);
-			invoke("hotkey", payload);
+			emit(web, "hotkey", payload);
 		} else if (name === "protect") {
 			const on = payload === "on" || payload === "1" || payload === "true";
 			console.log(`MS ← setContentProtected(${on})`);
