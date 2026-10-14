@@ -330,15 +330,19 @@ Open `IonHello.sln` in Visual Studio to build, run and debug the same way.
 under the source directory that the build copies into `resources/` beside the
 executable, keeping their relative paths, which is the directory
 `ionResourcePath()` serves `ion://localhost/` from. `visualStudio.ms` renders the
-solution and, per target, a `Makefile` vcxproj, `build.cmd`, an `.rc`, an
-application manifest and a two-line entry module. Why the shape is what it is:
+solution and, per target, a `Makefile` vcxproj, `build.cmd`, an `.rc` and an
+application manifest. Why the shape is what it is:
 
 - **The resource is a declared input.** `build.cmd` compiles the `.rc` with the
-  Windows SDK's `rc.exe`, and the generated entry module links the result with
-  `@link` before importing the application's entry. Measured on msc v0.3.3
-  `9a4775dc`: a changed `.res` passed through `--passL` left the old version in
-  the executable (`Up to date`), while the same file under `@link` relinked. This
-  is the iOS `@link` rule applied to resources.
+  Windows SDK's `rc.exe`, and msc builds the application's own entry with
+  `--link=<res>`, so the app's `build.ms` (`globalImports`, `deps`, `defines`,
+  `cc.linkFlags`) applies. Measured on msc `9a4775dc`: a changed `.res` passed
+  through `--passL` left the old version in the executable (`Up to date`), while
+  the same file under `@link` relinked; `--link` (msc `b267cdb1`) is tracked the
+  same way and, unlike `--passL`, keeps `cc.linkFlags`. A generated wrapper entry
+  carrying `@link` worked too, but msc finds `build.ms` from the entry, so the
+  wrapper hid the app's `build.ms` (Neon's `globalImports` failed with 52 type
+  errors).
 - **msc owns the executable and its failure.** `build.cmd` runs msc from the
   configuration's intermediate directory, so the source tree receives nothing;
   any failed step deletes the executable, so Visual Studio never launches a stale
@@ -398,8 +402,8 @@ Build Tools 2022 (17.14, toolset `v143`).
 
 The resource is the one place where the split differs from Apple: Info.plist
 sits outside the binary, while the Windows icon and manifest are linked into
-it. MSBuild compiles the `.rc`, and msc links the `.res` through `@link` (see
-"Windows application").
+it. MSBuild compiles the `.rc`, and msc links the `.res` through `--link`
+(see "Windows application").
 Measured on tree `dcd8becb7b21f83bbf900c7f1a66a824caf35048`, msc v0.3.3
 `9a4775dc`, Windows 11: `msc build examples/helloWebview.ms` writes
 `out/debug/helloWebview.pdb` beside the executable.
@@ -438,13 +442,15 @@ message, the emitted file set and the contract lines of each file, including
 the Windows `.cmd`/`.exe` NDK tool selection.
 `tooling/generator/tests/windows.ms` pins the Windows defaults, refusals, the
 emitted file set and the contract lines of the solution, project, build script,
-resource and entry module. `tooling/generator/tests/windows.py` generates the
+resource. `tooling/generator/tests/windows.py` generates the
 fixture twice and compares the trees, builds Debug and Release with MSBuild
 (found through `vswhere`), checks each product's executable, loader and
 `resources/`, launches `IonHello.exe` from another directory until it logs
-`auto-probe: ipc alive` and the `addNumbers` round trip, breaks the generated
-entry to prove a failed build leaves no executable and recovers, checks that a
-stale resource is removed, and that `git status` of the checkout is unchanged.
+`auto-probe: ipc alive` and the `addNumbers` round trip, builds a fixture app
+(outside the checkout) whose entry calls a function only its `build.ms`
+`globalImports` supplies, relinks it after the generated `.rc` changes (the new
+`ProductName` is in the executable), breaks the fixture's entry to prove a failed
+build leaves no executable and recovers, checks that a stale resource is removed, and that `git status` of the checkout is unchanged.
 On a Windows host `run.sh` runs the unit tests, `cli.py` and `windows.py`; on
 macOS it runs the Xcode, iOS and Android lanes as before.
 
