@@ -390,6 +390,52 @@ void ionNotify(const char *title, const char *body, const char *id);
 int  ionRegisterHotkey(int modifiers, int keyCode, int id);
 void ionUnregisterHotkey(int id);
 
+// ---- Audio (common/audio.c, miniaudio on every platform) -------------------
+//
+// Ids are >= 0. A negative return is an error: a miniaudio result code or an
+// ION_AUDIO_E_* code; ionAudioErrorName turns either into text. Stream and
+// recording calls block on the calling (MetaScript) thread, never the device thread.
+// ionAudioSoundRate is pitch: speed and pitch move together.
+
+const char *ionAudioErrorName(int code);
+
+int      ionAudioSoundLoad(const char *path);
+int      ionAudioSoundUnload(int id);
+int      ionAudioSoundPlay(int id);
+int      ionAudioSoundPause(int id);
+int      ionAudioSoundStop(int id);
+int      ionAudioSoundSeek(int id, double ms);
+int      ionAudioSoundSetVolume(int id, double volume);
+int      ionAudioSoundSetMuted(int id, int muted);
+int      ionAudioSoundSetLooping(int id, int looping);
+int      ionAudioSoundSetRate(int id, double rate);
+int      ionAudioSoundPlaying(int id);
+int      ionAudioSoundFinished(int id);   // 1 once after the end, then 0
+int      ionAudioSoundLooping(int id);
+int      ionAudioSoundMuted(int id);
+double   ionAudioSoundVolume(int id);
+double   ionAudioSoundRate(int id);
+double   ionAudioSoundPositionMs(int id);
+double   ionAudioSoundDurationMs(int id);
+
+int      ionAudioOutOpen(int sampleRate, int channels, int bufferFrames);
+int      ionAudioOutWrite(int id, const float *samples, int frames);   // interleaved f32; blocks while the ring is full
+int      ionAudioOutUnderruns(int id);
+int      ionAudioOutClose(int id);
+int      ionAudioInOpen(int sampleRate, int channels, int bufferFrames);
+int      ionAudioInRead(int id, float *out, int frames);   // blocks until `frames` frames arrive
+int      ionAudioInOverruns(int id);
+int      ionAudioInClose(int id);
+
+int         ionAudioRecordStart(const char *path, int sampleRate, int channels);   // WAV, 16-bit
+int         ionAudioRecordPause(int id);
+int         ionAudioRecordResume(int id);
+int         ionAudioRecordStop(int id);
+int         ionAudioRecordClose(int id);
+int         ionAudioRecordRecording(int id);
+double      ionAudioRecordDurationMs(int id);
+const char *ionAudioRecordPath(int id);
+
 // ---- OTA auto-update install (macOS) -------------------------------------
 // Builds on a verified .dmg path (download + sha256 + ed25519 already done
 // in std/ion update.ms). Stateless: each function takes everything it needs
