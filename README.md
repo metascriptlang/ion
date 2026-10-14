@@ -1,6 +1,6 @@
 # Ion
 
-A native desktop runtime for [MetaScript](https://github.com/metascript). Single-window webview shell with bidirectional IPC, native menu/tray/notifications/hotkeys, custom URI schemes (`ion://` / `asset://`), and full packaging pipeline (`.app` + `.dmg` + notarization). macOS v0 shipped; Windows reaches feature parity through Phase 4.5 (only NSIS packaging pending).
+A native desktop runtime for [MetaScript](https://github.com/metascript). Windows whose content the app builds, webviews as components with bidirectional IPC, native menu/tray/notifications/hotkeys, custom URI schemes (`ion://` / `asset://`), and full packaging pipeline (`.app` + `.dmg` + notarization). macOS v0 shipped; Windows reaches feature parity through Phase 4.5 (only NSIS packaging pending).
 
 Designed as a thin glue layer — most of ion is platform-native code (Cocoa + WebKit + SDL3 on macOS), with MetaScript as the public API surface.
 
@@ -8,17 +8,17 @@ Designed as a thin glue layer — most of ion is platform-native code (Cocoa + W
 
 A game engine owns the window, the events, the frame loop, the renderer and the build in one piece. MetaScript splits that into three pieces that compose:
 
-- **Ion** owns the process and the window: window and webview, global events and input, the frame clock and the native render surface, native chrome, the project generator, build and packaging.
+- **Ion** owns the process and the window: the window and its compositor root, raw input, the frame clock, the webview engine and its IPC, native chrome, the project generator, build and packaging.
 - **Neon** is the UI framework: it receives Ion's events, runs the reactive tree and drives a renderer through its host contract.
 - **Void** draws GPU pixels into the surface Ion hands out, and owns no window and no loop when embedded.
 
-Each piece is usable without the ones above it: Ion with plain HTML in its webview, Void with its own standalone window. Ion imports neither Neon nor Void. The full split, per concern, is in `neon/docs/VISION.md`; the surface contract is [docs/RENDER-SURFACE.md](docs/RENDER-SURFACE.md).
+Apps are built Ion → Neon → Void: Ion holds no UI and does no hit-testing; Neon places its views, Void areas and webviews in the window and routes input to them. Ion imports neither Neon nor Void. The full split, per concern, is in `neon/docs/VISION.md`; the window and webview contract is [docs/WINDOW-CONTENT.md](docs/WINDOW-CONTENT.md).
 
 ## What it is
 
-- **Window + webview shell** (SDL3 + WKWebView). Load assets via `ion://localhost/...` (bundled), `asset://localhost/<abs-path>` (scoped disk file), `http(s)://` (dev server), or `data:`. `file://` is **blocked** — opaque-origin trap breaks pushState / localStorage / SW. See [CUSTOM-PROTOCOL.md](./CUSTOM-PROTOCOL.md).
+- **Empty windows and webview components.** A window is a native root the app builds on (DirectComposition on Windows, the contentView on macOS, a GtkFixed on Linux); a webview is one node in it, with IPC routed by its label. Load assets via `ion://localhost/...` (bundled), `asset://localhost/<abs-path>` (scoped disk file), `http(s)://` (dev server), or `data:`. `file://` is **blocked** — opaque-origin trap breaks pushState / localStorage / SW. See [CUSTOM-PROTOCOL.md](./CUSTOM-PROTOCOL.md).
 - **JS↔MS IPC** with two ergonomic shapes:
-  - Low-level: `invoke()` / `listen()` event passing.
+  - Low-level: `emit()` / `listen()` event passing.
   - High-level: `command()` Tauri-style `await window.ion.call("name", args)`.
 - **Native chrome**: menu bar, tray icon, system notifications, global hotkeys, file dialog, deep links (`yourapp://`).
 - **Security defaults**: invoke_key gates IPC against XSS injection, `forMainFrameOnly` keeps iframes out, DevTools env-gated, external links route to browser.
@@ -26,7 +26,7 @@ Each piece is usable without the ones above it: Ion with plain HTML in its webvi
 
 ## What it is not
 
-- **Not a UI framework** — has no opinion on how pixels are drawn. Bring Neon, your own React, Vue, or static HTML, or a native renderer in the render surface.
+- **Not a UI framework** — has no opinion on how pixels are drawn. Neon draws the UI; a webview holds HTML as one component of it.
 - **Not a Chromium bundler** — uses the system WKWebView, no 100MB browser shipped per app.
 - **Not a multi-window manager** — v0 is single-window. Add later if needed.
 - **Not fully cross-platform yet** — macOS v0 is feature-complete; Windows reaches runtime parity through Phase 4.5 (only NSIS packaging pending); Linux not started.
@@ -117,34 +117,28 @@ cp out/release/main bin/ion
 
 ### Use ion from a MetaScript app
 
+Apps are written in Neon, which builds the window's content. Underneath, this is what Neon does
+with Ion; `examples/content/page.ms` is the smallest complete host (one webview filling the
+window) and `examples/nativeContent.ms` mixes native panels with a webview.
+
 ```ms
-import { open, listen, invoke, command, runLoop } from "@metascript/ion";
-import { installTrayImage, registerHotkeyKey, ModCmd, ModShift } from "@metascript/ion";
+import { createWindow, defaultOptions, createWebview, webviewNode, windowRoot,
+         setWebviewBounds, command, listen, emit, runLoop } from "@metascript/ion";
 
-function main(): int32 {
-	if (!open("My App", 1280 as int32, 800 as int32, "https://localhost:3000")) {
-		return 1;
-	}
+const win = createWindow("main", defaultOptions("My App", 1280 as int32, 800 as int32));
+const web = createWebview(win, "main", "ion://localhost/index.html");
+// The app parents webviewNode(web) under windowRoot(win) in its own tree,
+// gives it bounds with setWebviewBounds, and forwards pointer input to it.
 
-	// Tauri-style command — JS does `await window.ion.call("greet", { name: "Sơn" })`
-	command("greet", (argsJson) => {
-		// parse argsJson, return JSON-encoded response
-		return `"hello"`;
-	});
+// Tauri-style command — JS does `await window.ion.call("greet", { name: "Sơn" })`
+command("greet", (argsJson) => `"hello"`);
 
-	// Low-level event listener
-	listen((name, payload) => {
-		if (name === "tray.click") invoke("trayClicked", "ok");
-	});
+// Low-level event listener; replies go to the webview that sent the message
+listen((name, payload) => {
+	if (name === "ping") emit(web, "pong", payload);
+});
 
-	installTrayImage("tray-icon.png");                      // bundled in Resources/
-	registerHotkeyKey(ModCmd | ModShift, "L", 1 as int32);  // Cmd+Shift+L
-
-	runLoop();  // blocks until window closes
-	return 0;
-}
-
-main();
+runLoop();  // blocks until the window closes
 ```
 
 JS side, inside the loaded HTML:
@@ -162,8 +156,11 @@ const result = await window.ion.call("greet", { name: "Sơn" });
 
 | Module | Exports |
 |---|---|
-| `window` | `open`, `close`, `resourcePath` |
-| `ipc` | `listen`, `invoke`, `eval`, `runLoop` (and `Handler` type) |
+| `windowManager` | `createWindow`, `windowRoot`, `windowDevice`, `commit`, `focusContent`, `setImeRect`, `setCursor`, frame policy |
+| `webview` | `createWebview`, `webviewNode`, `setWebviewBounds`, `forwardPointer`, `focusWebview`, `navigate`, `evalJs`, `emit`, `emitTo`, `emitAll` |
+| `input` | `onPointer`, `onKey`, `onText`, `onImePreedit`, `onFocus`, `onResize`, `onFrame` |
+| `ipc` | `listen`, `messageWebviewId`, `runLoop` (and `Handler` type) |
+| `window` | `resourcePath`, `resourceUrl` |
 | `command` | `command` (and `Command` type) |
 | `dialog` | `openFile` |
 | `security` | `setContentProtected` |
@@ -183,19 +180,18 @@ Two schemes ship by default:
 
 | Scheme | Purpose | Example |
 |---|---|---|
-| `ion://localhost/<path>` | Bundled SPA assets. Auto-registered to `ionResourcePath()` (the `.app`'s `Contents/Resources/`) when you call `open()` with an `ion://` URL. | `ion.open("App", 1280, 800, "ion://localhost/index.html")` |
+| `ion://localhost/<path>` | Bundled SPA assets. Auto-registered to `ionResourcePath()` (the `.app`'s `Contents/Resources/`) when the first webview loads an `ion://` URL. | `createWebview(win, "main", "ion://localhost/index.html")` |
 | `asset://localhost/<abs-path>` | Scoped disk read for files OUTSIDE the bundle (file-picker results, user images). Allowlist roots declared via `registerAssetScope()`. | `ion.registerAssetScope(["/Users/me/Pictures"])` then `<img src="asset://localhost/Users/me/Pictures/photo.jpg">` |
 | `file://` | **BLOCKED** by ion's nav delegate. Use `ion://` or `asset://`. | — |
 
 Register additional schemes (e.g. for app-specific routing) via `registerStaticProtocol`:
 
 ```ms
-import { open, registerStaticProtocol, runLoop } from "@metascript/ion";
+import { registerStaticProtocol, createWebview } from "@metascript/ion";
 
 registerStaticProtocol("myapp", "/path/to/my/dist");
 // → myapp://localhost/index.html now serves /path/to/my/dist/index.html
-open("App", 1280 as int32, 800 as int32, "myapp://localhost/index.html");
-runLoop();
+const web = createWebview(win, "main", "myapp://localhost/index.html");
 ```
 
 Path semantics (handled inside ion):
@@ -204,7 +200,7 @@ Path semantics (handled inside ion):
 - `..` segments rejected with 403
 - MIME autodetected from extension (.html, .js, .css, .png, .woff2, .wasm, etc.)
 - Empty path → `/index.html`
-- Calls to `registerStaticProtocol` MUST happen BEFORE `open()` — registry freezes then.
+- Calls to `registerStaticProtocol` MUST happen before the first `createWebview` — the registry freezes then.
 
 **Origin gotcha**: pages load with origin `<scheme>://localhost`. `fetch()` from the webview to external HTTPS needs `Access-Control-Allow-Origin` headers from those servers to include this origin. ion's `__ion__.invoke` IPC is unaffected.
 

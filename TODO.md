@@ -13,7 +13,8 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 
 | Capability | macOS | Windows | Linux | Native impl |
 |---|---|---|---|---|
-| Window + webview | ✅ | ✅ | ✅ | WKWebView / WebView2 / WebKitGTK |
+| Empty window, compositor root (`windowRoot`, `windowDevice`) | ⛔ unbuilt | ✅ | ⛔ unbuilt | DirectComposition on a D2D device / contentView / GtkFixed |
+| Webview as a component (`createWebview`, node, bounds, IPC by label) | ⛔ unbuilt | ✅ | ⛔ unbuilt | WebView2 composition controller per webview / WKWebView / WebKitGTK |
 | IPC + `command()` | ✅ | ✅ | ✅ | `webview/messaging` + `eval` |
 | Custom URI scheme (`ion://`, `asset://`) | ✅ | ✅ | ✅ | `webview/protocol.{m,cpp,c}` |
 | External-link routing | ✅ | ✅ | ✅ | `common/navpolicy.c` + per-platform nav |
@@ -26,10 +27,9 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 | `openExternal` | ✅ | ✅ | ✅ | `core/shell.{m,c}` |
 | Multi-window | ✅ | ✅ | ✅ | `common/windowRegistry.c` + `windowEvents.c` |
 | Native menu bar | ✅ | ❌ | ❌ | `macos/chrome/menu.m` only |
-| Render surface | ✅ | ✅ | ❌ | `macos/core/renderSurface.m` / `windows/core/composition.cpp` (DirectComposition visual + consumer's composition swapchain) |
-| Surface key / text / IME / focus / resize events | ⛔ stub | ✅ | ❌ | `windows/input/input.c`; macOS produces pointer events only |
-| Webview as element (`webviewSetFrame`, `webviewSetVisible`) | ⛔ stub | ✅ | ❌ | WebView2 `CompositionController` visual |
-| Surface frame clock (`FrameOnDemand` / `FrameContinuous`) | ⛔ stub | ✅ | ❌ | `common/frameClock.c`; Windows compositor clock in `windows/webview/poll.c` |
+| Window input records (pointer, key, text, IME, focus, resize, leave) | ⛔ unbuilt | ✅ | ⛔ unbuilt | `windows/input/input.c` / `macos/core/contentHost.m` / `linux/input/input.c` |
+| Pointer forwarding into a webview (`forwardPointer`) | n/a | ✅ | n/a | WebView2 `SendMouseInput`; WKWebView and WebKitGTK take OS input themselves |
+| Window frame clock (`FrameOnDemand` / `FrameContinuous`) | ⛔ unbuilt | ✅ | ⛔ unbuilt | `common/frameClock.c`; Windows compositor clock in `windows/webview/poll.c` |
 | OTA `check` / `download` / verify | ✅ | ✅ | ✅ | pure MS (`src/update.ms`) |
 | OTA `apply` (install + relaunch) | ✅ | ⛔ stub | ⛔ stub | `update/install.{m,c}` |
 
@@ -138,21 +138,18 @@ Remaining:
 - **OTA install on Linux** — AppImage atomic replace via `rename(2)`; polkit
   `pkexec` only if targeting system paths.
 - **Menu bar on Windows / Linux** — macOS-only today.
-- **Render surface on Linux** — not started. `renderSurface` symbols are
-  exported from `src/index.ms` on every platform; only dead-code elimination
-  keeps Linux linking, so calling them there is a link error.
-- **Surface keyboard, text, IME, focus and resize on macOS** — the bridge
-  symbols (`ionRenderSurfaceAttachSwapChain`, `ionRenderSurfaceSetImeRect`,
-  `ionWebviewSetFrame`, `ionWebviewSetVisible`) are no-op stubs in
-  `macos/core/renderSurface.m`, and the host view emits pointer events only.
-  Written 2026-09-23 on a Windows host and not compiled on macOS yet.
+- **Window content on macOS and Linux (2026-10-15)** — the empty window,
+  webview component, input records and per-window frame clock were written to
+  the `docs/WINDOW-CONTENT.md` contract on a Windows host and never compiled:
+  "unbuilt" in the matrix. Handoff:
+  `~/metascript/.inbox/ion/2026-10-15-window-content-mac-linux.md`.
 - **Frame clock on macOS** — two debts. Not written: vsync (`CVDisplayLink`),
   and the inactive and minimized pause (`ion_frame_window_state` is never
   called), so a continuous surface ticks at the 16 ms poll rate in every window
   state. Written but never compiled: the frame emission in `macos/webview/poll.m`
-  and the `ion_frame_surface_open` / `close` calls in `macos/core/renderSurface.m`
-  (2026-09-24, from a Windows host) — `main` may not build on macOS until a Mac
-  session runs the gate. Handoff: `~/metascript/.inbox/ion/2026-09-24-macos-frame-clock.md`.
+  (2026-09-24) and the per-window `ion_frame_window_open` / `close` / `state`
+  calls (2026-10-15), both from a Windows host — `main` may not build on macOS
+  until a Mac session runs the gate. Handoff: `~/metascript/.inbox/ion/2026-09-24-macos-frame-clock.md`.
 - **Frame clock on Windows 10** — not written: `windows/webview/poll.c` has one
   tick source, `DCompositionWaitForCompositorClock`, and without it prints
   `[ion] frame clock: ... not found` and sends no frame. That the entry point is
@@ -177,8 +174,10 @@ Remaining:
   `InjectTouchInput`, no touch hardware here); outside the frame Windows
   promotes it to mouse input for the surface. Pen measured the same way
   (`InjectSyntheticPointerInput`): the page sees `pointerType` "pen" with its pressure.
-- **Adopt on Windows** — an adopted `HWND` is a child window, so it always sits
-  under the whole DirectComposition tree: `SurfaceAbove` cannot be honoured.
+- **Touch and pen into a webview on Windows** — reach the page as promoted
+  mouse events through the app's forwarding, not as pointer input with
+  pressure and contact data (`docs/WINDOW-CONTENT.md`).
+- **One window on Windows** — `ionCreateWindow` refuses a second window.
 - **Toast WinRT** — current Windows notification is a balloon tip (renders via
   the Toast/Action Center pipeline on Win10/11 anyway). Proper
   `ToastNotificationManager` needs an AUMID from a Start Menu shortcut.

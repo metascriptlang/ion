@@ -1,6 +1,6 @@
 # Ion — native desktop runtime for MetaScript
 
-Window, webview, IPC and native chrome (menu, tray, notifications, hotkeys, file dialog, keychain, updater, render surface) behind one API. Not a UI framework: ion has no opinion about how pixels are drawn. Open source, MIT. Neon and Lightcube consume it; ion imports neither.
+Windows whose content the app builds, webview components and their IPC, and native chrome (menu, tray, notifications, hotkeys, file dialog, keychain, updater) behind one API. Not a UI framework: ion has no opinion about how pixels are drawn. Open source, MIT. Neon and Lightcube consume it; ion imports neither.
 
 Workspace rules (toolchain, compiler boundary, arcs and cards) are in `~/metascript/CLAUDE.md` and are not repeated here.
 
@@ -11,7 +11,7 @@ Workspace rules (toolchain, compiler boundary, arcs and cards) are in `~/metascr
 | what exists per platform, what is a stub | [`TODO.md`](./TODO.md), the capability matrix; it wins over every other text |
 | user-facing API and quick start | [`README.md`](./README.md) |
 | custom URI schemes, `file://` block | [`CUSTOM-PROTOCOL.md`](./CUSTOM-PROTOCOL.md) |
-| multi-window, render surface, project generator | `docs/MULTI-WINDOW.md`, `docs/RENDER-SURFACE.md`, `docs/PROJECT-GENERATOR.md` |
+| multi-window, window content and webviews, project generator | `docs/MULTI-WINDOW.md`, `docs/WINDOW-CONTENT.md`, `docs/PROJECT-GENERATOR.md` |
 | architectural precedent | `~/metascript/refs/tauri/` — read patterns, do not copy code |
 
 This file holds no status table. A capability claim is edited in `TODO.md`, after running it.
@@ -35,7 +35,7 @@ MSC=<candidate msc> bash tooling/generator/tests/run.sh   # generator suite (mac
 ```
 
 - **The gate before a land**: `msc check src/index.ms`, every file under `test/` and `test/common/` through `msc test`, `msc build examples/helloWebview.ms`, and `msc check --target=raiser tooling/generator/generate.ms`. That last one is the only gate step that compiles the generator: `msc check tooling/generator/cli.ms` stays clean when `generate.ms` breaks, because the CLI only spawns the evaluator that imports it. One `msc` per directory at a time. No `rm -rf out`; switching `--os` needs `-f`, because cached objects are keyed by source path and not by target.
-- **A Windows host builds natively**: the same gate commands run as they are; a built `.exe` runs with `WebView2Loader.dll` (from `vendor/webview2/runtime/x64/`) beside it, and `examples/surfaceD3D11.ms` is the by-hand check for the render surface and its input.
+- **A Windows host builds natively**: the same gate commands run as they are; a built `.exe` runs with `WebView2Loader.dll` (from `vendor/webview2/runtime/x64/`) beside it, and `examples/nativeContent.ms` is the by-hand check for native content, a webview child and their input.
 - **Linux builds only on a Linux host** (Parallels Ubuntu): the `when (linux)` block runs `pkg-config` for GTK/WebKitGTK at `@comptime`, and those packages do not exist on macOS.
 - A structural change to window, webview or IPC is smoke-tested by hand: build the `.app` with `scripts/make-app.sh`, launch it, and read its stdout for `auto-probe: ipc alive`, `MS command addNumbers(100, 23)` and `[ion] IPC rejected: invalid invoke_key`.
 
@@ -48,7 +48,7 @@ Ion follows the worktree playbook enabled by `~/metascript/CLAUDE.md` and uses `
 ## Boundaries
 
 - Ion stays thin. No capability ACL, isolation iframe, plugin framework or FS scope without the person asking for it.
-- Code that needs Neon or Void belongs to Lightcube. The render surface hands out a native surface and input events; it does not draw.
+- Code that needs Neon or Void belongs to Lightcube. Ion hands out a compositor root, webviews and raw input; it does not draw and does not hit-test.
 - A capability lands on all three platforms or is recorded as a stub in `TODO.md` the same day; a symbol in `bridge.h` that one platform does not define breaks that platform's link.
 
 ## Conventions
