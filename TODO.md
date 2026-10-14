@@ -30,8 +30,20 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 | Window input records (pointer, key, text, IME, focus, resize, leave) | ⛔ unbuilt | ✅ | ⛔ unbuilt | `windows/input/input.c` / `macos/core/contentHost.m` / `linux/input/input.c` |
 | Pointer forwarding into a webview (`forwardPointer`) | n/a | ✅ | n/a | WebView2 `SendMouseInput`; WKWebView and WebKitGTK take OS input themselves |
 | Window frame clock (`FrameOnDemand` / `FrameContinuous`) | ⛔ unbuilt | ✅ | ⛔ unbuilt | `common/frameClock.c`; Windows compositor clock in `windows/webview/poll.c` |
+| `runLoop` runs msc's loop (`setTimeout`, `await` of a `spawn`, actor messages) | ✍️ written, uncompiled | ✅ measured 2026-10-15 | ✍️ written, uncompiled | `msRunOnce(0)` each turn; Windows `windows/webview/poll.c` waits on msc's next timer and a watcher on msc's IOCP; macOS and Linux pumps already poll every 16 ms |
+| `ionWakeLoop` from any thread, `onWake` | ✍️ written, uncompiled | ✅ measured 2026-10-15 | ✍️ written, uncompiled | event in the Win32 wait list / `SDL_PushEvent(SDL_EVENT_USER)` / `GCond` signalled into the 16 ms wait |
+| Text clipboard (`readClipboardText`, `writeClipboardText`) | ✍️ written, uncompiled | ✅ measured 2026-10-15 | ✍️ written, uncompiled | `CF_UNICODETEXT` / `NSPasteboard` / `GtkClipboard` |
+| IME preedit cursor in UTF-16 units | ✍️ written, uncompiled | ✍️ written, not driven (needs an IME) | ✍️ written, uncompiled | the conversion `ion_utf16_units` is tested (`test/common/utf16.ms`); `GCS_CURSORPOS` and `NSRange` are already UTF-16 |
 | OTA `check` / `download` / verify | ✅ | ✅ | ✅ | pure MS (`src/update.ms`) |
 | OTA `apply` (install + relaunch) | ✅ | ⛔ stub | ⛔ stub | `update/install.{m,c}` |
+
+Loop, wake and clipboard, measured 2026-10-15 on msc v0.3.3 (build `9cf5708c`), Windows 11:
+`examples/loopWake.ms` logs the 500 ms `setTimeout` firing 500 ms after start, an `await` of a
+`spawn` resuming inside `runLoop`, the clipboard round trip of `é中文`, and a raw `CreateThread`
+calling `ionWakeLoop` after 5 s: `onWake` runs and one frame is drawn. Process CPU time over 3 s
+idle, before and after the wake: 0 ms and 0 ms (two runs; the clock ticks at 15.6 ms). The macOS
+and Linux code was written without a compiler or a machine to run it. The preedit cursor was not
+driven by a real IME.
 
 Native LOC: macOS 1715 · Windows 2119 · Linux 1508 · shared C 1392.
 MetaScript LOC: 2016 across 20 modules.
