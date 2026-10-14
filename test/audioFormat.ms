@@ -8,6 +8,8 @@ test "extension is lowercased with its dot" {
 
 test "a dot in a directory is not an extension" {
 	assert audioExtension("my.dir/song") === "";
+	assert audioExtension("my.dir\\song") === "";
+	assert audioExtension("C:\\my.dir\\Song.Wav") === ".wav";
 }
 
 test "playable formats pass" {
