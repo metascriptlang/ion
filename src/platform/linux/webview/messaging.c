@@ -5,13 +5,13 @@
 // from the bootstrap (see common/bootstrap.c). We:
 //   1. Pull the JS value as JSON, parse it
 //   2. Validate the invoke_key (closure-scoped token, see common/protocol.h)
-//   3. Enqueue (name, payload) onto the IPC queue for MS-side `listen()` to drain
 
 #include "../state.h"
 #include "../internal.h"
 #include "../../common/invokekey.h"
 #include "../../common/protocol.h"
 #include "../../common/json_extract.h"
+#include "../../common/queue.h"
 
 #include <webkit2/webkit2.h>
 #include <jsc/jsc.h>
@@ -24,7 +24,7 @@
 static void onScriptMessage(WebKitUserContentManager *ucm,
                             WebKitJavascriptResult *result,
                             gpointer user_data) {
-    (void)ucm; (void)user_data;
+    (void)ucm;
 
     JSCValue *jsValue = webkit_javascript_result_get_js_value(result);
     if (jsValue == NULL) return;
@@ -50,17 +50,17 @@ static void onScriptMessage(WebKitUserContentManager *ucm,
     if (name == NULL) { g_free(json); return; }
     char *payload = ion_json_extract_string(json, "payload");
 
-    ionEnqueueMessage(name, payload ? payload : "");
+    ion_queue_push_w(GPOINTER_TO_INT(user_data), name, payload ? payload : "");
 
     free(name);
     free(payload);
     g_free(json);
 }
 
-void ionAttachMessageHandler(WebKitUserContentManager *ucm) {
+void ionAttachMessageHandler(WebKitUserContentManager *ucm, int webview) {
     if (ucm == NULL) return;
     // Register the "ion" message channel — bootstrap script posts to it.
     webkit_user_content_manager_register_script_message_handler(ucm, "ion");
     g_signal_connect(ucm, "script-message-received::ion",
-                     G_CALLBACK(onScriptMessage), NULL);
+                     G_CALLBACK(onScriptMessage), GINT_TO_POINTER(webview));
 }

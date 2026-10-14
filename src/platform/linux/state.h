@@ -9,25 +9,40 @@
 #include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
 
+#include "../common/windowRegistry.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Main GtkWindow* — destroyed on window close (NULL after).
+typedef struct {
+    IonWindowId   id;
+    GtkWidget    *window;          // GtkWindow
+    GtkWidget    *root;            // GtkFixed filling the window; ionWindowRoot
+    GtkIMContext *im;
+    int           iconified;
+    int           contentFocused;  // last focus record pushed
+    int           clientW, clientH;
+    int           pointerKnown;
+    double        lastX, lastY;
+} IonLinuxWindowState;
+
+typedef struct {
+    WebKitWebView *view;   // holds one reference of its own (g_object_ref_sink)
+    int            x, y;   // last ionWebviewSetBounds, device pixels
+} IonLinuxWebviewState;
+
+IonLinuxWindowState *ionLinuxWindowState(IonWindowId id);
+IonLinuxWindowState *ionLinuxWindowForToplevel(GtkWidget *toplevel);
+
 extern GtkWidget *s_mainWindow;
 
-// WebKitWebView* — set up in webview/setup.c during ionOpen. NULL before
-// open or after destroy.
-extern WebKitWebView *s_webView;
+extern int s_quitRequested;
 
-// Cold-start deep link URL extracted from /proc/self/cmdline at ionInit
-// time. window.c replays this as a "deeplink" IPC after the window opens
-// (mirrors Mac NSAppleEventManager + Win core/lifecycle.c WM_COPYDATA flow).
+// Cold-start deep link URL extracted from /proc/self/cmdline at ionInit time.
 // Empty when the app was not launched with a URL arg.
 extern char s_coldStartUrl[2048];
 
-// Convenience shim around the common IPC queue. Lets Linux callers avoid
-// re-typing the (name, payload) push pattern.
 void ionEnqueueMessage(const char *name, const char *payload);
 
 #ifdef __cplusplus

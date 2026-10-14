@@ -6,7 +6,7 @@
 // lookup (src/platform/common/protoreg.c) — same logic mac + win + linux.
 //
 // Threading: WebKit fires these callbacks on its main thread. The protoreg
-// registry is frozen at ionOpen() time, so reads are safe without locking.
+// registry is frozen at the first ionWebviewCreate, so reads are safe without locking.
 
 #import <WebKit/WebKit.h>
 #include "../../common/protoReg.h"

@@ -1,19 +1,11 @@
 // Ion macOS — window lifecycle: create, close, resource path lookup.
-//
-// SDL3 owns the NSWindow; we extract its handle via a public SDL property
-// and attach a WKWebView as a subview of contentView. SDL's window is the
-// source of truth — when SDL_DestroyWindow runs, the NSWindow goes too.
-//
-// Multi-window: every live window owns one IonMacWindowState struct
-// (allocated here, stored in the registry slot's platformState field).
-// The slot-0 "main" window also mirrors its fields into s_sdlWindow /
-// s_nsWindow / s_webview / s_navDelegate so v0 code that reads those
-// globals keeps working unchanged.
+
 
 #import "../state.h"
 #import "../../bridge.h"
 #import "../internal.h"
-#include "../../common/protoReg.h"
+#include "../../common/frameClock.h"
+#include "../../common/webviewRegistry.h"
 #include "../../common/windowRegistry.h"
 
 #include <stdlib.h>
@@ -23,13 +15,11 @@ static const char kMainLabel[] = "main";
 
 static void teardownWindow(IonMacWindowState *st) {
     if (!st) return;
-    if (st->webview) {
-        st->webview.navigationDelegate = nil;
-        [st->webview removeFromSuperview];
-        st->webview = nil;
+    if (st->host) {
+        ionContentHostDestroy(st->host);
+        st->host = nil;
     }
-    st->navDelegate = nil;
-    st->nsWindow    = nil;
+    st->nsWindow = nil;
     if (st->sdlWindow) {
         SDL_DestroyWindow(st->sdlWindow);
         st->sdlWindow = NULL;
@@ -37,28 +27,14 @@ static void teardownWindow(IonMacWindowState *st) {
 }
 
 static void syncMainGlobals(IonMacWindowState *st) {
-    if (st) {
-        s_sdlWindow   = st->sdlWindow;
-        s_nsWindow    = st->nsWindow;
-        s_webview     = st->webview;
-        s_navDelegate = st->navDelegate;
-    } else {
-        s_sdlWindow   = NULL;
-        s_nsWindow    = nil;
-        s_webview     = nil;
-        s_navDelegate = nil;
-    }
+    s_sdlWindow = st ? st->sdlWindow : NULL;
+    s_nsWindow  = st ? st->nsWindow : nil;
 }
 
 IonWindowId ionCreateWindow(const char *label, const char *title,
-                            int width, int height, const char *url, int flags) {
+                            int width, int height, int flags) {
     IonWindowId winId = ion_registry_alloc(label);
     if (winId == ION_WINDOW_INVALID) return ION_WINDOW_INVALID;
-
-    // First window in the process freezes the custom-protocol registry —
-    // no more registerStaticProtocol / registerAssetScope calls accepted
-    // past this point. Subsequent windows don't refreeze.
-    if (ion_registry_count() == 1) ionProtoFreeze();
 
     IonMacWindowState *st = (IonMacWindowState *)calloc(1, sizeof(IonMacWindowState));
     if (!st) {
@@ -101,40 +77,13 @@ IonWindowId ionCreateWindow(const char *label, const char *title,
         return ION_WINDOW_INVALID;
     }
     st->nsWindow = (__bridge NSWindow *)winPtr;
-
-    // ionSetupWebview reads s_navDelegate as its delegate slot — temporarily
-    // route the "main" globals through this new window so the existing
-    // setup code populates s_navDelegate correctly. After setup we copy
-    // those values back into the per-window struct.
-    SDL_Window *savedSdl   = s_sdlWindow;
-    NSWindow   *savedNs    = s_nsWindow;
-    WKWebView  *savedWv    = s_webview;
-    id          savedNav   = s_navDelegate;
-
-    s_sdlWindow   = st->sdlWindow;
-    s_nsWindow    = st->nsWindow;
-    s_webview     = nil;
-    s_navDelegate = nil;
-
-    st->webview     = ionSetupWebview([st->nsWindow contentView], label);
-    st->navDelegate = s_navDelegate;
-
-    // Restore globals — they'll be re-pointed below if this is "main".
-    s_sdlWindow   = savedSdl;
-    s_nsWindow    = savedNs;
-    s_webview     = savedWv;
-    s_navDelegate = savedNav;
-
-    if (url != NULL && url[0] != '\0') {
-        NSString *urlStr = [NSString stringWithUTF8String:url];
-        NSURL *nsURL = [NSURL URLWithString:urlStr];
-        if (nsURL != nil) {
-            [st->webview loadRequest:[NSURLRequest requestWithURL:nsURL]];
-        }
-    }
+    st->nsWindow.acceptsMouseMovedEvents = YES;
+    st->host = ionContentHostCreate(winId, st->nsWindow);
 
     IonWindowSlot *slot = ion_registry_get(winId);
     slot->platformState = st;
+    ion_frame_window_open(winId);
+    ionSyncFrameState(winId);
 
     if (strcmp(label, kMainLabel) == 0) syncMainGlobals(st);
 
@@ -147,6 +96,11 @@ void ionCloseWindow(IonWindowId winId) {
     IonMacWindowState *st = (IonMacWindowState *)slot->platformState;
     int isMain = (strcmp(slot->label, kMainLabel) == 0);
 
+    for (int wv = ion_webview_next(-1); wv != ION_WEBVIEW_INVALID; wv = ion_webview_next(wv)) {
+        if (ion_webview_get(wv)->window == winId) ionWebviewRelease(wv);
+    }
+
+    ion_frame_window_close(winId);
     teardownWindow(st);
     free(st);
     slot->platformState = NULL;
@@ -159,18 +113,12 @@ int ionWindowCount(void) {
     return ion_registry_count();
 }
 
-// ---- Legacy single-window API (v0 wrappers) -------------------------------
-
-int ionOpen(const char *title, int width, int height, const char *url) {
-    IonWindowId existing = ion_registry_find(kMainLabel);
-    if (existing != ION_WINDOW_INVALID) ionCloseWindow(existing);
-    return ionCreateWindow(kMainLabel, title, width, height, url, ION_WIN_DEFAULT)
-            != ION_WINDOW_INVALID;
-}
-
-void ionClose(void) {
-    IonWindowId winId = ion_registry_find(kMainLabel);
-    if (winId != ION_WINDOW_INVALID) ionCloseWindow(winId);
+void ionSyncFrameState(IonWindowId winId) {
+    IonMacWindowState *st = ionMacWindowState(winId);
+    if (!st || !st->sdlWindow) return;
+    SDL_WindowFlags f = SDL_GetWindowFlags(st->sdlWindow);
+    int visible = !(f & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED));
+    ion_frame_window_state(winId, (f & SDL_WINDOW_INPUT_FOCUS) != 0, visible);
 }
 
 // ---- Bundle resource path --------------------------------------------------
@@ -185,6 +133,35 @@ msString ionResourcePath(void) {
         s_resourcePath = (path && [path hasSuffix:@"/Contents/Resources"]) ? path : @"";
     }
     return nsStringToMs(s_resourcePath);
+}
+
+void *ionWindowDevice(IonWindowId winId) {
+    (void)winId;
+    return NULL;
+}
+
+void *ionWindowRoot(IonWindowId winId) {
+    IonMacWindowState *st = ionMacWindowState(winId);
+    return st && st->nsWindow ? (__bridge void *)[st->nsWindow contentView] : NULL;
+}
+
+void ionWindowCommit(IonWindowId winId) {
+    (void)winId;
+}
+
+void ionWindowFocusContent(IonWindowId winId) {
+    IonMacWindowState *st = ionMacWindowState(winId);
+    if (st && st->host) [st->nsWindow makeFirstResponder:st->host];
+}
+
+void ionWindowSetImeRect(IonWindowId winId, int x, int y, int w, int h) {
+    IonMacWindowState *st = ionMacWindowState(winId);
+    if (st && st->host) ionContentHostSetImeRect(st->host, x, y, w, h);
+}
+
+void ionWindowSetCursor(IonWindowId winId, int cursor) {
+    IonMacWindowState *st = ionMacWindowState(winId);
+    if (st && st->host) ionContentHostSetCursor(st->host, cursor);
 }
 
 // ---- Window properties ----------------------------------------------------

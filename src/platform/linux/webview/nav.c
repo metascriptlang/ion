@@ -53,7 +53,7 @@ static gboolean onDecidePolicy(WebKitWebView *view,
                                WebKitPolicyDecision *decision,
                                WebKitPolicyDecisionType type,
                                gpointer user_data) {
-    (void)view; (void)user_data;
+    (void)user_data;
 
     // Only NavigationAction is interesting for our routing — let response
     // and new-window decisions flow through their defaults.
@@ -90,7 +90,8 @@ static gboolean onDecidePolicy(WebKitWebView *view,
     if (outcome == ION_NAV_EXTERNAL) {
         // Punt to default browser. gtk_show_uri_on_window is the modern API
         // (3.22+); older platforms can use gtk_show_uri but we target 3.22+.
-        gtk_show_uri_on_window(GTK_WINDOW(s_mainWindow), uri, GDK_CURRENT_TIME, NULL);
+        GtkWidget *top = gtk_widget_get_toplevel(GTK_WIDGET(view));
+        gtk_show_uri_on_window(GTK_IS_WINDOW(top) ? GTK_WINDOW(top) : NULL, uri, GDK_CURRENT_TIME, NULL);
         webkit_policy_decision_ignore(decision);
         return TRUE;
     }

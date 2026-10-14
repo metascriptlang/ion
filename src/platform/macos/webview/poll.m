@@ -7,7 +7,7 @@
 //      letting WKScriptMessageHandler + URL handler enqueue while we wait);
 //      classify SDL_EVENT_WINDOW_* → push to wevt queue
 //   4. drain wevt + IPC again — events that arrived during wait
-//   5. frame records for surfaces due one → return 4
+//   5. frame records for windows due one → return 4
 //   6. otherwise → return 0 (idle)
 //
 // Quit (Cmd+Q via SDL_EVENT_QUIT, or close button on the "main" window in
@@ -53,11 +53,24 @@ int ionPollEvent(void) {
         switch (ev.type) {
             case SDL_EVENT_WINDOW_FOCUS_GAINED:
                 wid = windowIdForSdlWindowId(ev.window.windowID);
-                if (wid != ION_WINDOW_INVALID) ion_wevt_push(wid, ION_EVT_FOCUSED);
+                if (wid != ION_WINDOW_INVALID) {
+                    ion_wevt_push(wid, ION_EVT_FOCUSED);
+                    ionSyncFrameState(wid);
+                }
                 break;
             case SDL_EVENT_WINDOW_FOCUS_LOST:
                 wid = windowIdForSdlWindowId(ev.window.windowID);
-                if (wid != ION_WINDOW_INVALID) ion_wevt_push(wid, ION_EVT_BLURRED);
+                if (wid != ION_WINDOW_INVALID) {
+                    ion_wevt_push(wid, ION_EVT_BLURRED);
+                    ionSyncFrameState(wid);
+                }
+                break;
+            case SDL_EVENT_WINDOW_MINIMIZED:
+            case SDL_EVENT_WINDOW_RESTORED:
+            case SDL_EVENT_WINDOW_HIDDEN:
+            case SDL_EVENT_WINDOW_SHOWN:
+                wid = windowIdForSdlWindowId(ev.window.windowID);
+                if (wid != ION_WINDOW_INVALID) ionSyncFrameState(wid);
                 break;
             case SDL_EVENT_WINDOW_RESIZED:
                 wid = windowIdForSdlWindowId(ev.window.windowID);
@@ -72,7 +85,6 @@ int ionPollEvent(void) {
         }
     }
 
-    // Mouse events captured by the surface host view during the Cocoa pump above.
     if (ion_input_next()) return 4;
 
     if (ion_wevt_pop(&s_last_wevt_id, &s_last_wevt_type)) return 3;
@@ -83,7 +95,6 @@ int ionPollEvent(void) {
 
 msString    ionMessageName(void)     { return cStringToMs(ion_queue_last_name()); }
 msString    ionMessagePayload(void)  { return cStringToMs(ion_queue_last_payload()); }
-IonWindowId ionMessageWindowId(void) { return ion_queue_last_window_id(); }
 
 IonWindowId ionWindowEventId(void)   { return s_last_wevt_id; }
 int         ionWindowEventType(void) { return s_last_wevt_type; }

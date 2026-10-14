@@ -11,6 +11,7 @@
 #include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
 #include "../common/strconv.h"  // cStringToMs / MS_EMPTY_STRING
+#include "state.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,12 +19,13 @@ extern "C" {
 
 // core/window.c
 GtkWidget *ionGetMainWindow(void);
+void       ionLinuxSyncFrameState(IonLinuxWindowState *st);
 
-// webview/setup.c — create + configure WebKitWebView, attach to container.
-// Returns the new view (also stored in s_webView). Must be called AFTER
-// ionProtoFreeze (custom URI schemes need to land on the WebContext before
-// it's used). Returns NULL on failure.
-WebKitWebView *ionSetupWebview(GtkWindow *parent);
+void ionLinuxInstallInput(void);
+void ionLinuxAttachInput(IonLinuxWindowState *st);
+void ionLinuxDetachInput(IonLinuxWindowState *st);
+void ionLinuxUpdateContentFocus(IonLinuxWindowState *st);
+void ionLinuxPushResize(IonLinuxWindowState *st);
 
 // webview/protocol.c — install custom URI scheme handlers on the shared
 // WebKitWebContext. MUST be called BEFORE any WebKitWebView is created;
@@ -32,8 +34,7 @@ WebKitWebView *ionSetupWebview(GtkWindow *parent);
 void ionInstallSchemeHandlers(WebKitWebContext *ctx);
 
 // webview/messaging.c — attach script-message-received handler that gates
-// on invoke_key + pushes (name, payload) onto the IPC queue.
-void ionAttachMessageHandler(WebKitUserContentManager *ucm);
+void ionAttachMessageHandler(WebKitUserContentManager *ucm, int webview);
 
 // webview/nav.c — connect decide-policy signal to apply ion_nav_decide
 // rules (allow, external→gtk_show_uri, BLOCK for file://).

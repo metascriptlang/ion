@@ -6,9 +6,11 @@
 // or the focused NSResponder (cut/copy/paste/select all → WKWebView).
 //
 // Custom action: View → Reload routes to s_menuTarget which calls
-// [s_webview reload].
+// [view reload] on every webview.
 
 #import "../state.h"
+#import "../../bridge.h"
+#include "../../common/webviewRegistry.h"
 #import <Cocoa/Cocoa.h>
 
 @interface IonMenuTarget : NSObject
@@ -17,7 +19,9 @@
 
 @implementation IonMenuTarget
 - (void)reload:(id)sender {
-    if (s_webview) [s_webview reload];
+    for (int wv = ion_webview_next(-1); wv != ION_WEBVIEW_INVALID; wv = ion_webview_next(wv)) {
+        [ionMacWebviewState(wv)->view reload];
+    }
 }
 @end
 

@@ -1,6 +1,5 @@
 // Ion macOS — platform-internal forward declarations.
 //
-// bridge.h is the public C API consumed by MS code (ionOpen, ionClose, ...).
 // internal.h is the platform-private surface — symbols implemented in one .m
 // file and called from another .m file in the same platform layer. Keeping
 // these out of bridge.h makes the public/private distinction explicit and
@@ -28,10 +27,15 @@ void       ionInstallURLHandler(void);
 // chrome/menu.m
 void       ionEnsureMenu(NSString *appName);
 
+void       ionSyncFrameState(IonWindowId winId);
+
+NSView    *ionContentHostCreate(IonWindowId winId, NSWindow *nsWindow);
+void       ionContentHostDestroy(NSView *host);
+void       ionContentHostSetCursor(NSView *host, int cursor);
+void       ionContentHostSetImeRect(NSView *host, int x, int y, int w, int h);
+
 // webview/bootstrap.m
-// `windowLabel` is injected as window.__ion__.label and tagged onto every
-// JS→MS message envelope. Pass "" for legacy single-window builds.
-WKWebView *ionSetupWebview(NSView *contentView, const char *windowLabel);
+WKWebView *ionSetupWebview(const char *label, int webviewId, id *navDelegateOut);
 
 // webview/protocol.m
 void       ionInstallSchemeHandlers(WKWebViewConfiguration *cfg);

@@ -1,99 +1,26 @@
-// Ion Linux — WebKitGTK webview setup + bootstrap injection + IPC wiring.
-//
-// Phase 2 + 4.5 entry point. Three things happen here:
-//   1. Acquire (or create) the shared WebKitWebContext and register custom
-//      URI scheme handlers on it BEFORE any view is created (WebKitGTK ties
-//      scheme registration to the context for its lifetime — same constraint
-//      as tauri-runtime-wry/src/lib.rs:5121).
-//   2. Build a WebKitWebView with a UserContentManager.
-//   3. Inject the bootstrap user-script (defines window.__ion__) + attach
-//      the script-message-received handler (in webview/messaging.c) + the
-//      decide-policy nav handler (in webview/nav.c).
-//
-// Pattern reference: wry src/webkitgtk/mod.rs (verified against the dev
-// branch of tauri-apps/wry, May 2026). Ion is C, not Rust, so we call the
-// same WebKit APIs directly via gobject_introspection's C bindings.
-
 #include "../state.h"
 #include "../internal.h"
+#include "../../bridge.h"
 #include "../../common/invokekey.h"
 #include "../../common/bootstrap.h"
+#include "../../common/protoReg.h"
+#include "../../common/webviewRegistry.h"
 
 #include <webkit2/webkit2.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
-// Forward decls for the helpers defined alongside this file.
-static void injectBootstrapScript(WebKitUserContentManager *ucm);
-
-WebKitWebView *ionSetupWebview(GtkWindow *parent) {
-    if (parent == NULL) return NULL;
-
-    // Acquire the default WebKitWebContext. WebKitGTK has one process-wide
-    // context by default; we install custom URI scheme handlers on it before
-    // any view spawns under it.
-    WebKitWebContext *ctx = webkit_web_context_get_default();
-    ionInstallSchemeHandlers(ctx);
-
-    // Build the user content manager — owns injected scripts + the
-    // script-message-received signal that ion uses for JS→MS IPC.
-    WebKitUserContentManager *ucm = webkit_user_content_manager_new();
-
-    // Inject the bootstrap user-script that defines window.__ion__. Same
-    // template as macOS + Windows (common/bootstrap.c); only the native-post
-    // line differs per platform.
-    injectBootstrapScript(ucm);
-
-    // Attach the IPC handler — defined in webview/messaging.c. Registers
-    // "ion" as a script message channel.
-    ionAttachMessageHandler(ucm);
-
-    // Build the view with the configured content manager + default context.
-    s_webView = WEBKIT_WEB_VIEW(g_object_new(
-        WEBKIT_TYPE_WEB_VIEW,
-        "web-context", ctx,
-        "user-content-manager", ucm,
-        NULL));
-
-    // DevTools env-gate (matches mac WKPreferences + Win
-    // ICoreWebView2Settings.AreDevToolsEnabled). Off by default, on when
-    // ION_DEVTOOLS is truthy.
-    WebKitSettings *settings = webkit_web_view_get_settings(s_webView);
-    const char *envDev = getenv("ION_DEVTOOLS");
-    gboolean devtools = FALSE;
-    if (envDev != NULL && envDev[0] != '\0') {
-        if (envDev[0] == '1' ||
-            strcasecmp(envDev, "true") == 0 ||
-            strcasecmp(envDev, "yes")  == 0 ||
-            strcasecmp(envDev, "on")   == 0) {
-            devtools = TRUE;
-        }
-    }
-    webkit_settings_set_enable_developer_extras(settings, devtools);
-
-    // Attach the nav handler (webview/nav.c) before the parent attaches the
-    // view — so decide-policy fires for the initial load too.
-    ionAttachNavHandler(s_webView);
-
-    // Pack into the GtkWindow. WebKitWebView is a GtkWidget — gtk_container_add
-    // makes it fill the window.
-    gtk_container_add(GTK_CONTAINER(parent), GTK_WIDGET(s_webView));
-    gtk_widget_show(GTK_WIDGET(s_webView));
-
-    return s_webView;
+static IonLinuxWebviewState *webviewState(IonWebviewId id) {
+    IonWebviewSlot *slot = ion_webview_get(id);
+    return slot ? (IonLinuxWebviewState *)slot->platformState : NULL;
 }
 
-// --- Bootstrap user-script injection -----------------------------------------
-//
-// Identical bootstrap template as mac + win (driven by common/bootstrap.c).
-// The Linux-specific transport line uses
-// `window.webkit.messageHandlers.ion.postMessage(envelope)` — same shape as
-// macOS WKScriptMessageHandler.
-
-static void injectBootstrapScript(WebKitUserContentManager *ucm) {
-    char *jsBuf = ion_build_bootstrap_js(
+static void injectBootstrapScript(WebKitUserContentManager *ucm, const char *label) {
+    char *jsBuf = ion_build_bootstrap_js_w(
         ion_invoke_key(),
+        label,
         "window.webkit.messageHandlers.ion.postMessage(envelope);"
     );
     if (jsBuf == NULL) return;
@@ -107,4 +34,109 @@ static void injectBootstrapScript(WebKitUserContentManager *ucm) {
     webkit_user_content_manager_add_script(ucm, script);
     webkit_user_script_unref(script);
     free(jsBuf);
+}
+
+IonWebviewId ionWebviewCreate(IonWindowId win, const char *label, const char *url) {
+    if (ionLinuxWindowState(win) == NULL) return ION_WEBVIEW_INVALID;
+    IonWebviewId id = ion_webview_alloc(label, win);
+    if (id == ION_WEBVIEW_INVALID) return ION_WEBVIEW_INVALID;
+
+    WebKitWebContext *ctx = webkit_web_context_get_default();
+    if (!ionProtoIsFrozen()) {
+        ionProtoFreeze();
+        ionInstallSchemeHandlers(ctx);
+    }
+
+    WebKitUserContentManager *ucm = webkit_user_content_manager_new();
+    injectBootstrapScript(ucm, label);
+    ionAttachMessageHandler(ucm, id);
+
+    IonLinuxWebviewState *st = (IonLinuxWebviewState *)calloc(1, sizeof *st);
+    if (!st) {
+        g_object_unref(ucm);
+        ion_webview_free(id);
+        return ION_WEBVIEW_INVALID;
+    }
+    st->view = WEBKIT_WEB_VIEW(g_object_new(
+        WEBKIT_TYPE_WEB_VIEW,
+        "web-context", ctx,
+        "user-content-manager", ucm,
+        NULL));
+    g_object_ref_sink(st->view);
+    g_object_unref(ucm);
+
+    // DevTools env-gate (matches mac WKPreferences + Win
+    // ICoreWebView2Settings.AreDevToolsEnabled). Off by default, on when
+    // ION_DEVTOOLS is truthy.
+    const char *envDev = getenv("ION_DEVTOOLS");
+    gboolean devtools = envDev != NULL && (envDev[0] == '1'
+        || strcasecmp(envDev, "true") == 0
+        || strcasecmp(envDev, "yes")  == 0
+        || strcasecmp(envDev, "on")   == 0);
+    webkit_settings_set_enable_developer_extras(
+        webkit_web_view_get_settings(st->view), devtools);
+
+    ionAttachNavHandler(st->view);
+    gtk_widget_show(GTK_WIDGET(st->view));
+
+    ion_webview_get(id)->platformState = st;
+
+    if (url != NULL && url[0] != '\0') webkit_web_view_load_uri(st->view, url);
+    return id;
+}
+
+void ionWebviewRelease(IonWebviewId id) {
+    IonLinuxWebviewState *st = webviewState(id);
+    if (!st) return;
+    gtk_widget_destroy(GTK_WIDGET(st->view));
+    g_object_unref(st->view);
+    free(st);
+    ion_webview_free(id);
+}
+
+void *ionWebviewNode(IonWebviewId id) {
+    IonLinuxWebviewState *st = webviewState(id);
+    return st ? (void *)st->view : NULL;
+}
+
+// Assumes the app parents the node directly in the window's GtkFixed root; in any
+// other container the node gets its size only.
+void ionWebviewSetBounds(IonWebviewId id, int x, int y, int w, int h) {
+    IonLinuxWebviewState *st = webviewState(id);
+    if (!st) return;
+    GtkWidget *node = GTK_WIDGET(st->view);
+    int scale = gtk_widget_get_scale_factor(node);
+    st->x = x;
+    st->y = y;
+    gtk_widget_set_size_request(node, w / scale, h / scale);
+    GtkWidget *parent = gtk_widget_get_parent(node);
+    if (parent != NULL && GTK_IS_FIXED(parent)) {
+        gtk_fixed_move(GTK_FIXED(parent), node, x / scale, y / scale);
+    }
+}
+
+void ionWebviewSetVisible(IonWebviewId id, int visible) {
+    IonLinuxWebviewState *st = webviewState(id);
+    if (st) gtk_widget_set_visible(GTK_WIDGET(st->view), visible ? TRUE : FALSE);
+}
+
+void ionWebviewSetTransparent(IonWebviewId id, int transparent) {
+    IonLinuxWebviewState *st = webviewState(id);
+    if (!st) return;
+    GdkRGBA bg = transparent ? (GdkRGBA){0, 0, 0, 0} : (GdkRGBA){1, 1, 1, 1};
+    webkit_web_view_set_background_color(st->view, &bg);
+}
+
+void ionWebviewFocus(IonWebviewId id) {
+    IonLinuxWebviewState *st = webviewState(id);
+    if (!st) return;
+    gtk_widget_grab_focus(GTK_WIDGET(st->view));
+    IonLinuxWindowState *win = ionLinuxWindowState(ionWebviewWindow(id));
+    if (win) ionLinuxUpdateContentFocus(win);
+}
+
+// The WebKitWebView is a real GtkWidget that receives GDK pointer events itself: nothing to forward.
+void ionWebviewForwardPointer(IonWebviewId id, int kind, double x, double y,
+                              int button, double delta) {
+    (void)id; (void)kind; (void)x; (void)y; (void)button; (void)delta;
 }

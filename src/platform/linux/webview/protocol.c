@@ -8,7 +8,7 @@
 //
 // Constraint (verified against tauri-runtime-wry/src/lib.rs:5121-5136 + wry
 // src/webkitgtk/web_context.rs): scheme can only register once per
-// WebContext lifetime. We call this from ionSetupWebview BEFORE the view is
+// WebContext lifetime. We call this from ionWebviewCreate BEFORE the first view is
 // created — registration latches into the context permanently.
 
 #include "../state.h"

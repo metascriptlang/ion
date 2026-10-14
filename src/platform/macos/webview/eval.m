@@ -1,21 +1,16 @@
-// Ion macOS — MS → JS bridge: evaluate JS in a webview's main world.
-//
-// ionEvalJS targets the "main" window via the s_webview global (v0 path).
-// ionEvalJSWindow targets a specific window by id (multi-window path).
 
 #import "../state.h"
 #import "../../bridge.h"
 
-void ionEvalJS(const char *js) {
-    if (s_webview == nil || js == NULL) return;
-    NSString *src = [NSString stringWithUTF8String:js];
-    [s_webview evaluateJavaScript:src completionHandler:nil];
+void ionWebviewEval(IonWebviewId id, const char *js) {
+    IonMacWebviewState *st = ionMacWebviewState(id);
+    if (!st || js == NULL) return;
+    [st->view evaluateJavaScript:[NSString stringWithUTF8String:js] completionHandler:nil];
 }
 
-void ionEvalJSWindow(IonWindowId id, const char *js) {
-    if (js == NULL) return;
-    IonMacWindowState *st = ionMacWindowState(id);
-    if (!st || st->webview == nil) return;
-    NSString *src = [NSString stringWithUTF8String:js];
-    [st->webview evaluateJavaScript:src completionHandler:nil];
+void ionWebviewNavigate(IonWebviewId id, const char *url) {
+    IonMacWebviewState *st = ionMacWebviewState(id);
+    if (!st || url == NULL || url[0] == '\0') return;
+    NSURL *nsURL = [NSURL URLWithString:[NSString stringWithUTF8String:url]];
+    if (nsURL != nil) [st->view loadRequest:[NSURLRequest requestWithURL:nsURL]];
 }

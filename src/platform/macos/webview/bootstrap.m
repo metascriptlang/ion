@@ -27,6 +27,7 @@
 // ---- WKScriptMessageHandler ------------------------------------------------
 
 @interface IonMessageHandler : NSObject <WKScriptMessageHandler>
+@property (nonatomic) int webviewId;
 @end
 
 @implementation IonMessageHandler
@@ -52,13 +53,13 @@
     if (![rawName isKindOfClass:[NSString class]]) return;
     NSString *name = (NSString *)rawName;
     NSString *payload = [rawPayload isKindOfClass:[NSString class]] ? (NSString *)rawPayload : @"";
-    ionEnqueueMessage(name, payload);
+    ionEnqueueMessageFrom(self.webviewId, name, payload);
 }
 @end
 
 // ---- Webview factory -------------------------------------------------------
 
-WKWebView *ionSetupWebview(NSView *contentView, const char *windowLabel) {
+WKWebView *ionSetupWebview(const char *windowLabel, int webviewId, id *navDelegateOut) {
     WKWebViewConfiguration *cfg = [[WKWebViewConfiguration alloc] init];
     cfg.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
 
@@ -78,7 +79,7 @@ WKWebView *ionSetupWebview(NSView *contentView, const char *windowLabel) {
     // bundle imports. We only expose the bare minimum needed to talk to native:
     //   window.__ion__.post(name, payload)           — JS → native
     //   window.__ion__.setReceiver(fn)               — npm package registers here
-    //   window.__ion__._dispatch(name, payload)      — native → JS (called by ionEvalJS)
+    //   window.__ion__._dispatch(name, payload)      — native → JS (called by ionWebviewEval)
     // Plus the auto console-relay so debugging works even before the npm
     // package is loaded.
     //
@@ -98,20 +99,21 @@ WKWebView *ionSetupWebview(NSView *contentView, const char *windowLabel) {
                                injectionTime:WKUserScriptInjectionTimeAtDocumentStart
                             forMainFrameOnly:YES];
     [ucc addUserScript:script];
-    [ucc addScriptMessageHandler:[[IonMessageHandler alloc] init] name:@"ion"];
+    IonMessageHandler *handler = [[IonMessageHandler alloc] init];
+    handler.webviewId = webviewId;
+    [ucc addScriptMessageHandler:handler name:@"ion"];
 
     // Wire custom URI scheme handlers (ion://, asset://, app-registered).
     // Must run BEFORE WKWebView alloc — setURLSchemeHandler:forURLScheme:
     // throws once the config is in use by a webview.
     ionInstallSchemeHandlers(cfg);
 
-    NSRect frame = contentView.bounds;
-    WKWebView *wv = [[WKWebView alloc] initWithFrame:frame configuration:cfg];
-    wv.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    [contentView addSubview:wv];
+    WKWebView *wv = [[WKWebView alloc] initWithFrame:NSZeroRect configuration:cfg];
+    wv.autoresizingMask = NSViewNotSizable;
 
-    s_navDelegate = [[IonNavigationDelegate alloc] init];
-    wv.navigationDelegate = (id<WKNavigationDelegate>)s_navDelegate;
+    id navDelegate = [[IonNavigationDelegate alloc] init];
+    wv.navigationDelegate = (id<WKNavigationDelegate>)navDelegate;
+    *navDelegateOut = navDelegate;
 
     return wv;
 }
