@@ -109,7 +109,9 @@ warm-up, a D3D11 clear plus `Present(1)` per frame:
   The old `ION_SURFACE_ABOVE` path used `TRUE, NULL`, so an "above" surface sat below.
 - **A second DComp device's visual parents into Ion's tree** (measured 2026-10-14: `AddVisual`
   and both `Commit`s returned S_OK and its D2D content rendered), but the two devices commit
-  separately, so one change can split across two displayed frames. Ion keeps one device.
+  separately, so one change can split across two displayed frames. Ion keeps one device, shared
+  by every window: each window has its own `IDCompositionTarget` and root visual on it, so a
+  visual can move between windows and one `Commit` lands every window's change together.
 - **The device on a D2D device hosts WebView2 unchanged** (measured 2026-10-14 and again by the
   examples below).
 
@@ -128,6 +130,9 @@ warm-up, a D3D11 clear plus `Present(1)` per frame:
   `auto-probe: ipc alive`, `MS command addNumbers(100, 23)` and the page's `received pong` reply,
   which travels back to the sending webview by id.
 
+2026-10-16, Windows 11, msc v0.3.4 (`fd03df3e`): `examples/multiWindow.ms` runs two such windows at
+once; its results are in `TODO.md` under "Multi-window, measured".
+
 Not measured: macOS and Linux (written to this contract on a Windows host, never compiled), a
 real foreground session with physical input (the harness cannot take the foreground), IME
-composition into the content, more than one window on Windows (one window today).
+composition into the content.

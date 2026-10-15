@@ -25,7 +25,7 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 | Content protection | ✅ | ✅ | ✅ | `security/content_protect.*` |
 | Keychain / secrets | ✅ | ✅ | ✍️ libsecret, unchanged, syntax-checked, not run | Keychain / CredWriteW (advapi32) / libsecret |
 | `openExternal` | ✅ | ✅ | ✅ | `core/shell.{m,c}` |
-| Multi-window | ✅ | ✅ | ✅ | `common/windowRegistry.c` + `windowEvents.c` |
+| Multi-window | ✅ | ✅ measured 2026-10-16: two windows, each with its own content, webview, input records and IPC; closing one leaves the other running, the loop ends with the last | ✅ | `common/windowRegistry.c` + `windowEvents.c`; Windows `examples/multiWindow.ms` |
 | `show` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`ShowWindow SW_SHOW`) | ✍️ GTK4 (`gtk_window_*`), syntax-checked, not run | `core/window.{m,c}`; `examples/windowControls.ms` on Windows |
 | `hide` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`SW_HIDE`) | ✍️ GTK4 (`gtk_window_*`), syntax-checked, not run | same |
 | `focus` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`SetForegroundWindow`, Alt-key fallback after winit `window.rs:1832`); a window another app keeps in front cannot be forced | ✍️ GTK4 (`gtk_window_*`), syntax-checked, not run | same |
@@ -38,7 +38,7 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 | `setDecorations` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`WS_CAPTION` set and cleared; client size and origin unchanged) | ✍️ GTK4 (`gtk_window_*`), syntax-checked, not run | `WS_OVERLAPPEDWINDOW` or `WS_POPUP` + `SWP_FRAMECHANGED` |
 | Event `focused` / `blurred` | ✍️ `SDL_EVENT_WINDOW_FOCUS_*`, not re-measured | ✅ measured 2026-10-15 (`WM_ACTIVATE`) | ✍️ `notify::is-active`, syntax-checked, not run | `common/windowEvents.c` queue, `ionPollEvent` returns 3 |
 | Event `resized` / `moved` | ✍️ `SDL_EVENT_WINDOW_RESIZED/MOVED`, not re-measured | ✅ measured 2026-10-15 (`WM_SIZE`, `WM_MOVE`; no `moved` while minimized) | ⚠️ `resized` from the probe `resize` signal; `moved` is never pushed (GTK4 reports no position), syntax-checked, not run | same |
-| Event `close-requested` | never pushed: `SDL_EVENT_WINDOW_CLOSE_REQUESTED` quits the app (source) | ✅ measured 2026-10-15: pushed from `WM_CLOSE` (title-bar close), then the window is destroyed and the app quits. No veto | ✍️ pushed from `close-request`, then the window is destroyed and the app quits; no veto. Syntax-checked, not run | `docs/MULTI-WINDOW.md` lists close interception as open |
+| Event `close-requested` | never pushed: `SDL_EVENT_WINDOW_CLOSE_REQUESTED` quits the app (source) | ✅ measured 2026-10-15: pushed from `WM_CLOSE` (title-bar close), then that window is destroyed; the loop ends once no window is left (measured 2026-10-16 with two windows). No veto | ✍️ pushed from `close-request`, then the window is destroyed and the app quits; no veto. Syntax-checked, not run | `docs/MULTI-WINDOW.md` lists close interception as open |
 | Event `destroyed` | never pushed (source) | ✅ measured 2026-10-15: pushed from `WM_DESTROY` (also for `closeWindow`); the loop delivers it before quitting | ✍️ pushed when a window is destroyed (`closeWindow` or the close button); the registry slot is freed once the loop has read the event, as on Windows. Syntax-checked, not run | same |
 | Native menu bar | ✅ | ❌ | ❌ | `macos/chrome/menu.m` only |
 | Window input records (pointer, key, text, IME, focus, resize, leave) | ⛔ unbuilt | ✅ | ✍️ capture-phase `GtkEventControllerLegacy` + `GtkIMContext`, syntax-checked, not run | `windows/input/input.c` / `macos/core/contentHost.m` / `linux/input/input.c` |
@@ -55,6 +55,8 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 | OTA `apply` (install + relaunch) | ✅ | ⛔ stub | ⛔ stub | `update/install.{m,c}` |
 
 Window text input, measured 2026-10-15 on Windows 11: `examples/textFilter.ms` sends `WM_CHAR` and `WM_SYSCHAR` straight to the window procedure (so `TranslateMessage` is not exercised) and asserts `onText`. Units below 0x20 and DEL produce no text and no key record `text`, `WM_SYSCHAR` (Alt accelerators) produces none, and printable units, surrogate pairs and Ctrl+Alt (AltGr) text still arrive; this matches macOS `isTypedText` and winit `keyboard.rs:232-250`.
+
+Multi-window, measured 2026-10-16 on Windows 11 (msc v0.3.4, build `fd03df3e`): `examples/multiWindow.ms` opens windows `one` and `two`, each with a D2D panel and a webview, and drives them by posting messages to each HWND. Pointer and key records carry their own window id; each webview's `ready` is answered by `emit` to the sending webview and acked from that webview; a click forwarded into each webview reaches that page; `PrintWindow` reads each panel's color. After `WM_CLOSE` to `one`: `close-requested` and `destroyed` for `one`, `windowCount` 1, its webview released, and `two` still takes a click, a frame, an IPC round trip and draws a panel added after the close. `WM_CLOSE` to `two` ends the loop; exit 0, 15 PASS. All windows share one DirectComposition device (each has its own target and root), so `windowDevice` is the same pointer for every window and one commit covers all of them.
 
 Window controls and events, measured 2026-10-15 on a Windows 11 host (one 3440x1440 monitor at 96 dpi): `msc build examples/windowControls.ms`, then run; it reads each control back through Win32 (`GetClientRect`, `GetWindowRect`, style and exstyle bits, `IsWindowVisible`, `IsIconic`, `IsZoomed`, `GetWindowTextW`) and exits 1 on a FAIL. A window another app has pulled the foreground from skips the `blurred` check on minimize.
 
@@ -224,7 +226,6 @@ Remaining:
 - **Touch and pen into a webview on Windows** — reach the page as promoted
   mouse events through the app's forwarding, not as pointer input with
   pressure and contact data (`docs/WINDOW-CONTENT.md`).
-- **One window on Windows** — `ionCreateWindow` refuses a second window.
 - **Toast WinRT** — current Windows notification is a balloon tip (renders via
   the Toast/Action Center pipeline on Win10/11 anyway). Proper
   `ToastNotificationManager` needs an AUMID from a Start Menu shortcut.
