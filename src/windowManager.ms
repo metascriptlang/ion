@@ -126,6 +126,7 @@ export function setTitle(win: Window, title: string):                void { ionS
 export function setSize(win: Window, width: int32, height: int32):   void { ionSetWindowSize(win.id, width, height); }
 export function pixelWidth(win: Window):  int32 { return ionWindowPixelWidth(win.id); }
 export function pixelHeight(win: Window): int32 { return ionWindowPixelHeight(win.id); }
+// Moves the window's outer frame top-left (title bar and border included) to x, y in screen pixels, on every platform.
 export function setPosition(win: Window, x: int32, y: int32):        void { ionSetWindowPosition(win.id, x, y); }
 export function setAlwaysOnTop(win: Window, on: boolean):            void { ionSetWindowAlwaysOnTop(win.id, on ? (1 as int32) : (0 as int32)); }
 export function setDecorations(win: Window, on: boolean):            void { ionSetWindowDecorations(win.id, on ? (1 as int32) : (0 as int32)); }
