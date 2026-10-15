@@ -295,16 +295,79 @@ int ionWindowPixelHeight(IonWindowId id) {
     return hwnd && GetClientRect(hwnd, &rc) ? rc.bottom - rc.top : 0;
 }
 
-void ionShowWindow(IonWindowId id)                          { (void)id; }
-void ionHideWindow(IonWindowId id)                          { (void)id; }
-void ionFocusWindow(IonWindowId id)                         { (void)id; }
-void ionMinimizeWindow(IonWindowId id)                      { (void)id; }
-void ionMaximizeWindow(IonWindowId id)                      { (void)id; }
-void ionSetWindowTitle(IonWindowId id, const char *t)       { (void)id; (void)t; }
-void ionSetWindowSize(IonWindowId id, int w, int h)         { (void)id; (void)w; (void)h; }
-void ionSetWindowPosition(IonWindowId id, int x, int y)     { (void)id; (void)x; (void)y; }
-void ionSetWindowAlwaysOnTop(IonWindowId id, int on)        { (void)id; (void)on; }
-void ionSetWindowDecorations(IonWindowId id, int on)        { (void)id; (void)on; }
+void ionShowWindow(IonWindowId id)     { HWND h = ionWinHwnd(id); if (h) ShowWindow(h, SW_SHOW); }
+void ionHideWindow(IonWindowId id)     { HWND h = ionWinHwnd(id); if (h) ShowWindow(h, SW_HIDE); }
+void ionMinimizeWindow(IonWindowId id) { HWND h = ionWinHwnd(id); if (h) ShowWindow(h, SW_MINIMIZE); }
+void ionMaximizeWindow(IonWindowId id) { HWND h = ionWinHwnd(id); if (h) ShowWindow(h, SW_MAXIMIZE); }
+
+// A background process cannot always take the foreground; winit
+// window.rs:1832-1867 synthesises an Alt key press to get the permission.
+void ionFocusWindow(IonWindowId id) {
+    HWND h = ionWinHwnd(id);
+    if (h == NULL || !IsWindowVisible(h) || IsIconic(h) || GetForegroundWindow() == h) return;
+    if (SetForegroundWindow(h) && GetForegroundWindow() == h) return;
+    INPUT in[2] = {{0}};
+    in[0].type = in[1].type = INPUT_KEYBOARD;
+    in[0].ki.wVk = in[1].ki.wVk = VK_MENU;
+    in[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(2, in, sizeof(INPUT));
+    SetForegroundWindow(h);
+}
+
+void ionSetWindowTitle(IonWindowId id, const char *t) {
+    HWND h = ionWinHwnd(id);
+    wchar_t *w = h ? ionUtf8ToWide(t ? t : "") : NULL;
+    if (w == NULL) return;
+    SetWindowTextW(h, w);
+    free(w);
+}
+
+void ionSetWindowSize(IonWindowId id, int w, int h) {
+    HWND hwnd = ionWinHwnd(id);
+    if (hwnd) setClientSize(hwnd, w, h);
+}
+
+// The outer (frame) top-left, in virtual-screen pixels: winit window.rs:560-585
+// set_outer_position, which also leaves the maximized state.
+void ionSetWindowPosition(IonWindowId id, int x, int y) {
+    HWND h = ionWinHwnd(id);
+    if (h == NULL) return;
+    if (IsZoomed(h)) ShowWindow(h, SW_RESTORE);
+    SetWindowPos(h, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+// winit window_state.rs:405-423 (HWND_TOPMOST / HWND_NOTOPMOST).
+void ionSetWindowAlwaysOnTop(IonWindowId id, int on) {
+    HWND h = ionWinHwnd(id);
+    if (h) SetWindowPos(h, on ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+}
+
+// Same two frames createWindow picks (caption + frame, or WS_POPUP). The
+// client area keeps its size and screen position; a maximized or minimized
+// window only has its frame refreshed. winit window_state.rs:496-514.
+void ionSetWindowDecorations(IonWindowId id, int on) {
+    HWND h = ionWinHwnd(id);
+    if (h == NULL) return;
+    const DWORD frame = WS_OVERLAPPEDWINDOW | WS_POPUP;
+    DWORD old = (DWORD)GetWindowLongPtrW(h, GWL_STYLE);
+    DWORD style = (old & ~frame) | frameStyle(on != 0, s_resizable);
+    if (style == old) return;
+    RECT client;
+    GetClientRect(h, &client);
+    POINT origin = {0, 0};
+    ClientToScreen(h, &origin);
+    SetWindowLongPtrW(h, GWL_STYLE, (LONG_PTR)style);
+    UINT flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED;
+    RECT r = {origin.x, origin.y, origin.x + client.right, origin.y + client.bottom};
+    if (IsZoomed(h) || IsIconic(h)) {
+        flags |= SWP_NOMOVE | SWP_NOSIZE;
+    } else {
+        AdjustWindowRectExForDpi(&r, style, FALSE, (DWORD)GetWindowLongPtrW(h, GWL_EXSTYLE), GetDpiForWindow(h));
+    }
+    SetWindowPos(h, NULL, r.left, r.top, r.right - r.left, r.bottom - r.top, flags);
+}
+
 void ionSetWindowContentProtected(IonWindowId id, int on)   { (void)id; ionSetContentProtected(on); }
 msString    ionFileOpenWindow(IonWindowId id)               { (void)id; return ionFileOpen(); }
 IonWindowId ionWindowEventId(void)                          { return ION_WINDOW_INVALID; }
