@@ -359,7 +359,12 @@ void ionSetWindowAlwaysOnTop(IonWindowId id, int on) {
 
 void ionSetWindowDecorations(IonWindowId id, int on) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
-    if (st) gtk_window_set_decorated(GTK_WINDOW(st->window), on ? TRUE : FALSE);
+    if (!st) return;
+    if (gtk_widget_get_mapped(st->window) && gtk_widget_get_width(st->root) > 0) {
+        st->wantW = gtk_widget_get_width(st->root);
+        st->wantH = gtk_widget_get_height(st->root);
+    }
+    gtk_window_set_decorated(GTK_WINDOW(st->window), on ? TRUE : FALSE);
 }
 
 void ionSetWindowContentProtected(IonWindowId id, int on) {
