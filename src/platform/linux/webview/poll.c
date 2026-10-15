@@ -58,7 +58,7 @@ int ionPollEvent(void) {
 
     got = drain();
     if (got) return got;
-    if (s_quitRequested) return 1;
+    if (ionLinuxAllWindowsClosed()) return 1;
 
     if (!g_atomic_int_get(&s_wakePending)) g_main_context_iteration(NULL, TRUE);
     got = drain();

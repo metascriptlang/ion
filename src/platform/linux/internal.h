@@ -13,6 +13,7 @@ extern "C" {
 GtkWidget *ionGetMainWindow(void);
 void       ionLinuxPresentMain(void);
 void       ionLinuxReleaseReadDestroyed(void);
+int        ionLinuxAllWindowsClosed(void);
 void       ionLinuxSyncFrameState(IonLinuxWindowState *st);
 double     ionLinuxScale(IonLinuxWindowState *st);
 

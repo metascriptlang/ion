@@ -38,8 +38,6 @@ IonLinuxWindowState *ionLinuxWindowState(IonWindowId id);
 
 extern GtkWidget *s_mainWindow;
 
-extern int s_quitRequested;
-
 // Cold-start deep link URL extracted from /proc/self/cmdline at ionInit time.
 // Empty when the app was not launched with a URL arg.
 extern char s_coldStartUrl[2048];

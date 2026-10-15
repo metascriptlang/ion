@@ -4,7 +4,6 @@
 #include "../common/queue.h"
 
 GtkWidget *s_mainWindow = NULL;
-int        s_quitRequested = 0;
 char       s_coldStartUrl[2048] = {0};
 
 void ionEnqueueMessage(const char *name, const char *payload) {

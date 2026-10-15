@@ -17,6 +17,7 @@
 #include <unistd.h>
 
 static const char kMainLabel[] = "main";
+static int s_hadWindow;
 
 IonLinuxWindowState *ionLinuxWindowState(IonWindowId id) {
     IonWindowSlot *slot = ion_registry_get(id);
@@ -60,7 +61,6 @@ static gboolean onCloseRequest(GtkWindow *window, gpointer data) {
     (void)window;
     IonLinuxWindowState *st = (IonLinuxWindowState *)data;
     ion_wevt_push(st->id, ION_EVT_CLOSE_REQUESTED);
-    s_quitRequested = 1;
     g_idle_add(destroyLater, GINT_TO_POINTER(st->id));
     return TRUE;
 }
@@ -188,6 +188,7 @@ IonWindowId ionCreateWindow(const char *label, const char *title,
 
     IonWindowSlot *slot = ion_registry_get(winId);
     slot->platformState = st;
+    s_hadWindow = 1;
     ion_frame_window_open(winId);
     refreshMainWindow();
 
@@ -221,6 +222,10 @@ void ionCloseWindow(IonWindowId winId) {
     slot->platformState = NULL;
     ion_wevt_push(winId, ION_EVT_DESTROYED);
     refreshMainWindow();
+}
+
+int ionLinuxAllWindowsClosed(void) {
+    return s_hadWindow && ionWindowCount() == 0;
 }
 
 int ionWindowCount(void) {
