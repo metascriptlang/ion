@@ -30,6 +30,7 @@ when (linux) {
 	@passL(gtkLibs);
 }
 
+import { exec } from "std/process";
 import { ionClipboardRead, ionClipboardWrite } from "./platform/bridge.h";
 
 // The clipboard's text, or "" when it holds no text or could not be opened.

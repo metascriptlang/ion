@@ -11,8 +11,7 @@
 // gtk_init_check is a no-op once GTK is initialised, and FALSE without a display.
 static GdkClipboard *clipboard(const char *api) {
     if (!gtk_init_check() || gdk_display_get_default() == NULL) {
-        fprintf(stderr, "[ion] %s: no display, GTK could not be initialised
-", api);
+        fprintf(stderr, "[ion] %s: no display, GTK could not be initialised\n", api);
         return NULL;
     }
     return gdk_display_get_clipboard(gdk_display_get_default());
