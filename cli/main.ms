@@ -7,7 +7,7 @@
 //   notarize  <target> <profile>     Submit + wait + staple via xcrun notarytool.
 //   test                              Run all ion + command-builder unit tests.
 //
-// Compile:  bun ~/metascript/recompiler/bun/run.ts build cli/main.ms --release --strip
+// Compile:  msc build --release --strip cli/main.ms
 // Output:   out/release/main → rename or symlink to bin/ion
 
 import { cli, run } from "../src/cli/index";
@@ -17,6 +17,13 @@ import { exists, isFile, readDir, readFile, writeFile, copyFile, mkdir, removeAl
 const VERSION = "0.0.1";
 
 // ---- helpers ---------------------------------------------------------------
+
+function msc(): string {
+	const fromEnv = env.get("MSC");
+	const tool = fromEnv.length > 0 ? fromEnv : "msc";
+	if (!cmdExists(tool)) die(`msc not found: ${tool} (put msc on PATH or set MSC)`);
+	return `"${tool}"`;
+}
 
 // exec captures output; echo it so the child's output stays visible, and map any
 // failure (non-zero exit, signal, spawn) to a non-zero code.
@@ -149,7 +156,7 @@ app.command("build <entry>", "Compile an MS entry to an optimized binary")
 		const entry = args.positional("entry");
 		if (!exists(entry)) die(`entry not found: ${entry}`);
 		const flags = args.flag("debug") ? "" : "--release --strip";
-		const code = bash(`bun ~/metascript/recompiler/bun/run.ts build ${flags} ${entry}`);
+		const code = bash(`${msc()} build ${flags} "${entry}"`);
 		if (code !== 0 as int32) exit(code as number);
 	});
 
@@ -274,16 +281,24 @@ app.command("test", "Run all ion + command-builder unit tests")
 				if (!file.endsWith(".ms")) continue;
 				const path = `${dir}/${file}`;
 				console.log(`==> ${path}`);
-				// Capture pass count by writing log + grep; bash's exit code
-				// from `msc test` reflects whether OUR file passed (stdlib
-				// tests run too but we don't fail on them).
-				const tag = path.replaceAll("/", "_");
-				const log = `/tmp/ion-test-${tag}.log`;
-				bash(`bun ~/metascript/recompiler/bun/run.ts test "${path}" > "${log}" 2>&1`);
-				const lineCmd = `grep -E "${path}" "${log}" | tail -1`;
-				bash(`${lineCmd} | grep -q "^✓" && (N=$(${lineCmd} | sed -E 's/.*\\(([0-9]+)\\).*/\\1/'); echo "    PASS — $N tests") || (echo "    FAIL"; ${lineCmd}; exit 1)`);
+				const r = exec(`${msc()} test "${path}"`);
+				const text = r.ok ? r.value : r.error.output + r.error.errorOutput;
+				let result = "";
+				for (const line of text.split("\n")) {
+					if (line.includes(path) && (line.startsWith("✓") || line.startsWith("✗"))) result = line;
+				}
+				if (result.startsWith("✓")) {
+					console.log(`    PASS ${result}`);
+					totalPass += 1;
+				} else {
+					console.log("    FAIL");
+					console.log(text);
+					totalFail += 1;
+				}
 			}
 		}
+		console.log(`${totalPass} passed, ${totalFail} failed`);
+		if (totalFail > 0) exit(1);
 	});
 
 // ---- dispatch --------------------------------------------------------------
