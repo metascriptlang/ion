@@ -26,6 +26,20 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 | Keychain / secrets | ✅ | ✅ | ✅ | Keychain / CredWriteW (advapi32) / libsecret |
 | `openExternal` | ✅ | ✅ | ✅ | `core/shell.{m,c}` |
 | Multi-window | ✅ | ✅ | ✅ | `common/windowRegistry.c` + `windowEvents.c` |
+| `show` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`ShowWindow SW_SHOW`) | ✍️ in source (GTK), not re-measured | `core/window.{m,c}`; `examples/windowControls.ms` on Windows |
+| `hide` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`SW_HIDE`) | ✍️ in source (GTK), not re-measured | same |
+| `focus` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`SetForegroundWindow`, Alt-key fallback after winit `window.rs:1832`); a window another app keeps in front cannot be forced | ✍️ in source (GTK), not re-measured | same |
+| `minimize` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`SW_MINIMIZE`) | ✍️ in source (GTK), not re-measured | same |
+| `maximize` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`SW_MAXIMIZE`) | ✍️ in source (GTK), not re-measured | same |
+| `setTitle` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (UTF-8 to UTF-16, `é中文` read back) | ✍️ in source (GTK), not re-measured | same |
+| `setSize` and `createWindow` size (client area, device-independent pixels) | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 at 96 dpi: client rect equals the size asked, decorated or not, also from a maximized window. 144 dpi not run: one 96 dpi monitor | ✍️ in source (GTK), not re-measured | `AdjustWindowRectExForDpi` (winit `window_state.rs:507`) |
+| `setPosition` (outer frame top-left, virtual-screen pixels) | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`GetWindowRect` equals the point). macOS and Linux take `SDL_SetWindowPosition` and `gtk_window_move`; whether SDL means the client origin was not checked | ✍️ in source (GTK), not re-measured | winit `window.rs:560` |
+| `setAlwaysOnTop` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`WS_EX_TOPMOST` set and cleared) | ✍️ in source (GTK), not re-measured | `HWND_TOPMOST` / `HWND_NOTOPMOST` (winit `window_state.rs:405`) |
+| `setDecorations` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`WS_CAPTION` set and cleared; client size and origin unchanged) | ✍️ in source (GTK), not re-measured | `WS_OVERLAPPEDWINDOW` or `WS_POPUP` + `SWP_FRAMECHANGED` |
+| Event `focused` / `blurred` | ✍️ `SDL_EVENT_WINDOW_FOCUS_*`, not re-measured | ✅ measured 2026-10-15 (`WM_ACTIVATE`) | ✍️ `notify::is-active`, not re-measured | `common/windowEvents.c` queue, `ionPollEvent` returns 3 |
+| Event `resized` / `moved` | ✍️ `SDL_EVENT_WINDOW_RESIZED/MOVED`, not re-measured | ✅ measured 2026-10-15 (`WM_SIZE`, `WM_MOVE`; no `moved` while minimized) | ✍️ `configure-event` and root allocate, not re-measured | same |
+| Event `close-requested` | never pushed: `SDL_EVENT_WINDOW_CLOSE_REQUESTED` quits the app (source) | ✅ measured 2026-10-15: pushed from `WM_CLOSE` (title-bar close), then the window is destroyed and the app quits. No veto | never pushed: `delete-event` quits the app (source) | `docs/MULTI-WINDOW.md` lists close interception as open |
+| Event `destroyed` | never pushed (source) | ✅ measured 2026-10-15: pushed from `WM_DESTROY` (also for `closeWindow`); the loop delivers it before quitting | never pushed (source) | same |
 | Native menu bar | ✅ | ❌ | ❌ | `macos/chrome/menu.m` only |
 | Window input records (pointer, key, text, IME, focus, resize, leave) | ⛔ unbuilt | ✅ | ⛔ unbuilt | `windows/input/input.c` / `macos/core/contentHost.m` / `linux/input/input.c` |
 | Pointer forwarding into a webview (`forwardPointer`) | n/a | ✅ | n/a | WebView2 `SendMouseInput`; WKWebView and WebKitGTK take OS input themselves |
@@ -39,6 +53,8 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 | Audio recording (`startRecording`, pause, resume, stop, status) | ⛔ unbuilt | ✅ | ⛔ unbuilt | `common/audio.c`: capture `ma_device` into `ma_encoder`, WAV 16-bit only |
 | OTA `check` / `download` / verify | ✅ | ✅ | ✅ | pure MS (`src/update.ms`) |
 | OTA `apply` (install + relaunch) | ✅ | ⛔ stub | ⛔ stub | `update/install.{m,c}` |
+
+Window controls and events, measured 2026-10-15 on a Windows 11 host (one 3440x1440 monitor at 96 dpi): `msc build examples/windowControls.ms`, then run; it reads each control back through Win32 (`GetClientRect`, `GetWindowRect`, style and exstyle bits, `IsWindowVisible`, `IsIconic`, `IsZoomed`, `GetWindowTextW`) and exits 1 on a FAIL. A window another app has pulled the foreground from skips the `blurred` check on minimize.
 
 Loop, wake and clipboard, measured 2026-10-15 on msc v0.3.3 (build `9cf5708c`), Windows 11:
 `examples/loopWake.ms` logs the 500 ms `setTimeout` firing 500 ms after start, an `await` of a
