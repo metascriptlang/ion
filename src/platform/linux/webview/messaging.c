@@ -13,7 +13,7 @@
 #include "../../common/json_extract.h"
 #include "../../common/queue.h"
 
-#include <webkit2/webkit2.h>
+#include <webkit/webkit.h>
 #include <jsc/jsc.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,11 +22,9 @@
 // "script-message-received::ion" — fired when JS calls
 // window.webkit.messageHandlers.ion.postMessage(...).
 static void onScriptMessage(WebKitUserContentManager *ucm,
-                            WebKitJavascriptResult *result,
+                            JSCValue *jsValue,
                             gpointer user_data) {
     (void)ucm;
-
-    JSCValue *jsValue = webkit_javascript_result_get_js_value(result);
     if (jsValue == NULL) return;
 
     // Serialize the JS object to JSON. We use the same JSON-string-shape
@@ -60,7 +58,10 @@ static void onScriptMessage(WebKitUserContentManager *ucm,
 void ionAttachMessageHandler(WebKitUserContentManager *ucm, int webview) {
     if (ucm == NULL) return;
     // Register the "ion" message channel — bootstrap script posts to it.
-    webkit_user_content_manager_register_script_message_handler(ucm, "ion");
+    if (!webkit_user_content_manager_register_script_message_handler(ucm, "ion", NULL)) {
+        fprintf(stderr, "[ion] IPC unavailable: script message handler 'ion' was not registered\n");
+        return;
+    }
     g_signal_connect(ucm, "script-message-received::ion",
                      G_CALLBACK(onScriptMessage), GINT_TO_POINTER(webview));
 }

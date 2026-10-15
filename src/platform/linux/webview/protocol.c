@@ -15,7 +15,8 @@
 #include "../internal.h"
 #include "../../common/protoReg.h"
 
-#include <webkit2/webkit2.h>
+#include <webkit/webkit.h>
+#include <libsoup/soup.h>
 #include <gio/gio.h>
 #include <stdio.h>
 #include <stdlib.h>

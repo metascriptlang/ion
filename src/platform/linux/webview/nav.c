@@ -4,14 +4,16 @@
 // fires decide-policy for every navigation: initial load, link click, JS
 // navigate, redirect. We consult common/navpolicy.c to decide:
 //   - ALLOW    → let WebKit navigate in-page
-//   - EXTERNAL → cancel + gtk_show_uri to open in default browser
+//   - EXTERNAL → cancel + ionOpenExternal (xdg-open) in the default browser
 //   - BLOCK    → cancel + log warn (file:// — opaque-origin trap)
 
 #include "../state.h"
 #include "../internal.h"
 #include "../../common/navpolicy.h"
 
-#include <webkit2/webkit2.h>
+#include "../../bridge.h"
+
+#include <webkit/webkit.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
@@ -88,10 +90,7 @@ static gboolean onDecidePolicy(WebKitWebView *view,
 
     ion_nav_decision_t outcome = ion_nav_decide(scheme, host, isUserClick);
     if (outcome == ION_NAV_EXTERNAL) {
-        // Punt to default browser. gtk_show_uri_on_window is the modern API
-        // (3.22+); older platforms can use gtk_show_uri but we target 3.22+.
-        GtkWidget *top = gtk_widget_get_toplevel(GTK_WIDGET(view));
-        gtk_show_uri_on_window(GTK_IS_WINDOW(top) ? GTK_WINDOW(top) : NULL, uri, GDK_CURRENT_TIME, NULL);
+        ionOpenExternal(uri);
         webkit_policy_decision_ignore(decision);
         return TRUE;
     }
