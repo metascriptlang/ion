@@ -263,6 +263,7 @@ static void appendChar(int win, WCHAR unit) {
     if (IS_HIGH_SURROGATE(unit)) { s_highSurrogate = unit; return; }
     if (IS_LOW_SURROGATE(unit) && s_highSurrogate) { w[n++] = s_highSurrogate; }
     s_highSurrogate = 0;
+    if (unit < 0x20 || unit == 0x7F) return;
     w[n++] = unit;
     char utf8[8];
     int len = utf16ToUtf8(w, n, utf8, sizeof utf8);
@@ -516,8 +517,10 @@ int ionWinHandleInput(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT
             keyEvent(win, msg, wParam, lParam);
             return 1;
 
-        case WM_CHAR: case WM_SYSCHAR:
+        case WM_CHAR:
             appendChar(win, (WCHAR)wParam);
+            return 1;
+        case WM_SYSCHAR:
             return 1;
         case WM_DEADCHAR: case WM_SYSDEADCHAR:
             return 1;
