@@ -6,12 +6,12 @@ int contentAttach(void *parent, void *child, int above) {
     (void)above;
     if (parent == NULL || child == NULL) return 0;
     gtk_fixed_put(GTK_FIXED(parent), GTK_WIDGET(child), 0, 0);
-    gtk_widget_show(GTK_WIDGET(child));
+    gtk_widget_set_visible(GTK_WIDGET(child), TRUE);
     return 1;
 }
 
 void contentDetach(void *parent, void *child) {
-    if (parent != NULL && child != NULL) gtk_container_remove(GTK_CONTAINER(parent), GTK_WIDGET(child));
+    if (parent != NULL && child != NULL) gtk_fixed_remove(GTK_FIXED(parent), GTK_WIDGET(child));
 }
 
 void contentMove(void *node, int x, int y, int w, int h) {
