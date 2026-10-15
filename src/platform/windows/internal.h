@@ -39,6 +39,7 @@ void    ionWebView2DetachAutomation(HWND host);
 int  ionWinHandleInput(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT *result);
 void ionWinKeyFlush(void);
 void ionWinPushResize(void);
+void ionWinReleaseDestroyed(void);
 
 // chrome/tray.c + chrome/notify.c — Shell_NotifyIcon callbacks route to the
 // main HWND (HWND_MESSAGE windows don't reliably receive these on Win10/11).

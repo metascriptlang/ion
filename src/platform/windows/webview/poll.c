@@ -21,11 +21,16 @@
 #include "../../bridge.h"
 #include "../../common/queue.h"
 #include "../../common/inputEvents.h"
+#include "../../common/windowEvents.h"
 #include "../../common/frameClock.h"
 #include "../../common/mscLoop.h"
 #include "runtime/promise/dispatch.h"
 
 #include <stdio.h>
+
+static IonWindowId   s_lastWevtId   = ION_WINDOW_INVALID;
+static int           s_lastWevtType = 0;
+static int           s_quit;
 
 static HANDLE        s_want;
 static HANDLE        s_tick;
@@ -144,24 +149,29 @@ void ionLoopArm(void) {
 }
 
 int ionPollEvent(void) {
+    ionWinReleaseDestroyed();
     for (;;) {
+        if (ion_wevt_pop(&s_lastWevtId, &s_lastWevtType)) return 3;
         if (ion_queue_pop()) return 2;
         if (ion_input_next()) return 4;
 
+        // Quit waits until the queued lifecycle events (close-requested,
+        // destroyed) have been delivered.
         MSG msg;
-        while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
-            if (msg.message == WM_QUIT) return 1;
+        while (!s_quit && PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) { s_quit = 1; break; }
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
         ionWinKeyFlush();
 
+        if (ion_wevt_pop(&s_lastWevtId, &s_lastWevtType)) return 3;
         if (ion_queue_pop()) return 2;
         if (ion_input_next()) return 4;
 
         // Window closed (s_mainHwnd cleared by WM_DESTROY) but no WM_QUIT yet
         // somehow — treat as quit so runLoop can exit cleanly.
-        if (s_mainHwnd == NULL) return 1;
+        if (s_quit || s_mainHwnd == NULL) return 1;
 
         int wanted = ion_frame_wanted() && startClock();
         wakeEvent();
@@ -192,6 +202,9 @@ int ionPollEvent(void) {
         if (r == WAIT_OBJECT_0 + tickIndex) ion_frame_emit(tickMs());
     }
 }
+
+IonWindowId ionWindowEventId(void)   { return s_lastWevtId; }
+int         ionWindowEventType(void) { return s_lastWevtType; }
 
 msString ionMessageName(void)    { return cStringToMs(ion_queue_last_name()); }
 msString ionMessagePayload(void) { return cStringToMs(ion_queue_last_payload()); }

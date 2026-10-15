@@ -5,6 +5,7 @@
 #include "../../common/protoReg.h"
 #include "../../common/frameClock.h"
 #include "../../common/windowRegistry.h"
+#include "../../common/windowEvents.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +18,19 @@ static int s_minimized = 0;
 static int s_cloaked = 0;
 static HWINEVENTHOOK s_cloakHook = NULL;
 static IonWindowId s_mainId = ION_WINDOW_INVALID;
+static int s_focused = 0;
+// A destroyed window's registry slot stays until the loop has read the
+// DESTROYED event, so the label lookup for that event still resolves.
+static IonWindowId s_destroyedId = ION_WINDOW_INVALID;
+
+static void pushWindowEvent(int type) {
+    if (s_mainId != ION_WINDOW_INVALID) ion_wevt_push(s_mainId, type);
+}
+
+void ionWinReleaseDestroyed(void) {
+    ion_registry_free(s_destroyedId);
+    s_destroyedId = ION_WINDOW_INVALID;
+}
 
 static int s_resizable = 1;
 
@@ -78,6 +92,10 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
     switch (msg) {
         case WM_ACTIVATE:
             s_active = LOWORD(wParam) != WA_INACTIVE;
+            if (s_active != s_focused) {
+                s_focused = s_active;
+                pushWindowEvent(s_focused ? ION_EVT_FOCUSED : ION_EVT_BLURRED);
+            }
             reportFrameWindow();
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         case WM_SIZE:
@@ -85,6 +103,7 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             reportFrameWindow();
             if (s_minimized) return 0;
             ionWinPushResize();
+            pushWindowEvent(ION_EVT_RESIZED);
             return 0;
         case WM_DPICHANGED: {
             const RECT *r = (const RECT *)lParam;
@@ -98,6 +117,7 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
         }
         case WM_MOVE:
             ionWebView2ParentMoved(s_mainId);
+            pushWindowEvent(ION_EVT_MOVED);
             return 0;
         case WM_GETOBJECT:
             if (ionWebView2HostAutomation(hwnd, wParam, lParam, &handled)) return handled;
@@ -131,6 +151,9 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             return TRUE;
         }
         case WM_CLOSE:
+            // Informational: nothing can veto it, as on macOS and Linux, where
+            // the close button quits the app. The window is destroyed here.
+            if (hwnd == s_mainHwnd) pushWindowEvent(ION_EVT_CLOSE_REQUESTED);
             DestroyWindow(hwnd);
             return 0;
         case WM_DESTROY:
@@ -142,7 +165,9 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
                 ionWebView2CloseWindow(s_mainId);
                 ionCompShutdown();
                 ion_frame_window_close(s_mainId);
-                ion_registry_free(s_mainId);
+                pushWindowEvent(ION_EVT_DESTROYED);
+                s_destroyedId = s_mainId;
+                s_focused = 0;
                 s_mainId = ION_WINDOW_INVALID;
                 s_mainHwnd = NULL;
                 PostQuitMessage(0);
@@ -177,6 +202,7 @@ IonWindowId ionCreateWindow(const char *label, const char *title, int width, int
         return ION_WINDOW_INVALID;
     }
     if (!ensureWindowClass()) return ION_WINDOW_INVALID;
+    ionWinReleaseDestroyed();
     IonWindowId id = ion_registry_alloc(label);
     if (id == ION_WINDOW_INVALID) return ION_WINDOW_INVALID;
 
@@ -370,5 +396,3 @@ void ionSetWindowDecorations(IonWindowId id, int on) {
 
 void ionSetWindowContentProtected(IonWindowId id, int on)   { (void)id; ionSetContentProtected(on); }
 msString    ionFileOpenWindow(IonWindowId id)               { (void)id; return ionFileOpen(); }
-IonWindowId ionWindowEventId(void)                          { return ION_WINDOW_INVALID; }
-int         ionWindowEventType(void)                        { return 0; }
