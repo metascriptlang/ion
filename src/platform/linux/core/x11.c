@@ -3,6 +3,8 @@
 #include <gdk/x11/gdkx.h>
 #include <X11/Xlib.h>
 
+// gdk_x11_*_get_xid and get_xdisplay are deprecated since GTK 4.18 with no replacement.
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
 int ionLinuxX11SetAbove(GtkWidget *window, int on) {
     GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(window));
     if (surface == NULL || !GDK_IS_X11_SURFACE(surface)) return 0;
@@ -21,3 +23,4 @@ int ionLinuxX11SetAbove(GtkWidget *window, int on) {
     XFlush(dpy);
     return 1;
 }
+G_GNUC_END_IGNORE_DEPRECATIONS
