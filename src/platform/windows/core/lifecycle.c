@@ -88,13 +88,16 @@ static void forwardToPrimaryAndExit(void) {
 }
 
 static int s_oleInitialized = 0;
+static int s_processStarted = 0;
 
 int ionInit(void) {
     if (s_hInstance == NULL) {
         s_hInstance = GetModuleHandleW(NULL);
     }
-    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     if (!s_oleInitialized && SUCCEEDED(OleInitialize(NULL))) s_oleInitialized = 1;
+    if (s_processStarted) return s_hInstance != NULL ? 1 : 0;
+    s_processStarted = 1;
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
     captureColdStartUrl();
 
