@@ -18,6 +18,34 @@ static int s_cloaked = 0;
 static HWINEVENTHOOK s_cloakHook = NULL;
 static IonWindowId s_mainId = ION_WINDOW_INVALID;
 
+static int s_resizable = 1;
+
+static DWORD frameStyle(int decorated, int resizable) {
+    DWORD style = decorated ? WS_OVERLAPPEDWINDOW : WS_POPUP;
+    if (!resizable) style &= ~(DWORD)(WS_THICKFRAME | WS_MAXIMIZEBOX);
+    return style;
+}
+
+// Outer size of a window whose client area is cw x ch device-independent
+// pixels at `dpi`. winit window_state.rs:507-511 (AdjustWindowRectExForDpi on
+// the window's style, exstyle and DPI). No AdjustWindowRectEx fallback: this
+// file already needs GetDpiForSystem/GetDpiForWindow, which arrive in the
+// same Windows 10 1607 as AdjustWindowRectExForDpi.
+static void clientToOuter(DWORD style, DWORD exStyle, UINT dpi, int cw, int ch, int *ow, int *oh) {
+    RECT r = {0, 0, MulDiv(cw, (int)dpi, 96), MulDiv(ch, (int)dpi, 96)};
+    AdjustWindowRectExForDpi(&r, style, FALSE, exStyle, dpi);
+    *ow = r.right - r.left;
+    *oh = r.bottom - r.top;
+}
+
+static void setClientSize(HWND hwnd, int cw, int ch) {
+    if (IsZoomed(hwnd) || IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
+    int ow, oh;
+    clientToOuter((DWORD)GetWindowLongPtrW(hwnd, GWL_STYLE), (DWORD)GetWindowLongPtrW(hwnd, GWL_EXSTYLE),
+                  GetDpiForWindow(hwnd), cw > 0 ? cw : 1, ch > 0 ? ch : 1, &ow, &oh);
+    SetWindowPos(hwnd, NULL, 0, 0, ow, oh, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 static void reportFrameWindow(void) {
     ion_frame_window_state(s_mainId, s_active, !s_minimized && !s_cloaked);
 }
@@ -152,12 +180,12 @@ IonWindowId ionCreateWindow(const char *label, const char *title, int width, int
     IonWindowId id = ion_registry_alloc(label);
     if (id == ION_WINDOW_INVALID) return ION_WINDOW_INVALID;
 
-    UINT dpi = GetDpiForSystem();
-    int w = MulDiv(width  > 0 ? width  : 1280, (int)dpi, 96);
-    int h = MulDiv(height > 0 ? height : 720,  (int)dpi, 96);
-    DWORD style = (flags & ION_WIN_DECORATIONS) ? WS_OVERLAPPEDWINDOW : WS_POPUP;
-    if (!(flags & ION_WIN_RESIZABLE)) style &= ~(DWORD)(WS_THICKFRAME | WS_MAXIMIZEBOX);
+    DWORD style = frameStyle((flags & ION_WIN_DECORATIONS) != 0, (flags & ION_WIN_RESIZABLE) != 0);
     DWORD exStyle = (flags & ION_WIN_ALWAYS_ON_TOP) ? WS_EX_TOPMOST : 0;
+    s_resizable = (flags & ION_WIN_RESIZABLE) != 0;
+    int w, h;
+    clientToOuter(style, exStyle, GetDpiForSystem(),
+                  width > 0 ? width : 1280, height > 0 ? height : 720, &w, &h);
 
     wchar_t *wtitle = ionUtf8ToWide(title && title[0] ? title : "ion");
     if (wtitle == NULL) { ion_registry_free(id); return ION_WINDOW_INVALID; }
@@ -165,6 +193,10 @@ IonWindowId ionCreateWindow(const char *label, const char *title, int width, int
                                 CW_USEDEFAULT, CW_USEDEFAULT, w, h, NULL, NULL, s_hInstance, NULL);
     free(wtitle);
     if (hwnd == NULL) { ion_registry_free(id); return ION_WINDOW_INVALID; }
+
+    // The window's own DPI is known only now (a secondary monitor may differ
+    // from the system DPI): size the client area again with it.
+    setClientSize(hwnd, width > 0 ? width : 1280, height > 0 ? height : 720);
 
     s_mainHwnd = hwnd;
     s_mainId = id;
