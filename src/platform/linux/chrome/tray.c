@@ -8,6 +8,7 @@
 
 #include <ayatana-appindicator.h>
 #include <gtk/gtk.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -20,8 +21,26 @@ static void onOpenActivate(GSimpleAction *action, GVariant *param, gpointer data
     ionLinuxPresentMain();
 }
 
+static int watcherHasOwner(void) {
+    GDBusConnection *c = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
+    if (c == NULL) return 0;
+    GVariant *r = g_dbus_connection_call_sync(c, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+        "org.freedesktop.DBus", "NameHasOwner", g_variant_new("(s)", "org.kde.StatusNotifierWatcher"),
+        G_VARIANT_TYPE("(b)"), G_DBUS_CALL_FLAGS_NONE, 2000, NULL, NULL);
+    if (r == NULL) return 0;
+    gboolean has;
+    g_variant_get(r, "(b)", &has);
+    g_variant_unref(r);
+    return has;
+}
+
 static void ensureIndicator(void) {
     if (s_indicator != NULL) return;
+
+    if (!watcherHasOwner()) {
+        fprintf(stderr, "[ion] installTray: no StatusNotifierWatcher on the session bus, "
+                        "so no tray host shows the icon; it appears if a host starts later\n");
+    }
 
     s_indicator = app_indicator_new(
         "ion-tray",

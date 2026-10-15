@@ -19,6 +19,7 @@
 
 #include <libnotify/notify.h>
 #include <gtk/gtk.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,7 +48,10 @@ void ionNotify(const char *title, const char *body, const char *id) {
 
     if (!s_notifyInited) {
         // App name shows up in the notification daemon's UI grouping.
-        notify_init("Ion");
+        if (!notify_init("Ion")) {
+            fprintf(stderr, "[ion] notify: notify_init failed\n");
+            return;
+        }
         s_notifyInited = 1;
     }
 
@@ -67,6 +71,8 @@ void ionNotify(const char *title, const char *body, const char *id) {
 
     GError *err = NULL;
     if (!notify_notification_show(n, &err)) {
+        fprintf(stderr, "[ion] notify: %s\n",
+                err != NULL ? err->message : "notify_notification_show failed");
         if (err != NULL) g_error_free(err);
         // Failed to show — free our copy + drop the object. closed signal
         // never fires on a failed show.
