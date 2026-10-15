@@ -19,7 +19,7 @@ This file holds no status table. A capability claim is edited in `TODO.md`, afte
 ## Layout
 
 - `src/*.ms` — the public API, one concern per file, re-exported by `src/index.ms`. `src/cli/` is the CLI library, `cli/main.ms` the `ion` CLI, `tooling/generator/` the project generator (`bin/ion-generate`).
-- `src/platform/bridge.h` — the one C surface every platform implements. `common/` is plain C built everywhere; `macos/` (`.m`), `windows/` (`.c` + `.cpp`, WebView2 vendored in `vendor/webview2/`), `linux/` (GTK3 + WebKitGTK) mirror each other by concern: `core/ webview/ chrome/ input/ security/ update/`.
+- `src/platform/bridge.h` — the one C surface every platform implements. `common/` is plain C built everywhere; `macos/` (`.m`), `windows/` (`.c` + `.cpp`, WebView2 vendored in `vendor/webview2/`), `linux/` (GTK4 + WebKitGTK 6.0) mirror each other by concern: `core/ webview/ chrome/ input/ security/ update/`.
 - Put a C source's build directives (`@compile` / `@passC` / `@passL`, per platform inside `when (macos) { … }`, `when (linux) { … }`, `when (windows) { … }`) in the module whose externs call it: `src/ipc.ms` for the window host and its platform sources, `src/audio.ms` for audio. msc links a module's directives only when something imported from that module is used, so an audio-only app would otherwise link without `audio.c` (measured 2026-10-15 on `wt/ion-audio`). A branch not taken is never type-checked. `@platform` no longer exists.
 - A relative `-I` in `@passC` resolves against the directory of the module that declares it (`src/`), not against the build directory.
 

@@ -543,5 +543,5 @@ handle and attach a `WKWebView` — same as v0, just multiple times.
 Windows: SDL is not used (Win32 host window + WebView2). Multi-window
 means calling `CreateWindowEx` multiple times — straightforward.
 
-Linux: SDL is not used (GTK3). `gtk_window_new()` for each window,
+Linux: SDL is not used (GTK4). `gtk_window_new()` for each window,
 `webkit_web_view_new()` for each webview.

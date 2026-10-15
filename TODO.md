@@ -13,41 +13,41 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 
 | Capability | macOS | Windows | Linux | Native impl |
 |---|---|---|---|---|
-| Empty window, compositor root (`windowRoot`, `windowDevice`) | ⛔ unbuilt | ✅ | ⛔ unbuilt | DirectComposition on a D2D device / contentView / GtkFixed |
-| Webview as a component (`createWebview`, node, bounds, IPC by label) | ⛔ unbuilt | ✅ | ⛔ unbuilt | WebView2 composition controller per webview / WKWebView / WebKitGTK |
-| IPC + `command()` | ✅ | ✅ | ✅ | `webview/messaging` + `eval` |
-| Custom URI scheme (`ion://`, `asset://`) | ✅ | ✅ | ✅ | `webview/protocol.{m,cpp,c}` |
-| External-link routing | ✅ | ✅ | ✅ | `common/navpolicy.c` + per-platform nav |
-| Tray | ✅ | ✅ | ✅ | NSStatusItem / Shell_NotifyIcon / AppIndicator |
-| Notifications | ✅ | ✅ | ✅ | UNUserNotification / balloon / libnotify |
-| File dialog | ✅ | ✅ | ✅ | NSOpenPanel / IFileOpenDialog / GtkFileChooser |
-| Global hotkey | ✅ | ✅ | ✅ | Carbon / RegisterHotKey / XGrabKey (X11) |
+| Empty window, compositor root (`windowRoot`, `windowDevice`) | ⛔ unbuilt | ✅ | ✍️ GTK4 port (`GtkOverlay` of a resize probe and a `GtkFixed` root), syntax-checked, not run | DirectComposition on a D2D device / contentView / GtkFixed |
+| Webview as a component (`createWebview`, node, bounds, IPC by label) | ⛔ unbuilt | ✅ | ✍️ WebKitGTK 6.0 port, syntax-checked, not run | WebView2 composition controller per webview / WKWebView / WebKitGTK |
+| IPC + `command()` | ✅ | ✅ | ✍️ ported to `script-message-received` with a `JSCValue`, syntax-checked, not run | `webview/messaging` + `eval` |
+| Custom URI scheme (`ion://`, `asset://`) | ✅ | ✅ | ✍️ ported, syntax-checked, not run | `webview/protocol.{m,cpp,c}` |
+| External-link routing | ✅ | ✅ | ✍️ `ionOpenExternal` (`xdg-open`), syntax-checked, not run | `common/navpolicy.c` + per-platform nav |
+| Tray | ✅ | ✅ | ✍️ `ayatana-appindicator-glib`: menu item "Open" and middle-click fire `tray.click`; syntax-checked, not run | NSStatusItem / Shell_NotifyIcon / AppIndicator |
+| Notifications | ✅ | ✅ | ✍️ libnotify, syntax-checked, not run | UNUserNotification / balloon / libnotify |
+| File dialog | ✅ | ✅ | ✍️ `GtkFileDialog` made synchronous by `ionLinuxPumpUntil`, syntax-checked, not run | NSOpenPanel / IFileOpenDialog / GtkFileChooser |
+| Global hotkey | ✅ | ✅ | ⚠️ X11 only (`XGrabKey` on a second X connection). Wayland: `registerHotkey` prints "unavailable on Wayland" and returns -1. Portal GlobalShortcuts not done. Syntax-checked, not run | Carbon / RegisterHotKey / XGrabKey (X11) |
 | Content protection | ✅ | ✅ | ✅ | `security/content_protect.*` |
-| Keychain / secrets | ✅ | ✅ | ✅ | Keychain / CredWriteW (advapi32) / libsecret |
+| Keychain / secrets | ✅ | ✅ | ✍️ libsecret, unchanged, syntax-checked, not run | Keychain / CredWriteW (advapi32) / libsecret |
 | `openExternal` | ✅ | ✅ | ✅ | `core/shell.{m,c}` |
 | Multi-window | ✅ | ✅ | ✅ | `common/windowRegistry.c` + `windowEvents.c` |
-| `show` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`ShowWindow SW_SHOW`) | ✍️ in source (GTK), not re-measured | `core/window.{m,c}`; `examples/windowControls.ms` on Windows |
-| `hide` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`SW_HIDE`) | ✍️ in source (GTK), not re-measured | same |
-| `focus` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`SetForegroundWindow`, Alt-key fallback after winit `window.rs:1832`); a window another app keeps in front cannot be forced | ✍️ in source (GTK), not re-measured | same |
-| `minimize` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`SW_MINIMIZE`) | ✍️ in source (GTK), not re-measured | same |
-| `maximize` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`SW_MAXIMIZE`) | ✍️ in source (GTK), not re-measured | same |
-| `setTitle` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (UTF-8 to UTF-16, `é中文` read back) | ✍️ in source (GTK), not re-measured | same |
-| `setSize` and `createWindow` size (client area, device-independent pixels) | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 at 96 dpi: client rect equals the size asked, decorated or not, also from a maximized window. 144 dpi not run: one 96 dpi monitor | ✍️ in source (GTK), not re-measured | `AdjustWindowRectExForDpi` (winit `window_state.rs:507`) |
-| `setPosition` (outer frame top-left, virtual-screen pixels) | ✍️ written, uncompiled: frame top-left via `SDL_GetWindowBordersSize` then `SDL_SetWindowPosition(x + left, y + top)` (SDL places the content origin); a failing borders call logs to stderr and does not move | ✅ measured 2026-10-15 (`GetWindowRect` equals the point) | ✍️ in source (`gtk_window_move`, NorthWest gravity places the frame top-left per GTK3 docs), not re-measured | winit `window.rs:560` |
-| `setAlwaysOnTop` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`WS_EX_TOPMOST` set and cleared) | ✍️ in source (GTK), not re-measured | `HWND_TOPMOST` / `HWND_NOTOPMOST` (winit `window_state.rs:405`) |
-| `setDecorations` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`WS_CAPTION` set and cleared; client size and origin unchanged) | ✍️ in source (GTK), not re-measured | `WS_OVERLAPPEDWINDOW` or `WS_POPUP` + `SWP_FRAMECHANGED` |
-| Event `focused` / `blurred` | ✍️ `SDL_EVENT_WINDOW_FOCUS_*`, not re-measured | ✅ measured 2026-10-15 (`WM_ACTIVATE`) | ✍️ `notify::is-active`, not re-measured | `common/windowEvents.c` queue, `ionPollEvent` returns 3 |
-| Event `resized` / `moved` | ✍️ `SDL_EVENT_WINDOW_RESIZED/MOVED`, not re-measured | ✅ measured 2026-10-15 (`WM_SIZE`, `WM_MOVE`; no `moved` while minimized) | ✍️ `configure-event` and root allocate, not re-measured | same |
-| Event `close-requested` | never pushed: `SDL_EVENT_WINDOW_CLOSE_REQUESTED` quits the app (source) | ✅ measured 2026-10-15: pushed from `WM_CLOSE` (title-bar close), then the window is destroyed and the app quits. No veto | never pushed: `delete-event` quits the app (source) | `docs/MULTI-WINDOW.md` lists close interception as open |
+| `show` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`ShowWindow SW_SHOW`) | ✍️ GTK4 (`gtk_window_*`), syntax-checked, not run | `core/window.{m,c}`; `examples/windowControls.ms` on Windows |
+| `hide` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`SW_HIDE`) | ✍️ GTK4 (`gtk_window_*`), syntax-checked, not run | same |
+| `focus` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`SetForegroundWindow`, Alt-key fallback after winit `window.rs:1832`); a window another app keeps in front cannot be forced | ✍️ GTK4 (`gtk_window_*`), syntax-checked, not run | same |
+| `minimize` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`SW_MINIMIZE`) | ✍️ GTK4 (`gtk_window_*`), syntax-checked, not run | same |
+| `maximize` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`SW_MAXIMIZE`) | ✍️ GTK4 (`gtk_window_*`), syntax-checked, not run | same |
+| `setTitle` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (UTF-8 to UTF-16, `é中文` read back) | ✍️ GTK4 (`gtk_window_*`), syntax-checked, not run | same |
+| `setSize` and `createWindow` size (client area, device-independent pixels) | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 at 96 dpi: client rect equals the size asked, decorated or not, also from a maximized window. 144 dpi not run: one 96 dpi monitor | ✍️ `gtk_window_set_default_size`; whether GTK4 counts the titlebar in it is not measured, syntax-checked, not run | `AdjustWindowRectExForDpi` (winit `window_state.rs:507`) |
+| `setPosition` (outer frame top-left, virtual-screen pixels) | ✍️ written, uncompiled: frame top-left via `SDL_GetWindowBordersSize` then `SDL_SetWindowPosition(x + left, y + top)` (SDL places the content origin); a failing borders call logs to stderr and does not move | ✅ measured 2026-10-15 (`GetWindowRect` equals the point) | ⚠️ unavailable: GTK4 has no `gtk_window_move` and Wayland gives clients no global position; prints "setPosition: unavailable" and returns | winit `window.rs:560` |
+| `setAlwaysOnTop` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`WS_EX_TOPMOST` set and cleared) | ⚠️ X11 only (`_NET_WM_STATE_ABOVE`); Wayland prints "setAlwaysOnTop: unavailable" and returns | `HWND_TOPMOST` / `HWND_NOTOPMOST` (winit `window_state.rs:405`) |
+| `setDecorations` | ✍️ in source (`SDL_*`), not re-measured | ✅ measured 2026-10-15 (`WS_CAPTION` set and cleared; client size and origin unchanged) | ✍️ GTK4 (`gtk_window_*`), syntax-checked, not run | `WS_OVERLAPPEDWINDOW` or `WS_POPUP` + `SWP_FRAMECHANGED` |
+| Event `focused` / `blurred` | ✍️ `SDL_EVENT_WINDOW_FOCUS_*`, not re-measured | ✅ measured 2026-10-15 (`WM_ACTIVATE`) | ✍️ `notify::is-active`, syntax-checked, not run | `common/windowEvents.c` queue, `ionPollEvent` returns 3 |
+| Event `resized` / `moved` | ✍️ `SDL_EVENT_WINDOW_RESIZED/MOVED`, not re-measured | ✅ measured 2026-10-15 (`WM_SIZE`, `WM_MOVE`; no `moved` while minimized) | ⚠️ `resized` from the probe `resize` signal; `moved` is never pushed (GTK4 reports no position), syntax-checked, not run | same |
+| Event `close-requested` | never pushed: `SDL_EVENT_WINDOW_CLOSE_REQUESTED` quits the app (source) | ✅ measured 2026-10-15: pushed from `WM_CLOSE` (title-bar close), then the window is destroyed and the app quits. No veto | pushed from `close-request` (then the app quits); syntax-checked, not run | `docs/MULTI-WINDOW.md` lists close interception as open |
 | Event `destroyed` | never pushed (source) | ✅ measured 2026-10-15: pushed from `WM_DESTROY` (also for `closeWindow`); the loop delivers it before quitting | never pushed (source) | same |
 | Native menu bar | ✅ | ❌ | ❌ | `macos/chrome/menu.m` only |
-| Window input records (pointer, key, text, IME, focus, resize, leave) | ⛔ unbuilt | ✅ | ⛔ unbuilt | `windows/input/input.c` / `macos/core/contentHost.m` / `linux/input/input.c` |
+| Window input records (pointer, key, text, IME, focus, resize, leave) | ⛔ unbuilt | ✅ | ✍️ capture-phase `GtkEventControllerLegacy` + `GtkIMContext`, syntax-checked, not run | `windows/input/input.c` / `macos/core/contentHost.m` / `linux/input/input.c` |
 | Pointer forwarding into a webview (`forwardPointer`) | n/a | ✅ | n/a | WebView2 `SendMouseInput`; WKWebView and WebKitGTK take OS input themselves |
-| Window frame clock (`FrameOnDemand` / `FrameContinuous`) | ⛔ unbuilt | ✅ | ⛔ unbuilt | `common/frameClock.c`; Windows compositor clock in `windows/webview/poll.c` |
-| `runLoop` runs msc's loop (`setTimeout`, `await` of a `spawn`, actor messages) | ✍️ written, uncompiled | ✅ measured 2026-10-15 | ✍️ written, uncompiled | `msRunOnce(0)` each turn; Windows `windows/webview/poll.c` waits on msc's next timer and a watcher on msc's IOCP; macOS and Linux pumps already poll every 16 ms |
-| `ionWakeLoop` from any thread, `onWake` | ✍️ written, uncompiled | ✅ measured 2026-10-15 | ✍️ written, uncompiled | event in the Win32 wait list / `SDL_PushEvent(SDL_EVENT_USER)` / `GCond` signalled into the 16 ms wait |
-| Text clipboard (`readClipboardText`, `writeClipboardText`) | ✍️ written, uncompiled | ✅ measured 2026-10-15 | ✍️ written, uncompiled | `CF_UNICODETEXT` / `NSPasteboard` / `GtkClipboard` |
-| IME preedit cursor in UTF-16 units | ✍️ written, uncompiled | ✍️ written, not driven (needs an IME) | ✍️ written, uncompiled | the conversion `ion_utf16_units` is tested (`test/common/utf16.ms`); `GCS_CURSORPOS` and `NSRange` are already UTF-16 |
+| Window frame clock (`FrameOnDemand` / `FrameContinuous`) | ⛔ unbuilt | ✅ | ✍️ `gtk_widget_add_tick_callback` on one visible window while a frame is due, syntax-checked, not run | `common/frameClock.c`; Windows compositor clock in `windows/webview/poll.c` |
+| `runLoop` runs msc's loop (`setTimeout`, `await` of a `spawn`, actor messages) | ✍️ written, uncompiled | ✅ measured 2026-10-15 | ✍️ GLib main context, 16 ms timer, syntax-checked, not run | `msRunOnce(0)` each turn; Windows `windows/webview/poll.c` waits on msc's next timer and a watcher on msc's IOCP; macOS and Linux pumps already poll every 16 ms |
+| `ionWakeLoop` from any thread, `onWake` | ✍️ written, uncompiled | ✅ measured 2026-10-15 | ✍️ `g_main_context_wakeup`, syntax-checked, not run | event in the Win32 wait list / `SDL_PushEvent(SDL_EVENT_USER)` / `GCond` signalled into the 16 ms wait |
+| Text clipboard (`readClipboardText`, `writeClipboardText`) | ✍️ written, uncompiled | ✅ measured 2026-10-15 | ✍️ `GdkClipboard`; a read of a foreign clipboard pumps the main context up to 2 s and then prints an error and returns ""; syntax-checked, not run | `CF_UNICODETEXT` / `NSPasteboard` / `GtkClipboard` |
+| IME preedit cursor in UTF-16 units | ✍️ written, uncompiled | ✍️ written, not driven (needs an IME) | ✍️ ported, syntax-checked, not run | the conversion `ion_utf16_units` is tested (`test/common/utf16.ms`); `GCS_CURSORPOS` and `NSRange` are already UTF-16 |
 | Audio file playback (`loadSound`, play, pause, stop, seek, volume, loop, mute, rate, status) | ⛔ unbuilt | ✅ | ⛔ unbuilt | `common/audio.c` on miniaudio `ma_engine`; same C file on all three |
 | Audio PCM streams (`openAudioOutput` / `openAudioInput`, ring buffer, underrun counter) | ⛔ unbuilt | ✅ | ⛔ unbuilt | `common/audio.c`: `ma_device` + SPSC `ma_pcm_rb`, C-only device callback |
 | Audio recording (`startRecording`, pause, resume, stop, status) | ⛔ unbuilt | ✅ | ⛔ unbuilt | `common/audio.c`: capture `ma_device` into `ma_encoder`, WAV 16-bit only |
@@ -63,10 +63,11 @@ Loop, wake and clipboard, measured 2026-10-15 on msc v0.3.3 (build `9cf5708c`), 
 `spawn` resuming inside `runLoop`, the clipboard round trip of `é中文`, and a raw `CreateThread`
 calling `ionWakeLoop` after 5 s: `onWake` runs and one frame is drawn. Process CPU time over 3 s
 idle, before and after the wake: 0 ms and 0 ms (two runs; the clock ticks at 15.6 ms). The macOS
-and Linux code was written without a compiler or a machine to run it. The preedit cursor was not
+code was written without a compiler or a machine to run it; the Linux code compiles with
+`gcc -fsyntax-only -Wall -Wextra` against gtk4 4.22.4, webkitgtk-6.0 2.52.6, ayatana-appindicator-glib 2.0.1, libnotify 0.8.8 and libsecret 0.21.7 in WSL Ubuntu (2026-10-16) and has not run: no Linux `msc` yet. The preedit cursor was not
 driven by a real IME.
 
-Native LOC: macOS 1715 · Windows 2119 · Linux 1508 · shared C 1392.
+Native LOC: macOS 1715 · Windows 2119 · Linux 2206 (GTK4 port, 2026-10-16) · shared C 1392.
 MetaScript LOC: 2016 across 20 modules.
 
 Audio, measured 2026-10-15 on a Windows 11 host with `msc` v0.3.3, default devices: `examples/audio.ms` recorded
