@@ -1,7 +1,6 @@
-// One process-wide GDK event hook turns each window's input into records before GTK
-// dispatches it, so a webview still receives its own events. Key records are pushed only
-// while no widget inside the window holds focus.
-
+// A capture-phase legacy controller on each window turns its input into records before
+// the targeted widget, so a webview still receives its own events. Key records are
+// pushed only while no widget inside the window holds focus.
 
 #include "../state.h"
 #include "../internal.h"
@@ -11,11 +10,10 @@
 #include "../../common/utf16.h"
 
 #include <gdk/gdk.h>
-#include <gdk/gdkkeysyms.h>
+#include <math.h>
 #include <string.h>
-#include <webkit2/webkit2.h>
 
-static int s_installed = 0;
+
 static unsigned char s_keyDown[256];
 static int s_buttonsDown;
 
@@ -92,10 +90,9 @@ static int modsFromState(guint state) {
     int m = 0;
     if (state & GDK_SHIFT_MASK)   m |= ION_MOD_SHIFT;
     if (state & GDK_CONTROL_MASK) m |= ION_MOD_CTRL;
-    if (state & GDK_MOD1_MASK)    m |= ION_MOD_ALT;
-    if (state & (GDK_SUPER_MASK | GDK_MOD4_MASK)) m |= ION_MOD_SUPER;
+    if (state & GDK_ALT_MASK)     m |= ION_MOD_ALT;
+    if (state & GDK_SUPER_MASK)   m |= ION_MOD_SUPER;
     if (state & GDK_LOCK_MASK)    m |= ION_MOD_CAPS_LOCK;
-    if (state & GDK_MOD2_MASK)    m |= ION_MOD_NUM_LOCK;
     return m;
 }
 
@@ -117,10 +114,10 @@ void ionLinuxUpdateContentFocus(IonLinuxWindowState *st) {
     ion_input_push_record(&r);
 }
 
-void ionLinuxPushResize(IonLinuxWindowState *st) {
-    int scale = gtk_widget_get_scale_factor(st->root);
-    int w = gtk_widget_get_allocated_width(st->root) * scale;
-    int h = gtk_widget_get_allocated_height(st->root) * scale;
+void ionLinuxPushResize(IonLinuxWindowState *st, int logicalW, int logicalH) {
+    double scale = ionLinuxScale(st);
+    int w = (int)lround(logicalW * scale);
+    int h = (int)lround(logicalH * scale);
     if (w == st->clientW && h == st->clientH) return;
     st->clientW = w;
     st->clientH = h;
@@ -134,20 +131,20 @@ void ionLinuxPushResize(IonLinuxWindowState *st) {
     ion_input_push_record(&r);
 }
 
-static int clientPoint(IonLinuxWindowState *st, double xRoot, double yRoot,
-                       double *px, double *py) {
-    GdkWindow *gw = gtk_widget_get_window(st->window);
-    if (!gw) return 0;
-    gint ox = 0, oy = 0, dx = 0, dy = 0;
-    gdk_window_get_origin(gw, &ox, &oy);
-    gtk_widget_translate_coordinates(st->root, st->window, 0, 0, &dx, &dy);
-    double scale = gtk_widget_get_scale_factor(st->root);
-    double x = xRoot - ox - dx, y = yRoot - oy - dy;
-    *px = x * scale;
-    *py = y * scale;
-    return x >= 0 && y >= 0
-        && x < gtk_widget_get_allocated_width(st->root)
-        && y < gtk_widget_get_allocated_height(st->root);
+// Event positions are in surface coordinates; the root sits below the titlebar.
+static int clientPoint(IonLinuxWindowState *st, GdkEvent *ev, double *px, double *py) {
+    double sx, sy, ox = 0, oy = 0;
+    if (!gdk_event_get_position(ev, &sx, &sy)) return 0;
+    gtk_native_get_surface_transform(GTK_NATIVE(st->window), &ox, &oy);
+    graphene_point_t in = GRAPHENE_POINT_INIT((float)(sx - ox), (float)(sy - oy));
+    graphene_point_t out;
+    if (!gtk_widget_compute_point(st->window, st->root, &in, &out)) return 0;
+    double scale = ionLinuxScale(st);
+    *px = out.x * scale;
+    *py = out.y * scale;
+    return out.x >= 0 && out.y >= 0
+        && out.x < gtk_widget_get_width(st->root)
+        && out.y < gtk_widget_get_height(st->root);
 }
 
 static int ionButton(guint gdkButton) {
@@ -174,27 +171,30 @@ static void pushPointer(IonLinuxWindowState *st, int type, double x, double y,
     ion_input_push_record(&r);
 }
 
-static void onKey(IonLinuxWindowState *st, GdkEventKey *e) {
-    int press = e->type == GDK_KEY_PRESS;
-    int filtered = gtk_im_context_filter_keypress(st->im, e);
-    unsigned hw = e->hardware_keycode;
+static void pushLeave(IonLinuxWindowState *st) {
+    if (!st->pointerKnown) return;
+    st->pointerKnown = 0;
+    pushPointer(st, ION_INPUT_LEAVE, 0, 0, 0, 0);
+}
+
+static void onKey(IonLinuxWindowState *st, GdkEvent *ev) {
+    int press = gdk_event_get_event_type(ev) == GDK_KEY_PRESS;
+    int filtered = gtk_im_context_filter_keypress(st->im, ev);
+    unsigned hw = gdk_key_event_get_keycode(ev);
+    GdkModifierType state = gdk_event_get_modifier_state(ev);
 
     int kind = ION_KEY_RELEASE;
     if (press) kind = (hw < 256 && s_keyDown[hw]) ? ION_KEY_REPEAT : ION_KEY_PRESS;
     if (hw < 256) s_keyDown[hw] = press ? 1 : 0;
 
-    GdkKeymap *km = gdk_keymap_get_for_display(gdk_window_get_display(e->window));
-    GdkModifierType consumed = 0;
     guint unshiftedKeyval = 0;
-    gdk_keymap_translate_keyboard_state(km, hw, 0, e->group, &unshiftedKeyval, NULL, NULL, NULL);
-    guint effKeyval = 0;
-    gdk_keymap_translate_keyboard_state(km, hw, (GdkModifierType)e->state, e->group,
-                                        &effKeyval, NULL, NULL, &consumed);
+    gdk_display_translate_key(gdk_event_get_display(ev), hw, 0, gdk_key_event_get_layout(ev),
+                              &unshiftedKeyval, NULL, NULL, NULL);
 
     char text[8] = {0};
-    gunichar ch = gdk_keyval_to_unicode(e->keyval);
+    gunichar ch = gdk_keyval_to_unicode(gdk_key_event_get_keyval(ev));
     if (press && !filtered && ch >= 0x20 && ch != 0x7f
-        && !(e->state & (GDK_CONTROL_MASK | GDK_MOD1_MASK | GDK_SUPER_MASK))) {
+        && !(state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK))) {
         g_unichar_to_utf8(ch, text);
     }
 
@@ -205,39 +205,37 @@ static void onKey(IonLinuxWindowState *st, GdkEventKey *e) {
     r.p1 = kind;
     r.key = evdevToKey(hw >= 8 ? hw - 8 : 0);
     r.scancode = (int)hw;
-    r.mods = modsFromState(e->state);
-    r.consumedMods = modsFromState((guint)consumed);
+    r.mods = modsFromState(state);
+    r.consumedMods = modsFromState(gdk_key_event_get_consumed_modifiers(ev));
     r.unshifted = gdk_keyval_to_unicode(unshiftedKeyval);
     r.text = text;
     ion_input_push_record(&r);
 }
 
-static void process(GdkEvent *ev) {
-    GtkWidget *w = gtk_get_event_widget(ev);
-    if (!w) return;
-    IonLinuxWindowState *st = ionLinuxWindowForToplevel(gtk_widget_get_toplevel(w));
-    if (!st) return;
-
+static void onPointer(IonLinuxWindowState *st, GdkEvent *ev) {
     double px, py;
-    switch (ev->type) {
+    switch (gdk_event_get_event_type(ev)) {
         case GDK_BUTTON_PRESS: {
-            int b = ionButton(ev->button.button);
-            if (!b || !clientPoint(st, ev->button.x_root, ev->button.y_root, &px, &py)) return;
+            int b = ionButton(gdk_button_event_get_button(ev));
+            if (!b || !clientPoint(st, ev, &px, &py)) return;
             s_buttonsDown |= 1 << b;
             pushPointer(st, ION_INPUT_BUTTON, px, py, b, 1);
             break;
         }
         case GDK_BUTTON_RELEASE: {
-            int b = ionButton(ev->button.button);
+            int b = ionButton(gdk_button_event_get_button(ev));
             if (!b || !(s_buttonsDown & (1 << b))) return;
             s_buttonsDown &= ~(1 << b);
-            clientPoint(st, ev->button.x_root, ev->button.y_root, &px, &py);
+            clientPoint(st, ev, &px, &py);
             pushPointer(st, ION_INPUT_BUTTON, px, py, b, 0);
             break;
         }
         case GDK_MOTION_NOTIFY: {
-            int inside = clientPoint(st, ev->motion.x_root, ev->motion.y_root, &px, &py);
-            if (!inside && !s_buttonsDown) return;
+            int inside = clientPoint(st, ev, &px, &py);
+            if (!inside && !s_buttonsDown) {
+                pushLeave(st);
+                return;
+            }
             double dx = st->pointerKnown ? px - st->lastX : 0;
             double dy = st->pointerKnown ? py - st->lastY : 0;
             st->pointerKnown = 1;
@@ -248,44 +246,44 @@ static void process(GdkEvent *ev) {
         }
         case GDK_SCROLL: {
             double dx = 0, dy = 0;
-            switch (ev->scroll.direction) {
+            switch (gdk_scroll_event_get_direction(ev)) {
                 case GDK_SCROLL_UP:     dy = 1; break;
                 case GDK_SCROLL_DOWN:   dy = -1; break;
                 case GDK_SCROLL_LEFT:   dx = -1; break;
                 case GDK_SCROLL_RIGHT:  dx = 1; break;
-                case GDK_SCROLL_SMOOTH: dx = ev->scroll.delta_x; dy = -ev->scroll.delta_y; break;
+                case GDK_SCROLL_SMOOTH:
+                    gdk_scroll_event_get_deltas(ev, &dx, &dy);
+                    dy = -dy;
+                    break;
                 default: return;
             }
-            if (!clientPoint(st, ev->scroll.x_root, ev->scroll.y_root, &px, &py)) return;
+            if (!clientPoint(st, ev, &px, &py)) return;
             pushPointer(st, ION_INPUT_WHEEL, px, py, dx, dy);
             break;
         }
-        case GDK_LEAVE_NOTIFY:
-            if (ev->crossing.window != gtk_widget_get_window(st->window)
-             || ev->crossing.detail == GDK_NOTIFY_INFERIOR
-             || ev->crossing.mode != GDK_CROSSING_NORMAL) return;
-            st->pointerKnown = 0;
-            pushPointer(st, ION_INPUT_LEAVE, 0, 0, 0, 0);
-            break;
-        case GDK_KEY_PRESS:
-        case GDK_KEY_RELEASE:
-            if (contentHasKeyboard(st)) onKey(st, &ev->key);
-            break;
         default:
             break;
     }
 }
 
-static void onGdkEvent(GdkEvent *ev, gpointer data) {
-    (void)data;
-    process(ev);
-    gtk_main_do_event(ev);
+static gboolean onEvent(GtkEventControllerLegacy *controller, GdkEvent *ev, gpointer data) {
+    (void)controller;
+    IonLinuxWindowState *st = (IonLinuxWindowState *)data;
+    switch (gdk_event_get_event_type(ev)) {
+        case GDK_KEY_PRESS:
+        case GDK_KEY_RELEASE:
+            if (contentHasKeyboard(st)) onKey(st, ev);
+            break;
+        default:
+            onPointer(st, ev);
+            break;
+    }
+    return FALSE;
 }
 
-void ionLinuxInstallInput(void) {
-    if (s_installed) return;
-    s_installed = 1;
-    gdk_event_handler_set(onGdkEvent, NULL, NULL);
+static void onLeave(GtkEventControllerMotion *controller, gpointer data) {
+    (void)controller;
+    pushLeave((IonLinuxWindowState *)data);
 }
 
 static void onCommit(GtkIMContext *im, gchar *str, gpointer data) {
@@ -314,20 +312,26 @@ static void onPreeditChanged(GtkIMContext *im, gpointer data) {
     g_free(str);
 }
 
-static void onRealize(GtkWidget *w, gpointer data) {
-    IonLinuxWindowState *st = (IonLinuxWindowState *)data;
-    gtk_im_context_set_client_window(st->im, gtk_widget_get_window(w));
-}
-
+// Capture phase: the window's controllers see an event before the webview it targets does.
 void ionLinuxAttachInput(IonLinuxWindowState *st) {
     st->im = gtk_im_multicontext_new();
+    gtk_im_context_set_client_widget(st->im, st->window);
     g_signal_connect(st->im, "commit", G_CALLBACK(onCommit), st);
     g_signal_connect(st->im, "preedit-changed", G_CALLBACK(onPreeditChanged), st);
-    g_signal_connect(st->window, "realize", G_CALLBACK(onRealize), st);
+
+    GtkEventController *legacy = gtk_event_controller_legacy_new();
+    gtk_event_controller_set_propagation_phase(legacy, GTK_PHASE_CAPTURE);
+    g_signal_connect(legacy, "event", G_CALLBACK(onEvent), st);
+    gtk_widget_add_controller(st->window, legacy);
+
+    GtkEventController *motion = gtk_event_controller_motion_new();
+    gtk_event_controller_set_propagation_phase(motion, GTK_PHASE_CAPTURE);
+    g_signal_connect(motion, "leave", G_CALLBACK(onLeave), st);
+    gtk_widget_add_controller(st->window, motion);
 }
 
 void ionLinuxDetachInput(IonLinuxWindowState *st) {
-    gtk_im_context_set_client_window(st->im, NULL);
+    gtk_im_context_set_client_widget(st->im, NULL);
     g_signal_handlers_disconnect_by_data(st->im, st);
     g_object_unref(st->im);
     st->im = NULL;
@@ -336,7 +340,9 @@ void ionLinuxDetachInput(IonLinuxWindowState *st) {
 void ionWindowSetImeRect(IonWindowId id, int x, int y, int w, int h) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
     if (!st) return;
-    int scale = gtk_widget_get_scale_factor(st->root);
-    GdkRectangle r = { x / scale, y / scale, w / scale, h / scale };
+    double scale = ionLinuxScale(st);
+    graphene_point_t in = GRAPHENE_POINT_INIT((float)(x / scale), (float)(y / scale)), out;
+    if (!gtk_widget_compute_point(st->root, st->window, &in, &out)) return;
+    GdkRectangle r = { (int)out.x, (int)out.y, (int)(w / scale), (int)(h / scale) };
     gtk_im_context_set_cursor_location(st->im, &r);
 }
