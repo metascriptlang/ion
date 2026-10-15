@@ -117,7 +117,7 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
         }
         case WM_MOVE:
             ionWebView2ParentMoved(s_mainId);
-            pushWindowEvent(ION_EVT_MOVED);
+            if (!IsIconic(hwnd)) pushWindowEvent(ION_EVT_MOVED);
             return 0;
         case WM_GETOBJECT:
             if (ionWebView2HostAutomation(hwnd, wParam, lParam, &handled)) return handled;

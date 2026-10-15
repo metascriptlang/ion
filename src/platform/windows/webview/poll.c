@@ -149,7 +149,7 @@ void ionLoopArm(void) {
 }
 
 int ionPollEvent(void) {
-    ionWinReleaseDestroyed();
+    if (s_lastWevtType == ION_EVT_DESTROYED) ionWinReleaseDestroyed();
     for (;;) {
         if (ion_wevt_pop(&s_lastWevtId, &s_lastWevtType)) return 3;
         if (ion_queue_pop()) return 2;
