@@ -24,6 +24,7 @@ typedef struct {
     int           wantAbove;       // ionSetWindowAlwaysOnTop, applied once the surface is mapped
     int           contentFocused;  // last focus record pushed
     int           clientW, clientH;
+    int           wantW, wantH;    // requested client size, until the decorations around it are measured
     int           pointerKnown;
     double        lastX, lastY;
 } IonLinuxWindowState;

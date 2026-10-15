@@ -96,9 +96,19 @@ static void onMap(GtkWidget *window, gpointer data) {
     if (st->wantAbove) ionLinuxX11SetAbove(window, 1);
 }
 
+static void applyWantedSize(IonLinuxWindowState *st, int rootW, int rootH) {
+    GtkWindow *win = GTK_WINDOW(st->window);
+    if (st->wantW <= 0 || rootW <= 0 || rootH <= 0 || gtk_window_is_maximized(win) || gtk_window_is_fullscreen(win)) return;
+    int outerW = gtk_widget_get_width(st->window), outerH = gtk_widget_get_height(st->window);
+    int w = st->wantW + (outerW - rootW), h = st->wantH + (outerH - rootH);
+    st->wantW = st->wantH = 0;
+    if (w != outerW || h != outerH) gtk_window_set_default_size(win, w, h);
+}
+
 static void onProbeResize(GtkDrawingArea *area, int width, int height, gpointer data) {
     (void)area;
     IonLinuxWindowState *st = (IonLinuxWindowState *)data;
+    applyWantedSize(st, width, height);
     ionLinuxPushResize(st, width, height);
     ion_wevt_push(st->id, ION_EVT_RESIZED);
 }
@@ -129,8 +139,9 @@ IonWindowId ionCreateWindow(const char *label, const char *title,
     GtkWidget *win = gtk_window_new();
     st->window = win;
     gtk_window_set_title(GTK_WINDOW(win), (title && title[0]) ? title : "ion");
-    gtk_window_set_default_size(GTK_WINDOW(win), width > 0 ? width : 1280,
-                                                 height > 0 ? height : 720);
+    st->wantW = width > 0 ? width : 1280;
+    st->wantH = height > 0 ? height : 720;
+    gtk_window_set_default_size(GTK_WINDOW(win), st->wantW, st->wantH);
     gtk_window_set_resizable(GTK_WINDOW(win), (flags & ION_WIN_RESIZABLE) != 0);
     gtk_window_set_decorated(GTK_WINDOW(win), (flags & ION_WIN_DECORATIONS) != 0);
     if (flags & ION_WIN_ALWAYS_ON_TOP) st->wantAbove = 1;
@@ -303,8 +314,14 @@ void ionSetWindowTitle(IonWindowId id, const char *title) {
 
 void ionSetWindowSize(IonWindowId id, int width, int height) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
-    if (st) gtk_window_set_default_size(GTK_WINDOW(st->window), width > 0 ? width : 1,
-                                                                height > 0 ? height : 1);
+    if (!st) return;
+    st->wantW = width > 0 ? width : 1;
+    st->wantH = height > 0 ? height : 1;
+    if (gtk_widget_get_mapped(st->window)) {
+        applyWantedSize(st, gtk_widget_get_width(st->root), gtk_widget_get_height(st->root));
+    } else {
+        gtk_window_set_default_size(GTK_WINDOW(st->window), st->wantW, st->wantH);
+    }
 }
 
 void ionSetWindowPosition(IonWindowId id, int x, int y) {
