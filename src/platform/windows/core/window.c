@@ -12,27 +12,47 @@
 #include <string.h>
 
 static const wchar_t kIonClassName[] = L"IonMainWindow";
+static const char kMainLabel[] = "main";
 static int s_classRegistered = 0;
-static int s_active = 1;
-static int s_minimized = 0;
-static int s_cloaked = 0;
 static HWINEVENTHOOK s_cloakHook = NULL;
-static IonWindowId s_mainId = ION_WINDOW_INVALID;
-static int s_focused = 0;
-// A destroyed window's registry slot stays until the loop has read the
-// DESTROYED event, so the label lookup for that event still resolves.
-static IonWindowId s_destroyedId = ION_WINDOW_INVALID;
 
-static void pushWindowEvent(int type) {
-    if (s_mainId != ION_WINDOW_INVALID) ion_wevt_push(s_mainId, type);
+IonWinWindow *ionWinWindow(IonWindowId id) {
+    IonWindowSlot *slot = ion_registry_get(id);
+    IonWinWindow *w = slot ? (IonWinWindow *)slot->platformState : NULL;
+    return w != NULL && w->hwnd != NULL ? w : NULL;
 }
 
-void ionWinReleaseDestroyed(void) {
-    ion_registry_free(s_destroyedId);
-    s_destroyedId = ION_WINDOW_INVALID;
+static IonWinWindow *windowOfHwnd(HWND hwnd) {
+    for (IonWindowId id = ion_registry_next(ION_WINDOW_INVALID); id != ION_WINDOW_INVALID; id = ion_registry_next(id)) {
+        IonWinWindow *w = ionWinWindow(id);
+        if (w != NULL && w->hwnd == hwnd) return w;
+    }
+    return NULL;
 }
 
-static int s_resizable = 1;
+static IonWinWindow *windowOfProc(HWND hwnd) {
+    return (IonWinWindow *)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+}
+
+static void refreshMainWindow(void) {
+    IonWinWindow *pick = ionWinWindow(ion_registry_find(kMainLabel));
+    for (IonWindowId id = ion_registry_next(ION_WINDOW_INVALID); pick == NULL && id != ION_WINDOW_INVALID;
+         id = ion_registry_next(id))
+        pick = ionWinWindow(id);
+    HWND main = pick ? pick->hwnd : NULL;
+    if (main == s_mainHwnd) return;
+    s_mainHwnd = main;
+    ionTrayRehost(main);
+    ionNotifyRehost();
+}
+
+void ionWinReleaseDestroyed(IonWindowId id) {
+    IonWindowSlot *slot = ion_registry_get(id);
+    IonWinWindow *w = slot ? (IonWinWindow *)slot->platformState : NULL;
+    if (w == NULL || w->hwnd != NULL) return;
+    free(w);
+    ion_registry_free(id);
+}
 
 static DWORD frameStyle(int decorated, int resizable) {
     DWORD style = decorated ? WS_OVERLAPPEDWINDOW : WS_POPUP;
@@ -60,16 +80,42 @@ static void setClientSize(HWND hwnd, int cw, int ch) {
     SetWindowPos(hwnd, NULL, 0, 0, ow, oh, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-static void reportFrameWindow(void) {
-    ion_frame_window_state(s_mainId, s_active, !s_minimized && !s_cloaked);
+static void reportFrameWindow(IonWinWindow *w) {
+    ion_frame_window_state(w->id, w->active, !w->minimized && !w->cloaked);
 }
 
 static void CALLBACK onCloak(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject,
                              LONG idChild, DWORD thread, DWORD time) {
     (void)hook; (void)idChild; (void)thread; (void)time;
-    if (hwnd != s_mainHwnd || idObject != OBJID_WINDOW) return;
-    s_cloaked = event == EVENT_OBJECT_CLOAKED;
-    reportFrameWindow();
+    if (idObject != OBJID_WINDOW) return;
+    IonWinWindow *w = windowOfHwnd(hwnd);
+    if (w == NULL) return;
+    w->cloaked = event == EVENT_OBJECT_CLOAKED;
+    reportFrameWindow(w);
+}
+
+static void installCloakHook(void) {
+    if (s_cloakHook != NULL) return;
+    s_cloakHook = SetWinEventHook(EVENT_OBJECT_CLOAKED, EVENT_OBJECT_UNCLOAKED, NULL, onCloak,
+                                  GetCurrentProcessId(), 0, WINEVENT_OUTOFCONTEXT);
+    if (s_cloakHook == NULL) fprintf(stderr, "[ion] cloak hook failed (%lu)\n", GetLastError());
+}
+
+static void destroyed(IonWinWindow *w) {
+    HWND hwnd = w->hwnd;
+    ionWebView2RevokeDrop(hwnd);
+    ionWebView2DetachAutomation(hwnd, &w->uia);
+    ionWebView2CloseWindow(w->id);
+    ionCompDetach(w);
+    ion_frame_window_close(w->id);
+    ion_wevt_push(w->id, ION_EVT_DESTROYED);
+    SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+    w->hwnd = NULL;
+    refreshMainWindow();
+    if (ionWindowCount() == 0 && s_cloakHook != NULL) {
+        UnhookWinEvent(s_cloakHook);
+        s_cloakHook = NULL;
+    }
 }
 
 // Matches lifecycle.c's secondary→primary deep-link forward marker. Kept
@@ -82,46 +128,15 @@ static void CALLBACK onCloak(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG id
 //   WM_SIZE / DPI / MOVE → composition tree + webview bounds
 //   WM_ION_TRAY_CB       → tray icon callback (Shell_NotifyIcon → tray.c)
 //   WM_ION_NOTIFY_CB     → notification balloon callback (→ notify.c)
-//   WM_CLOSE/WM_DESTROY  → tear down WebView2 + PostQuitMessage
+//   WM_CLOSE/WM_DESTROY  → tear down this window's WebView2 and compositor
 //
 // Tray + notify route their Shell_NotifyIcon callbacks here because
 // HWND_MESSAGE windows don't reliably receive them on Win10/11.
 static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     LRESULT handled;
-    if (hwnd == s_mainHwnd && ionWinHandleInput(hwnd, msg, wParam, lParam, &handled)) return handled;
+    IonWinWindow *w = windowOfProc(hwnd);
+    if (w != NULL && ionWinHandleInput(w, msg, wParam, lParam, &handled)) return handled;
     switch (msg) {
-        case WM_ACTIVATE:
-            s_active = LOWORD(wParam) != WA_INACTIVE;
-            if (s_active != s_focused) {
-                s_focused = s_active;
-                pushWindowEvent(s_focused ? ION_EVT_FOCUSED : ION_EVT_BLURRED);
-            }
-            reportFrameWindow();
-            return DefWindowProcW(hwnd, msg, wParam, lParam);
-        case WM_SIZE:
-            s_minimized = wParam == SIZE_MINIMIZED;
-            reportFrameWindow();
-            if (s_minimized) return 0;
-            ionWinPushResize();
-            pushWindowEvent(ION_EVT_RESIZED);
-            return 0;
-        case WM_DPICHANGED: {
-            const RECT *r = (const RECT *)lParam;
-            RECT before, after;
-            GetClientRect(hwnd, &before);
-            SetWindowPos(hwnd, NULL, r->left, r->top, r->right - r->left, r->bottom - r->top,
-                         SWP_NOZORDER | SWP_NOACTIVATE);
-            GetClientRect(hwnd, &after);
-            if (EqualRect(&before, &after)) ionWinPushResize();
-            return 0;
-        }
-        case WM_MOVE:
-            ionWebView2ParentMoved(s_mainId);
-            if (!IsIconic(hwnd)) pushWindowEvent(ION_EVT_MOVED);
-            return 0;
-        case WM_GETOBJECT:
-            if (ionWebView2HostAutomation(hwnd, wParam, lParam, &handled)) return handled;
-            return DefWindowProcW(hwnd, msg, wParam, lParam);
         case WM_ION_TRAY_CB:
             // wParam = uID (1 = tray), lParam = mouse msg (e.g., WM_LBUTTONUP).
             ionTrayHandleCallback((UINT)lParam);
@@ -150,28 +165,51 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             }
             return TRUE;
         }
+        default:
+            break;
+    }
+    if (w == NULL) return DefWindowProcW(hwnd, msg, wParam, lParam);
+    switch (msg) {
+        case WM_ACTIVATE:
+            w->active = LOWORD(wParam) != WA_INACTIVE;
+            if (w->active != w->focused) {
+                w->focused = w->active;
+                ion_wevt_push(w->id, w->focused ? ION_EVT_FOCUSED : ION_EVT_BLURRED);
+            }
+            reportFrameWindow(w);
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        case WM_SIZE:
+            w->minimized = wParam == SIZE_MINIMIZED;
+            reportFrameWindow(w);
+            if (w->minimized) return 0;
+            ionWinPushResize(w);
+            ion_wevt_push(w->id, ION_EVT_RESIZED);
+            return 0;
+        case WM_DPICHANGED: {
+            const RECT *r = (const RECT *)lParam;
+            RECT before, after;
+            GetClientRect(hwnd, &before);
+            SetWindowPos(hwnd, NULL, r->left, r->top, r->right - r->left, r->bottom - r->top,
+                         SWP_NOZORDER | SWP_NOACTIVATE);
+            GetClientRect(hwnd, &after);
+            if (EqualRect(&before, &after)) ionWinPushResize(w);
+            return 0;
+        }
+        case WM_MOVE:
+            ionWebView2ParentMoved(w->id);
+            if (!IsIconic(hwnd)) ion_wevt_push(w->id, ION_EVT_MOVED);
+            return 0;
+        case WM_GETOBJECT:
+            if (ionWebView2HostAutomation(hwnd, &w->uia, wParam, lParam, &handled)) return handled;
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
         case WM_CLOSE:
-            // Informational: nothing can veto it, as on macOS and Linux, where
-            // the close button quits the app. The window is destroyed here.
-            if (hwnd == s_mainHwnd) pushWindowEvent(ION_EVT_CLOSE_REQUESTED);
+            // Informational: nothing can veto it. The window is destroyed here;
+            // the loop ends once no window is left.
+            ion_wevt_push(w->id, ION_EVT_CLOSE_REQUESTED);
             DestroyWindow(hwnd);
             return 0;
         case WM_DESTROY:
-            if (hwnd == s_mainHwnd) {
-                if (s_cloakHook != NULL) { UnhookWinEvent(s_cloakHook); s_cloakHook = NULL; }
-                s_cloaked = 0;
-                ionWebView2RevokeDrop(hwnd);
-                ionWebView2DetachAutomation(hwnd);
-                ionWebView2CloseWindow(s_mainId);
-                ionCompShutdown();
-                ion_frame_window_close(s_mainId);
-                pushWindowEvent(ION_EVT_DESTROYED);
-                s_destroyedId = s_mainId;
-                s_focused = 0;
-                s_mainId = ION_WINDOW_INVALID;
-                s_mainHwnd = NULL;
-                PostQuitMessage(0);
-            }
+            destroyed(w);
             return 0;
         default:
             return DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -196,56 +234,77 @@ static int ensureWindowClass(void) {
     return 1;
 }
 
-IonWindowId ionCreateWindow(const char *label, const char *title, int width, int height, int flags) {
-    if (s_mainHwnd != NULL) {
-        fprintf(stderr, "[ion] ionCreateWindow '%s': Windows hosts one window today\n", label ? label : "");
-        return ION_WINDOW_INVALID;
-    }
-    if (!ensureWindowClass()) return ION_WINDOW_INVALID;
-    ionWinReleaseDestroyed();
+static IonWinWindow *allocWindow(const char *label) {
+    ionWinReleaseDestroyed(ion_registry_find(label));
     IonWindowId id = ion_registry_alloc(label);
-    if (id == ION_WINDOW_INVALID) return ION_WINDOW_INVALID;
+    if (id == ION_WINDOW_INVALID) {
+        fprintf(stderr, "[ion] ionCreateWindow '%s': label empty, taken or too long, or %d windows open\n",
+                label ? label : "", ION_MAX_WINDOWS);
+        return NULL;
+    }
+    IonWinWindow *w = (IonWinWindow *)calloc(1, sizeof *w);
+    if (w == NULL) {
+        ion_registry_free(id);
+        return NULL;
+    }
+    w->id = id;
+    w->active = 1;
+    w->cursor = ION_CURSOR_ARROW;
+    ion_registry_get(id)->platformState = w;
+    return w;
+}
+
+static void freeWindow(IonWinWindow *w) {
+    ion_registry_free(w->id);
+    free(w);
+}
+
+IonWindowId ionCreateWindow(const char *label, const char *title, int width, int height, int flags) {
+    if (!ensureWindowClass()) return ION_WINDOW_INVALID;
+    IonWinWindow *w = allocWindow(label);
+    if (w == NULL) return ION_WINDOW_INVALID;
 
     DWORD style = frameStyle((flags & ION_WIN_DECORATIONS) != 0, (flags & ION_WIN_RESIZABLE) != 0);
     DWORD exStyle = (flags & ION_WIN_ALWAYS_ON_TOP) ? WS_EX_TOPMOST : 0;
-    s_resizable = (flags & ION_WIN_RESIZABLE) != 0;
-    int w, h;
+    w->resizable = (flags & ION_WIN_RESIZABLE) != 0;
+    int ow, oh;
     clientToOuter(style, exStyle, GetDpiForSystem(),
-                  width > 0 ? width : 1280, height > 0 ? height : 720, &w, &h);
+                  width > 0 ? width : 1280, height > 0 ? height : 720, &ow, &oh);
 
     wchar_t *wtitle = ionUtf8ToWide(title && title[0] ? title : "ion");
-    if (wtitle == NULL) { ion_registry_free(id); return ION_WINDOW_INVALID; }
+    if (wtitle == NULL) { freeWindow(w); return ION_WINDOW_INVALID; }
     HWND hwnd = CreateWindowExW(exStyle, kIonClassName, wtitle, style,
-                                CW_USEDEFAULT, CW_USEDEFAULT, w, h, NULL, NULL, s_hInstance, NULL);
+                                CW_USEDEFAULT, CW_USEDEFAULT, ow, oh, NULL, NULL, s_hInstance, NULL);
     free(wtitle);
-    if (hwnd == NULL) { ion_registry_free(id); return ION_WINDOW_INVALID; }
+    if (hwnd == NULL) { freeWindow(w); return ION_WINDOW_INVALID; }
 
     // The window's own DPI is known only now (a secondary monitor may differ
     // from the system DPI): size the client area again with it.
     setClientSize(hwnd, width > 0 ? width : 1280, height > 0 ? height : 720);
 
-    s_mainHwnd = hwnd;
-    s_mainId = id;
-    if (!ionCompInit(hwnd)) {
+    w->hwnd = hwnd;
+    if (!ionCompAttach(w)) {
+        w->hwnd = NULL;
         DestroyWindow(hwnd);
+        freeWindow(w);
         return ION_WINDOW_INVALID;
     }
-    ion_frame_window_open(id);
+    SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)w);
+    ion_frame_window_open(w->id);
     ionWebView2RegisterDrop(hwnd);
-    s_cloakHook = SetWinEventHook(EVENT_OBJECT_CLOAKED, EVENT_OBJECT_UNCLOAKED, NULL, onCloak,
-                                  GetCurrentProcessId(), 0, WINEVENT_OUTOFCONTEXT);
-    if (s_cloakHook == NULL) fprintf(stderr, "[ion] cloak hook failed (%lu)\n", GetLastError());
+    installCloakHook();
+    refreshMainWindow();
     if (flags & ION_WIN_VISIBLE) {
         ShowWindow(hwnd, SW_SHOW);
         UpdateWindow(hwnd);
     }
-    ionWinPushResize();
+    ionWinPushResize(w);
 
     if (s_coldStartUrl[0] != '\0') {
         ionEnqueueMessage("deeplink", s_coldStartUrl);
         s_coldStartUrl[0] = '\0';
     }
-    return id;
+    return w->id;
 }
 
 void ionCloseWindow(IonWindowId id) {
@@ -297,16 +356,16 @@ msString ionResourcePath(void) {
     return cStringToMs(s_resourcePath);
 }
 
-IonWindowId ionGetMainWindowId(void) {
-    return s_mainId;
-}
-
 HWND ionWinHwnd(IonWindowId id) {
-    return id != ION_WINDOW_INVALID && id == s_mainId ? s_mainHwnd : NULL;
+    IonWinWindow *w = ionWinWindow(id);
+    return w ? w->hwnd : NULL;
 }
 
 int ionWindowCount(void) {
-    return s_mainHwnd ? 1 : 0;
+    int n = 0;
+    for (IonWindowId id = ion_registry_next(ION_WINDOW_INVALID); id != ION_WINDOW_INVALID; id = ion_registry_next(id))
+        if (ionWinWindow(id) != NULL) n++;
+    return n;
 }
 
 int ionWindowPixelWidth(IonWindowId id) {
@@ -373,11 +432,12 @@ void ionSetWindowAlwaysOnTop(IonWindowId id, int on) {
 // client area keeps its size and screen position; a maximized or minimized
 // window only has its frame refreshed. winit window_state.rs:496-514.
 void ionSetWindowDecorations(IonWindowId id, int on) {
-    HWND h = ionWinHwnd(id);
-    if (h == NULL) return;
+    IonWinWindow *w = ionWinWindow(id);
+    if (w == NULL) return;
+    HWND h = w->hwnd;
     const DWORD frame = WS_OVERLAPPEDWINDOW | WS_POPUP;
     DWORD old = (DWORD)GetWindowLongPtrW(h, GWL_STYLE);
-    DWORD style = (old & ~frame) | frameStyle(on != 0, s_resizable);
+    DWORD style = (old & ~frame) | frameStyle(on != 0, w->resizable);
     if (style == old) return;
     RECT client;
     GetClientRect(h, &client);
@@ -394,5 +454,12 @@ void ionSetWindowDecorations(IonWindowId id, int on) {
     SetWindowPos(h, NULL, r.left, r.top, r.right - r.left, r.bottom - r.top, flags);
 }
 
-void ionSetWindowContentProtected(IonWindowId id, int on)   { (void)id; ionSetContentProtected(on); }
-msString    ionFileOpenWindow(IonWindowId id)               { (void)id; return ionFileOpen(); }
+void ionSetWindowContentProtected(IonWindowId id, int on) {
+    HWND h = ionWinHwnd(id);
+    if (h) SetWindowDisplayAffinity(h, on ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
+}
+
+msString ionFileOpenWindow(IonWindowId id) {
+    HWND h = ionWinHwnd(id);
+    return h ? ionWinFileOpen(h) : MS_EMPTY_STRING;
+}

@@ -10,16 +10,10 @@
 
 #define ION_TEXT_CAP 64
 
-static int  s_tracking = 0;
-static int  s_lastX = 0, s_lastY = 0;
-static int  s_cursor = ION_CURSOR_ARROW;
-static RECT s_imeRect;
-
 static int            s_pendingActive = 0;
 static IonInputRecord s_pending;
 static char           s_pendingText[ION_TEXT_CAP];
 static WCHAR          s_highSurrogate = 0;
-static int            s_preeditActive = 0;
 
 static int scancodeToKey(unsigned sc) {
     switch (sc) {
@@ -299,10 +293,9 @@ static void keyEvent(int win, UINT msg, WPARAM vk, LPARAM lParam) {
     s_pendingActive = 1;
 }
 
-static void imeReposition(void) {
-    HWND hwnd = ionGetMainHwnd();
-    RECT rc = s_imeRect;
-    if (hwnd == NULL) return;
+static void imeReposition(IonWinWindow *w) {
+    HWND hwnd = w->hwnd;
+    RECT rc = w->imeRect;
     HIMC himc = ImmGetContext(hwnd);
     if (himc == NULL) return;
     COMPOSITIONFORM cf;
@@ -332,14 +325,16 @@ static int imeString(HIMC himc, DWORD kind, char *out, int cap, WCHAR *wbuf, int
     return n;
 }
 
-static void imeComposition(HWND hwnd, int win, LPARAM lParam) {
+static void imeComposition(IonWinWindow *w, LPARAM lParam) {
     static WCHAR wbuf[512];
     static char  utf8[2048];
+    HWND hwnd = w->hwnd;
+    int win = w->id;
     HIMC himc = ImmGetContext(hwnd);
     if (himc == NULL) return;
     if (lParam & GCS_RESULTSTR) {
         imeString(himc, GCS_RESULTSTR, utf8, sizeof utf8, wbuf, 512);
-        if (s_preeditActive) { pushText(ION_INPUT_PREEDIT, win, "", 0); s_preeditActive = 0; }
+        if (w->preeditActive) { pushText(ION_INPUT_PREEDIT, win, "", 0); w->preeditActive = 0; }
         if (utf8[0] != '\0') pushText(ION_INPUT_TEXT, win, utf8, 0);
     }
     if (lParam & GCS_COMPSTR) {
@@ -348,20 +343,20 @@ static void imeComposition(HWND hwnd, int win, LPARAM lParam) {
         if (lParam & GCS_CURSORPOS) cursor = ImmGetCompositionStringW(himc, GCS_CURSORPOS, NULL, 0);
         if (cursor < 0 || cursor > n) cursor = n;
         pushText(ION_INPUT_PREEDIT, win, utf8, (double)cursor);
-        s_preeditActive = utf8[0] != '\0';
+        w->preeditActive = utf8[0] != '\0';
     }
-    if (lParam == 0 && s_preeditActive) {
+    if (lParam == 0 && w->preeditActive) {
         pushText(ION_INPUT_PREEDIT, win, "", 0);
-        s_preeditActive = 0;
+        w->preeditActive = 0;
     }
     ImmReleaseContext(hwnd, himc);
 }
 
-static void pushPointer(int type, int x, int y, double p1, double p2) {
+static void pushPointer(int win, int type, int x, int y, double p1, double p2) {
     IonInputRecord r;
     memset(&r, 0, sizeof r);
     r.type = type;
-    r.window = ionGetMainWindowId();
+    r.window = win;
     r.x = x;
     r.y = y;
     r.p1 = p1;
@@ -387,39 +382,40 @@ static int anyButtonHeld(WPARAM wParam) {
     return (GET_KEYSTATE_WPARAM(wParam) & (MK_LBUTTON | MK_RBUTTON | MK_MBUTTON | MK_XBUTTON1 | MK_XBUTTON2)) != 0;
 }
 
-static void mouseMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+static void mouseMessage(IonWinWindow *w, UINT msg, WPARAM wParam, LPARAM lParam) {
+    HWND hwnd = w->hwnd;
     POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
     if (msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL) ScreenToClient(hwnd, &pt);
 
     if (msg == WM_MOUSELEAVE) {
-        s_tracking = 0;
-        if (GetCapture() != hwnd) pushPointer(ION_INPUT_LEAVE, s_lastX, s_lastY, 0, 0);
+        w->tracking = 0;
+        if (GetCapture() != hwnd) pushPointer(w->id, ION_INPUT_LEAVE, w->lastX, w->lastY, 0, 0);
         return;
     }
-    if (msg == WM_MOUSEMOVE && !s_tracking) {
+    if (msg == WM_MOUSEMOVE && !w->tracking) {
         TRACKMOUSEEVENT tme = { sizeof tme, TME_LEAVE, hwnd, 0 };
         TrackMouseEvent(&tme);
-        s_tracking = 1;
+        w->tracking = 1;
     }
 
     switch (msg) {
         case WM_MOUSEMOVE:
-            pushPointer(ION_INPUT_MOTION, pt.x, pt.y, pt.x - s_lastX, pt.y - s_lastY);
+            pushPointer(w->id, ION_INPUT_MOTION, pt.x, pt.y, pt.x - w->lastX, pt.y - w->lastY);
             break;
         case WM_MOUSEWHEEL:
-            pushPointer(ION_INPUT_WHEEL, pt.x, pt.y, 0, (double)GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA);
+            pushPointer(w->id, ION_INPUT_WHEEL, pt.x, pt.y, 0, (double)GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA);
             break;
         case WM_MOUSEHWHEEL:
-            pushPointer(ION_INPUT_WHEEL, pt.x, pt.y, (double)GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA, 0);
+            pushPointer(w->id, ION_INPUT_WHEEL, pt.x, pt.y, (double)GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA, 0);
             break;
         default:
             if (isButtonDown(msg) && GetCapture() != hwnd) SetCapture(hwnd);
-            pushPointer(ION_INPUT_BUTTON, pt.x, pt.y, buttonOf(msg, wParam), isButtonDown(msg));
+            pushPointer(w->id, ION_INPUT_BUTTON, pt.x, pt.y, buttonOf(msg, wParam), isButtonDown(msg));
             if (!isButtonDown(msg) && !anyButtonHeld(wParam) && GetCapture() == hwnd) ReleaseCapture();
             break;
     }
-    s_lastX = pt.x;
-    s_lastY = pt.y;
+    w->lastX = pt.x;
+    w->lastY = pt.y;
 }
 
 static LPCWSTR cursorShape(int cursor) {
@@ -433,16 +429,15 @@ static LPCWSTR cursorShape(int cursor) {
     }
 }
 
-void ionWinPushResize(void) {
-    HWND hwnd = ionGetMainHwnd();
-    if (hwnd == NULL) return;
+void ionWinPushResize(IonWinWindow *w) {
+    HWND hwnd = w->hwnd;
     RECT rc;
     GetClientRect(hwnd, &rc);
     UINT dpi = GetDpiForWindow(hwnd);
     IonInputRecord r;
     memset(&r, 0, sizeof r);
     r.type = ION_INPUT_RESIZE;
-    r.window = ionGetMainWindowId();
+    r.window = w->id;
     r.x = (double)(dpi ? dpi : 96) / 96.0;
     r.p1 = rc.right - rc.left;
     r.p2 = rc.bottom - rc.top;
@@ -450,11 +445,11 @@ void ionWinPushResize(void) {
     ionWindowRequestFrame(r.window);
 }
 
-static void pushFocus(int gained) {
+static void pushFocus(int win, int gained) {
     IonInputRecord r;
     memset(&r, 0, sizeof r);
     r.type = ION_INPUT_FOCUS;
-    r.window = ionGetMainWindowId();
+    r.window = win;
     r.p1 = gained;
     ion_input_push_record(&r);
 }
@@ -464,23 +459,27 @@ void ionWindowFocusContent(IonWindowId id) {
     if (hwnd != NULL && GetFocus() != hwnd) SetFocus(hwnd);
 }
 
-void ionWindowSetImeRect(IonWindowId id, int x, int y, int w, int h) {
-    if (ionWinHwnd(id) == NULL) return;
-    s_imeRect.left = x;
-    s_imeRect.top = y;
-    s_imeRect.right = x + w;
-    s_imeRect.bottom = y + h;
-    if (GetFocus() == ionGetMainHwnd()) imeReposition();
+void ionWindowSetImeRect(IonWindowId id, int x, int y, int width, int height) {
+    IonWinWindow *w = ionWinWindow(id);
+    if (w == NULL) return;
+    w->imeRect.left = x;
+    w->imeRect.top = y;
+    w->imeRect.right = x + width;
+    w->imeRect.bottom = y + height;
+    if (GetFocus() == w->hwnd) imeReposition(w);
 }
 
 void ionWindowSetCursor(IonWindowId id, int cursor) {
-    if (ionWinHwnd(id) == NULL) return;
-    s_cursor = cursor;
-    if (ionWebView2LastPointerTarget() == ION_WEBVIEW_INVALID) SetCursor(LoadCursorW(NULL, cursorShape(cursor)));
+    IonWinWindow *w = ionWinWindow(id);
+    if (w == NULL) return;
+    w->cursor = cursor;
+    if (w->tracking && ionWebView2PointerTarget(w->hwnd) == ION_WEBVIEW_INVALID)
+        SetCursor(LoadCursorW(NULL, cursorShape(cursor)));
 }
 
-int ionWinHandleInput(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT *result) {
-    int win = ionGetMainWindowId();
+int ionWinHandleInput(IonWinWindow *w, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT *result) {
+    HWND hwnd = w->hwnd;
+    int win = w->id;
     *result = 0;
     switch (msg) {
         case WM_MOUSEMOVE:
@@ -490,24 +489,24 @@ int ionWinHandleInput(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT
         case WM_XBUTTONDOWN: case WM_XBUTTONUP:
         case WM_MOUSEWHEEL:  case WM_MOUSEHWHEEL:
         case WM_MOUSELEAVE:
-            mouseMessage(hwnd, msg, wParam, lParam);
+            mouseMessage(w, msg, wParam, lParam);
             if (msg == WM_XBUTTONDOWN || msg == WM_XBUTTONUP) *result = TRUE;
             return 1;
 
         case WM_SETCURSOR: {
             if (LOWORD(lParam) != HTCLIENT) return 0;
-            HCURSOR web = ionWebView2Cursor(ionWebView2LastPointerTarget());
-            SetCursor(web != NULL ? web : LoadCursorW(NULL, cursorShape(s_cursor)));
+            HCURSOR web = ionWebView2Cursor(ionWebView2PointerTarget(hwnd));
+            SetCursor(web != NULL ? web : LoadCursorW(NULL, cursorShape(w->cursor)));
             *result = TRUE;
             return 1;
         }
 
         case WM_SETFOCUS:
-            pushFocus(1);
+            pushFocus(win, 1);
             return 1;
         case WM_KILLFOCUS:
             ionWinKeyFlush();
-            pushFocus(0);
+            pushFocus(win, 0);
             return 1;
 
         case WM_KEYDOWN: case WM_SYSKEYDOWN:
@@ -529,13 +528,13 @@ int ionWinHandleInput(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT
             *result = DefWindowProcW(hwnd, msg, wParam, lParam & ~(LPARAM)ISC_SHOWUICOMPOSITIONWINDOW);
             return 1;
         case WM_IME_STARTCOMPOSITION:
-            imeReposition();
+            imeReposition(w);
             return 1;
         case WM_IME_COMPOSITION:
-            imeComposition(hwnd, win, lParam);
+            imeComposition(w, lParam);
             return 1;
         case WM_IME_ENDCOMPOSITION:
-            if (s_preeditActive) { pushText(ION_INPUT_PREEDIT, win, "", 0); s_preeditActive = 0; }
+            if (w->preeditActive) { pushText(ION_INPUT_PREEDIT, win, "", 0); w->preeditActive = 0; }
             return 1;
 
         default:

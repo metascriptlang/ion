@@ -54,7 +54,7 @@ void ionQuit(void);
 
 // Create an empty window. Returns the window id or ION_WINDOW_INVALID if:
 //   - label is NULL/empty/duplicate/over ION_LABEL_MAX
-//   - all ION_MAX_WINDOWS slots are taken (Windows: one window today)
+//   - all ION_MAX_WINDOWS slots are taken
 //   - native creation failed
 IonWindowId ionCreateWindow(const char *label, const char *title,
                             int width, int height, int flags);
@@ -76,7 +76,9 @@ msString    ionWindowLabel(IonWindowId id);
 //   ionWindowDevice  Windows: IDCompositionDevice* created on a D2D device
 //                    (DCompositionCreateDevice2), so QueryInterface gives
 //                    IDCompositionDevice2 / IDCompositionDesktopDevice and
-//                    CreateSurface hands out D2D-drawable surfaces.
+//                    CreateSurface hands out D2D-drawable surfaces. Every
+//                    window returns the same device, so a visual can move
+//                    between windows and one commit covers all of them.
 //                    macOS, Linux: NULL (the toolkit is the compositor).
 //   ionWindowRoot    Windows: the IDCompositionVisual* targeted at the window.
 //                    macOS: the window's contentView (NSView*).

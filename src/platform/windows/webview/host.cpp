@@ -16,9 +16,9 @@ extern "C" {
 using Microsoft::WRL::ComPtr;
 
 static int webviewAt(HWND host, POINT client) {
-    int last = ionWebView2LastPointerTarget();
+    int last = ionWebView2PointerTarget(host);
     WebView2State *st = ionWebView2At(last);
-    if (st != nullptr && st->hwnd == host && st->visible && PtInRect(&st->bounds, client)) return last;
+    if (st != nullptr && st->visible && PtInRect(&st->bounds, client)) return last;
     int found = ION_WEBVIEW_INVALID;
     for (int id = ion_webview_next(ION_WEBVIEW_INVALID); id != ION_WEBVIEW_INVALID; id = ion_webview_next(id)) {
         st = ionWebView2At(id);
@@ -124,24 +124,16 @@ private:
     ComPtr<IDataObject>  m_data;
 };
 
-static HostDropTarget *s_dropTarget = nullptr;
-
 extern "C" void ionWebView2RegisterDrop(HWND host) {
-    if (s_dropTarget != nullptr) return;
-    s_dropTarget = new HostDropTarget(host);
-    HRESULT hr = RegisterDragDrop(host, s_dropTarget);
-    if (FAILED(hr)) {
+    auto *target = new HostDropTarget(host);
+    HRESULT hr = RegisterDragDrop(host, target);
+    target->Release();
+    if (FAILED(hr))
         fprintf(stderr, "[ion] RegisterDragDrop failed: 0x%08lx (OleInitialize on this thread?)\n", (long)hr);
-        s_dropTarget->Release();
-        s_dropTarget = nullptr;
-    }
 }
 
 extern "C" void ionWebView2RevokeDrop(HWND host) {
-    if (s_dropTarget == nullptr) return;
     RevokeDragDrop(host);
-    s_dropTarget->Release();
-    s_dropTarget = nullptr;
 }
 
 
@@ -369,19 +361,18 @@ private:
     HWND m_host;
 };
 
-static HostUiaProvider *s_uiaProvider = nullptr;
-
-extern "C" int ionWebView2HostAutomation(HWND host, WPARAM wParam, LPARAM lParam, LRESULT *result) {
+extern "C" int ionWebView2HostAutomation(HWND host, void **provider, WPARAM wParam, LPARAM lParam, LRESULT *result) {
     if ((LONG)lParam != UiaRootObjectId) return 0;
-    if (s_uiaProvider == nullptr) s_uiaProvider = new HostUiaProvider(host);
-    *result = UiaReturnRawElementProvider(host, wParam, lParam, s_uiaProvider);
+    if (*provider == nullptr) *provider = new HostUiaProvider(host);
+    *result = UiaReturnRawElementProvider(host, wParam, lParam, static_cast<HostUiaProvider *>(*provider));
     return 1;
 }
 
-extern "C" void ionWebView2DetachAutomation(HWND host) {
-    if (s_uiaProvider == nullptr) return;
+extern "C" void ionWebView2DetachAutomation(HWND host, void **provider) {
+    auto *uia = static_cast<HostUiaProvider *>(*provider);
+    if (uia == nullptr) return;
     UiaReturnRawElementProvider(host, 0, 0, nullptr);
-    UiaDisconnectProvider(s_uiaProvider);
-    s_uiaProvider->Release();
-    s_uiaProvider = nullptr;
+    UiaDisconnectProvider(uia);
+    uia->Release();
+    *provider = nullptr;
 }

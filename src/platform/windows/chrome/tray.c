@@ -126,9 +126,16 @@ void ionInstallTrayImage(const char *pngPath) {
     s_trayInstalled = 1;
 }
 
+void ionTrayRehost(HWND hwnd) {
+    if (!s_trayInstalled) return;
+    if (s_trayNid.hWnd != NULL) Shell_NotifyIconW(NIM_DELETE, &s_trayNid);
+    s_trayNid.hWnd = hwnd;
+    if (hwnd != NULL) Shell_NotifyIconW(NIM_ADD, &s_trayNid);
+}
+
 void ionUninstallTray(void) {
     if (s_trayInstalled) {
-        Shell_NotifyIconW(NIM_DELETE, &s_trayNid);
+        if (s_trayNid.hWnd != NULL) Shell_NotifyIconW(NIM_DELETE, &s_trayNid);
         s_trayInstalled = 0;
     }
     if (s_trayIconOwned != NULL) {

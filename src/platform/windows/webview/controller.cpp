@@ -499,7 +499,10 @@ extern "C" void ionWebviewForwardPointer(IonWebviewId id, int kind, double x, do
     }
 }
 
-int ionWebView2LastPointerTarget(void) { return s_pointerTarget; }
+int ionWebView2PointerTarget(HWND host) {
+    WebView2State *st = ionWebView2At(s_pointerTarget);
+    return st != nullptr && st->hwnd == host ? s_pointerTarget : ION_WEBVIEW_INVALID;
+}
 
 HCURSOR ionWebView2Cursor(int id) {
     WebView2State *st = ionWebView2At(id);

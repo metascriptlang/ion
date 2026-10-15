@@ -11,6 +11,7 @@
 
 #include "../state.h"
 #include "../utf8.h"
+#include "../internal.h"
 #include "../../bridge.h"
 #include "../../common/strconv.h"
 
@@ -29,6 +30,10 @@
 static char s_lastFilePath[1024] = {0};
 
 msString ionFileOpen(void) {
+    return ionWinFileOpen(s_mainHwnd);
+}
+
+msString ionWinFileOpen(HWND parent) {
     s_lastFilePath[0] = '\0';
 
     HRESULT hrInit = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
@@ -40,9 +45,9 @@ msString ionFileOpen(void) {
         &IID_IFileOpenDialog, (void **)&pDialog);
     if (FAILED(hr) || pDialog == NULL) return MS_EMPTY_STRING;
 
-    // Show modal. s_mainHwnd as parent so the dialog activates on top of
-    // our window + blocks input to it (standard parent-child modal flow).
-    hr = IFileOpenDialog_Show(pDialog, s_mainHwnd);
+    // Show modal on `parent` so the dialog activates on top of that
+    // window + blocks input to it (standard parent-child modal flow).
+    hr = IFileOpenDialog_Show(pDialog, parent);
     if (hr == HRESULT_FROM_WIN32(ERROR_CANCELLED) || FAILED(hr)) {
         IFileOpenDialog_Release(pDialog);
         return MS_EMPTY_STRING;

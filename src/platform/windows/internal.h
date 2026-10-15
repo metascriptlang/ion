@@ -17,29 +17,48 @@
 extern "C" {
 #endif
 
-HWND        ionGetMainHwnd(void);
-IonWindowId ionGetMainWindowId(void);
-HWND        ionWinHwnd(IonWindowId id);
+typedef struct IonWinWindow {
+    IonWindowId id;
+    HWND        hwnd;
+    void       *compTarget;
+    void       *compRoot;
+    void       *uia;
+    int         resizable;
+    int         active;
+    int         minimized;
+    int         cloaked;
+    int         focused;
+    int         tracking;
+    int         lastX, lastY;
+    int         cursor;
+    int         preeditActive;
+    RECT        imeRect;
+} IonWinWindow;
 
-int   ionCompInit(HWND hwnd);
-void  ionCompShutdown(void);
+HWND          ionGetMainHwnd(void);
+HWND          ionWinHwnd(IonWindowId id);
+IonWinWindow *ionWinWindow(IonWindowId id);
+
+int   ionCompAttach(IonWinWindow *w);
+void  ionCompDetach(IonWinWindow *w);
 void *ionCompDevice(void);
 void  ionCompCommit(void);
 
 void    ionWebView2CloseWindow(IonWindowId win);
 void    ionWebView2ParentMoved(IonWindowId win);
 HCURSOR ionWebView2Cursor(int id);
-int     ionWebView2LastPointerTarget(void);
+int     ionWebView2PointerTarget(HWND host);
 
 void    ionWebView2RegisterDrop(HWND host);
 void    ionWebView2RevokeDrop(HWND host);
-int     ionWebView2HostAutomation(HWND host, WPARAM wParam, LPARAM lParam, LRESULT *result);
-void    ionWebView2DetachAutomation(HWND host);
+int     ionWebView2HostAutomation(HWND host, void **provider, WPARAM wParam, LPARAM lParam, LRESULT *result);
+void    ionWebView2DetachAutomation(HWND host, void **provider);
 
-int  ionWinHandleInput(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT *result);
+int  ionWinHandleInput(IonWinWindow *w, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT *result);
 void ionWinKeyFlush(void);
-void ionWinPushResize(void);
-void ionWinReleaseDestroyed(void);
+void ionWinPushResize(IonWinWindow *w);
+void ionWinReleaseDestroyed(IonWindowId id);
+msString ionWinFileOpen(HWND parent);
 
 // chrome/tray.c + chrome/notify.c — Shell_NotifyIcon callbacks route to the
 // main HWND (HWND_MESSAGE windows don't reliably receive these on Win10/11).
@@ -51,6 +70,8 @@ void ionWinReleaseDestroyed(void);
 
 void ionTrayHandleCallback(UINT event);
 void ionNotifyHandleCallback(UINT event);
+void ionTrayRehost(HWND hwnd);
+void ionNotifyRehost(void);
 
 #ifdef __cplusplus
 }

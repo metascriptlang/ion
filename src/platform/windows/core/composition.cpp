@@ -14,8 +14,7 @@ static ID3D11Device        *s_d3d     = nullptr;
 static ID2D1Factory1       *s_factory = nullptr;
 static ID2D1Device         *s_d2d     = nullptr;
 static IDCompositionDevice *s_device  = nullptr;
-static IDCompositionTarget *s_target  = nullptr;
-static IDCompositionVisual *s_root    = nullptr;
+static int                  s_targets = 0;
 
 template <class T> static void release(T *&p) {
     if (p) { p->Release(); p = nullptr; }
@@ -43,26 +42,48 @@ static HRESULT createDevices(void) {
     return hr;
 }
 
-extern "C" void ionCompShutdown(void) {
-    release(s_root);
-    release(s_target);
+static void releaseDevices(void) {
     release(s_device);
     release(s_d2d);
     release(s_factory);
     release(s_d3d);
 }
 
-extern "C" int ionCompInit(HWND hwnd) {
-    HRESULT hr = createDevices();
-    if (SUCCEEDED(hr)) hr = s_device->CreateTargetForHwnd(hwnd, TRUE, &s_target);
-    if (SUCCEEDED(hr)) hr = s_device->CreateVisual(&s_root);
-    if (SUCCEEDED(hr)) hr = s_target->SetRoot(s_root);
-    if (SUCCEEDED(hr)) hr = s_device->Commit();
+extern "C" void ionCompDetach(IonWinWindow *w) {
+    auto *root = static_cast<IDCompositionVisual *>(w->compRoot);
+    auto *target = static_cast<IDCompositionTarget *>(w->compTarget);
+    if (target == nullptr) return;
+    release(root);
+    release(target);
+    w->compRoot = nullptr;
+    w->compTarget = nullptr;
+    if (--s_targets == 0) releaseDevices();
+    else s_device->Commit();
+}
+
+extern "C" int ionCompAttach(IonWinWindow *w) {
+    HRESULT hr = s_device ? S_OK : createDevices();
     if (FAILED(hr)) {
-        fprintf(stderr, "[ion] window compositor setup failed: 0x%08lx\n", (long)hr);
-        ionCompShutdown();
+        fprintf(stderr, "[ion] window compositor device setup failed: 0x%08lx\n", (long)hr);
+        releaseDevices();
         return 0;
     }
+    IDCompositionTarget *target = nullptr;
+    IDCompositionVisual *root = nullptr;
+    hr = s_device->CreateTargetForHwnd(w->hwnd, TRUE, &target);
+    if (SUCCEEDED(hr)) hr = s_device->CreateVisual(&root);
+    if (SUCCEEDED(hr)) hr = target->SetRoot(root);
+    if (SUCCEEDED(hr)) hr = s_device->Commit();
+    if (FAILED(hr)) {
+        fprintf(stderr, "[ion] window %d compositor setup failed: 0x%08lx\n", (int)w->id, (long)hr);
+        release(root);
+        release(target);
+        if (s_targets == 0) releaseDevices();
+        return 0;
+    }
+    w->compTarget = target;
+    w->compRoot = root;
+    s_targets++;
     return 1;
 }
 
@@ -73,13 +94,14 @@ extern "C" void ionCompCommit(void) {
 }
 
 extern "C" void *ionWindowDevice(IonWindowId id) {
-    return ionWinHwnd(id) ? s_device : nullptr;
+    return ionWinWindow(id) ? s_device : nullptr;
 }
 
 extern "C" void *ionWindowRoot(IonWindowId id) {
-    return ionWinHwnd(id) ? s_root : nullptr;
+    IonWinWindow *w = ionWinWindow(id);
+    return w ? w->compRoot : nullptr;
 }
 
 extern "C" void ionWindowCommit(IonWindowId id) {
-    if (ionWinHwnd(id)) ionCompCommit();
+    if (ionWinWindow(id)) ionCompCommit();
 }

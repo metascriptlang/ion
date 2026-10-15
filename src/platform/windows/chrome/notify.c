@@ -44,6 +44,12 @@ void ionNotifyHandleCallback(UINT event) {
     }
 }
 
+void ionNotifyRehost(void) {
+    if (!s_notifyAdded) return;
+    Shell_NotifyIconW(NIM_DELETE, &s_notifyNid);
+    s_notifyAdded = 0;
+}
+
 static int ensureNotifyEntry(void) {
     if (s_notifyAdded) return 1;
     if (s_mainHwnd == NULL) return 0;

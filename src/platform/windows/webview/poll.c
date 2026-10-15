@@ -149,7 +149,10 @@ void ionLoopArm(void) {
 }
 
 int ionPollEvent(void) {
-    if (s_lastWevtType == ION_EVT_DESTROYED) ionWinReleaseDestroyed();
+    if (s_lastWevtType == ION_EVT_DESTROYED) {
+        ionWinReleaseDestroyed(s_lastWevtId);
+        s_lastWevtType = 0;
+    }
     for (;;) {
         if (ion_wevt_pop(&s_lastWevtId, &s_lastWevtType)) return 3;
         if (ion_queue_pop()) return 2;
@@ -169,9 +172,7 @@ int ionPollEvent(void) {
         if (ion_queue_pop()) return 2;
         if (ion_input_next()) return 4;
 
-        // Window closed (s_mainHwnd cleared by WM_DESTROY) but no WM_QUIT yet
-        // somehow — treat as quit so runLoop can exit cleanly.
-        if (s_quit || s_mainHwnd == NULL) return 1;
+        if (s_quit || ionWindowCount() == 0) return 1;
 
         int wanted = ion_frame_wanted() && startClock();
         wakeEvent();
