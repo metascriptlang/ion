@@ -194,6 +194,8 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <string>0.0.1</string>
     <key>LSMinimumSystemVersion</key>
     <string>11.0</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>$APP_NAME needs the microphone to record audio.</string>
     <key>NSHighResolutionCapable</key>
     <true/>$ICON_ENTRY$URL_TYPES_BLOCK
 </dict>
