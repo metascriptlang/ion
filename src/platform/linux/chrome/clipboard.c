@@ -1,5 +1,3 @@
-#include "../state.h"
-#include "../internal.h"
 #include "../../bridge.h"
 #include "../../common/strconv.h"
 
@@ -8,6 +6,32 @@
 #include <stdlib.h>
 
 #define READ_TIMEOUT_MS 2000
+
+// A clipboard-only program never runs Ion's window host, so nothing has initialised GTK.
+// gtk_init_check is a no-op once GTK is initialised, and FALSE without a display.
+static GdkClipboard *clipboard(const char *api) {
+    if (!gtk_init_check() || gdk_display_get_default() == NULL) {
+        fprintf(stderr, "[ion] %s: no display, GTK could not be initialised
+", api);
+        return NULL;
+    }
+    return gdk_display_get_clipboard(gdk_display_get_default());
+}
+
+static gboolean keepWaking(gpointer data) {
+    (void)data;
+    return G_SOURCE_CONTINUE;
+}
+
+static int pumpUntil(const volatile int *done, int timeoutMs) {
+    gint64 deadline = g_get_monotonic_time() + (gint64)timeoutMs * 1000;
+    guint tick = g_timeout_add(10, keepWaking, NULL);
+    while (!*done && g_get_monotonic_time() < deadline) {
+        g_main_context_iteration(NULL, TRUE);
+    }
+    g_source_remove(tick);
+    return *done;
+}
 
 typedef struct {
     int   done;
@@ -37,7 +61,8 @@ static char *readLocal(GdkClipboard *board) {
 }
 
 msString ionClipboardRead(void) {
-    GdkClipboard *board = gdk_display_get_clipboard(gdk_display_get_default());
+    GdkClipboard *board = clipboard("clipboard read");
+    if (board == NULL) return MS_EMPTY_STRING;
     char *text;
     if (gdk_clipboard_is_local(board)) {
         text = readLocal(board);
@@ -45,7 +70,7 @@ msString ionClipboardRead(void) {
         ReadResult *r = (ReadResult *)calloc(1, sizeof *r);
         if (r == NULL) return MS_EMPTY_STRING;
         gdk_clipboard_read_text_async(board, NULL, onText, r);
-        if (!ionLinuxPumpUntil(&r->done, READ_TIMEOUT_MS)) {
+        if (!pumpUntil(&r->done, READ_TIMEOUT_MS)) {
             fprintf(stderr, "[ion] clipboard read: no answer from the clipboard owner in %d ms\n", READ_TIMEOUT_MS);
             r->abandoned = 1;
             return MS_EMPTY_STRING;
@@ -60,7 +85,8 @@ msString ionClipboardRead(void) {
 }
 
 int ionClipboardWrite(const char *text) {
-    GdkClipboard *board = gdk_display_get_clipboard(gdk_display_get_default());
+    GdkClipboard *board = clipboard("clipboard write");
+    if (board == NULL) return 0;
     gdk_clipboard_set_text(board, text != NULL ? text : "");
     return 1;
 }

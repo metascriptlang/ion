@@ -9,10 +9,18 @@
 #include <string.h>
 #include <wchar.h>
 
+// SetClipboardData fails when the clipboard is opened with a NULL owner, and a clipboard-only
+// program has no window host, so the clipboard owns a message-only window of its own.
+static HWND owner(void) {
+    static HWND hwnd = NULL;
+    if (hwnd == NULL) hwnd = CreateWindowExW(0, L"STATIC", NULL, 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, NULL, NULL);
+    return hwnd;
+}
+
 // Another process can hold the clipboard open for a few milliseconds.
 static int openClipboard(void) {
     for (int attempt = 0; attempt < 10; attempt++) {
-        if (OpenClipboard(s_mainHwnd)) return 1;
+        if (OpenClipboard(owner())) return 1;
         Sleep(10);
     }
     return 0;

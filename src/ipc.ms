@@ -53,7 +53,6 @@ when (macos) {
 	@compile("./platform/macos/chrome/tray.m", "-fobjc-arc");
 	@compile("./platform/macos/chrome/notify.m", "-fobjc-arc");
 	@compile("./platform/macos/chrome/dialog.m", "-fobjc-arc");
-	@compile("./platform/macos/chrome/clipboard.m", "-fobjc-arc");
 	@compile("./platform/macos/input/hotkey.m", "-fobjc-arc");
 	@compile("./platform/macos/security/content_protect.m", "-fobjc-arc");
 	@compile("./platform/macos/security/keychain.m", "-fobjc-arc");
@@ -90,7 +89,6 @@ when (linux) {
 	@compile("./platform/linux/chrome/tray.c");
 	@compile("./platform/linux/chrome/notify.c");
 	@compile("./platform/linux/chrome/dialog.c");
-	@compile("./platform/linux/chrome/clipboard.c");
 	@compile("./platform/linux/input/hotkey.c");
 	@compile("./platform/linux/input/input.c");
 	@compile("./platform/linux/security/content_protect.c");
@@ -134,7 +132,6 @@ when (windows) {
 	@compile("./platform/windows/chrome/tray.c");
 	@compile("./platform/windows/chrome/notify.c");
 	@compile("./platform/windows/chrome/dialog.c");
-	@compile("./platform/windows/chrome/clipboard.c");
 	@compile("./platform/windows/input/hotkey.c");
 	@compile("./platform/windows/input/input.c");
 	@compile("./platform/windows/security/content_protect.c");
