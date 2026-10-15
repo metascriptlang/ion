@@ -194,6 +194,7 @@ void ionCloseWindow(IonWindowId winId) {
         GdkSurface *surface = surfaceOf(st);
         if (surface) g_signal_handlers_disconnect_by_data(surface, st);
         g_signal_handlers_disconnect_by_data(st->window, st);
+        ionLinuxFrameDetach(st);
         ionLinuxDetachInput(st);
         gtk_window_destroy(GTK_WINDOW(st->window));
         free(st);

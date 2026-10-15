@@ -18,6 +18,7 @@ double     ionLinuxScale(IonLinuxWindowState *st);
 int  ionLinuxX11SetAbove(GtkWidget *window, int on);
 
 void ionLinuxFrameSync(void);
+void ionLinuxFrameDetach(IonLinuxWindowState *st);
 
 int  ionLinuxPumpUntil(const volatile int *done, int timeoutMs);
 
