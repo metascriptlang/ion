@@ -7,7 +7,7 @@
 #define ION_LINUX_STATE_H
 
 #include <gtk/gtk.h>
-#include <webkit2/webkit2.h>
+#include <webkit/webkit.h>
 
 #include "../common/windowRegistry.h"
 
@@ -21,6 +21,7 @@ typedef struct {
     GtkWidget    *root;            // GtkFixed filling the window; ionWindowRoot
     GtkIMContext *im;
     int           iconified;
+    int           wantAbove;       // ionSetWindowAlwaysOnTop, applied once the surface is mapped
     int           contentFocused;  // last focus record pushed
     int           clientW, clientH;
     int           pointerKnown;
@@ -33,7 +34,6 @@ typedef struct {
 } IonLinuxWebviewState;
 
 IonLinuxWindowState *ionLinuxWindowState(IonWindowId id);
-IonLinuxWindowState *ionLinuxWindowForToplevel(GtkWidget *toplevel);
 
 extern GtkWidget *s_mainWindow;
 

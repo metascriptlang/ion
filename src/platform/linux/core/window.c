@@ -8,6 +8,7 @@
 
 #include <gtk/gtk.h>
 #include <linux/limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,16 +23,6 @@ IonLinuxWindowState *ionLinuxWindowState(IonWindowId id) {
     return slot ? (IonLinuxWindowState *)slot->platformState : NULL;
 }
 
-IonLinuxWindowState *ionLinuxWindowForToplevel(GtkWidget *toplevel) {
-    for (IonWindowId i = ion_registry_next(ION_WINDOW_INVALID);
-         i != ION_WINDOW_INVALID;
-         i = ion_registry_next(i)) {
-        IonLinuxWindowState *st = ionLinuxWindowState(i);
-        if (st && st->window == toplevel) return st;
-    }
-    return NULL;
-}
-
 static void refreshMainWindow(void) {
     IonWindowId pick = ion_registry_find(kMainLabel);
     if (pick == ION_WINDOW_INVALID) pick = ion_registry_next(ION_WINDOW_INVALID);
@@ -39,13 +30,28 @@ static void refreshMainWindow(void) {
     s_mainWindow = st ? st->window : NULL;
 }
 
+static GdkSurface *surfaceOf(IonLinuxWindowState *st) {
+    return gtk_native_get_surface(GTK_NATIVE(st->window));
+}
+
+double ionLinuxScale(IonLinuxWindowState *st) {
+    GdkSurface *surface = surfaceOf(st);
+    return surface ? gdk_surface_get_scale(surface) : 1.0;
+}
+
+void ionLinuxPresentMain(void) {
+    if (s_mainWindow != NULL) gtk_window_present(GTK_WINDOW(s_mainWindow));
+}
+
 void ionLinuxSyncFrameState(IonLinuxWindowState *st) {
     int visible = gtk_widget_get_visible(st->window) && !st->iconified;
     ion_frame_window_state(st->id, gtk_window_is_active(GTK_WINDOW(st->window)), visible);
 }
 
-static gboolean onDeleteEvent(GtkWidget *widget, GdkEvent *event, gpointer data) {
-    (void)widget; (void)event; (void)data;
+static gboolean onCloseRequest(GtkWindow *window, gpointer data) {
+    (void)window;
+    IonLinuxWindowState *st = (IonLinuxWindowState *)data;
+    ion_wevt_push(st->id, ION_EVT_CLOSE_REQUESTED);
     s_quitRequested = 1;
     return TRUE;
 }
@@ -59,27 +65,53 @@ static void onActiveChanged(GObject *obj, GParamSpec *pspec, gpointer data) {
     ionLinuxUpdateContentFocus(st);
 }
 
-static gboolean onWindowState(GtkWidget *w, GdkEventWindowState *e, gpointer data) {
-    (void)w;
-    IonLinuxWindowState *st = (IonLinuxWindowState *)data;
-    if (e->changed_mask & GDK_WINDOW_STATE_ICONIFIED) {
-        st->iconified = (e->new_window_state & GDK_WINDOW_STATE_ICONIFIED) != 0;
-        ionLinuxSyncFrameState(st);
-    }
-    return FALSE;
+static void onFocusWidgetChanged(GObject *obj, GParamSpec *pspec, gpointer data) {
+    (void)obj; (void)pspec;
+    ionLinuxUpdateContentFocus((IonLinuxWindowState *)data);
 }
 
-static gboolean onConfigure(GtkWidget *w, GdkEventConfigure *e, gpointer data) {
-    (void)w; (void)e;
-    ion_wevt_push(((IonLinuxWindowState *)data)->id, ION_EVT_MOVED);
-    return FALSE;
+static void onToplevelState(GObject *surface, GParamSpec *pspec, gpointer data) {
+    (void)pspec;
+    IonLinuxWindowState *st = (IonLinuxWindowState *)data;
+    st->iconified = (gdk_toplevel_get_state(GDK_TOPLEVEL(surface)) & GDK_TOPLEVEL_STATE_MINIMIZED) != 0;
+    ionLinuxSyncFrameState(st);
 }
 
-static void onRootAllocate(GtkWidget *w, GdkRectangle *a, gpointer data) {
-    (void)w; (void)a;
+static void onSurfaceScale(GObject *surface, GParamSpec *pspec, gpointer data) {
+    (void)surface; (void)pspec;
     IonLinuxWindowState *st = (IonLinuxWindowState *)data;
-    ionLinuxPushResize(st);
+    ionLinuxPushResize(st, gtk_widget_get_width(st->root), gtk_widget_get_height(st->root));
+}
+
+static void onRealize(GtkWidget *window, gpointer data) {
+    (void)window;
+    IonLinuxWindowState *st = (IonLinuxWindowState *)data;
+    GdkSurface *surface = surfaceOf(st);
+    g_signal_connect(surface, "notify::state", G_CALLBACK(onToplevelState), st);
+    g_signal_connect(surface, "notify::scale", G_CALLBACK(onSurfaceScale), st);
+}
+
+static void onMap(GtkWidget *window, gpointer data) {
+    IonLinuxWindowState *st = (IonLinuxWindowState *)data;
+    if (st->wantAbove) ionLinuxX11SetAbove(window, 1);
+}
+
+static void onProbeResize(GtkDrawingArea *area, int width, int height, gpointer data) {
+    (void)area;
+    IonLinuxWindowState *st = (IonLinuxWindowState *)data;
+    ionLinuxPushResize(st, width, height);
     ion_wevt_push(st->id, ION_EVT_RESIZED);
+}
+
+static void installTransparentCss(void) {
+    static int installed;
+    if (installed) return;
+    installed = 1;
+    GtkCssProvider *css = gtk_css_provider_new();
+    gtk_css_provider_load_from_string(css, "window.ionTransparent { background: transparent; }");
+    gtk_style_context_add_provider_for_display(gdk_display_get_default(),
+        GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(css);
 }
 
 IonWindowId ionCreateWindow(const char *label, const char *title,
@@ -94,37 +126,42 @@ IonWindowId ionCreateWindow(const char *label, const char *title,
     }
     st->id = winId;
 
-    ionLinuxInstallInput();
-
-    GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    GtkWidget *win = gtk_window_new();
     st->window = win;
     gtk_window_set_title(GTK_WINDOW(win), (title && title[0]) ? title : "ion");
     gtk_window_set_default_size(GTK_WINDOW(win), width > 0 ? width : 1280,
                                                  height > 0 ? height : 720);
     gtk_window_set_resizable(GTK_WINDOW(win), (flags & ION_WIN_RESIZABLE) != 0);
     gtk_window_set_decorated(GTK_WINDOW(win), (flags & ION_WIN_DECORATIONS) != 0);
-    if (flags & ION_WIN_ALWAYS_ON_TOP) gtk_window_set_keep_above(GTK_WINDOW(win), TRUE);
-    if (flags & ION_WIN_CENTERED)      gtk_window_set_position(GTK_WINDOW(win), GTK_WIN_POS_CENTER);
-    if (flags & ION_WIN_FULLSCREEN)    gtk_window_fullscreen(GTK_WINDOW(win));
+    if (flags & ION_WIN_ALWAYS_ON_TOP) st->wantAbove = 1;
+    if (flags & ION_WIN_CENTERED) {
+        fprintf(stderr, "[ion] createWindow: Centered ignored, GTK4 cannot place a window; the compositor does\n");
+    }
+    if (flags & ION_WIN_FULLSCREEN) gtk_window_fullscreen(GTK_WINDOW(win));
     if (flags & ION_WIN_TRANSPARENT) {
-        GdkVisual *rgba = gdk_screen_get_rgba_visual(gtk_widget_get_screen(win));
-        if (rgba) gtk_widget_set_visual(win, rgba);
-        gtk_widget_set_app_paintable(win, TRUE);
+        installTransparentCss();
+        gtk_widget_add_css_class(win, "ionTransparent");
     }
 
+    // The probe's resize signal is the only size notification GTK4 gives a plain
+    // container; the overlay gives the root the probe's size.
+    GtkWidget *overlay = gtk_overlay_new();
+    GtkWidget *probe = gtk_drawing_area_new();
+    gtk_widget_set_can_target(probe, FALSE);
+    gtk_widget_set_hexpand(probe, TRUE);
+    gtk_widget_set_vexpand(probe, TRUE);
+    gtk_overlay_set_child(GTK_OVERLAY(overlay), probe);
     st->root = gtk_fixed_new();
-    gtk_container_add(GTK_CONTAINER(win), st->root);
-    gtk_widget_show(st->root);
+    gtk_overlay_add_overlay(GTK_OVERLAY(overlay), st->root);
+    gtk_overlay_set_clip_overlay(GTK_OVERLAY(overlay), st->root, TRUE);
+    gtk_window_set_child(GTK_WINDOW(win), overlay);
 
-    gtk_widget_add_events(win, GDK_POINTER_MOTION_MASK | GDK_BUTTON_PRESS_MASK
-        | GDK_BUTTON_RELEASE_MASK | GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK
-        | GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK | GDK_LEAVE_NOTIFY_MASK
-        | GDK_ENTER_NOTIFY_MASK | GDK_FOCUS_CHANGE_MASK | GDK_STRUCTURE_MASK);
-    g_signal_connect(win, "delete-event", G_CALLBACK(onDeleteEvent), st);
+    g_signal_connect(win, "close-request", G_CALLBACK(onCloseRequest), st);
     g_signal_connect(win, "notify::is-active", G_CALLBACK(onActiveChanged), st);
-    g_signal_connect(win, "window-state-event", G_CALLBACK(onWindowState), st);
-    g_signal_connect(win, "configure-event", G_CALLBACK(onConfigure), st);
-    g_signal_connect(st->root, "size-allocate", G_CALLBACK(onRootAllocate), st);
+    g_signal_connect(win, "notify::focus-widget", G_CALLBACK(onFocusWidgetChanged), st);
+    g_signal_connect(win, "realize", G_CALLBACK(onRealize), st);
+    g_signal_connect(win, "map", G_CALLBACK(onMap), st);
+    g_signal_connect(probe, "resize", G_CALLBACK(onProbeResize), st);
 
     ionLinuxAttachInput(st);
 
@@ -133,15 +170,12 @@ IonWindowId ionCreateWindow(const char *label, const char *title,
     ion_frame_window_open(winId);
     refreshMainWindow();
 
-    if (flags & ION_WIN_VISIBLE) gtk_widget_show(win);
+    if (flags & ION_WIN_VISIBLE) gtk_window_present(GTK_WINDOW(win));
     ionLinuxSyncFrameState(st);
 
-    // Replay cold-start deep link (captured in lifecycle.c::captureColdStartUrl).
-    // Queued after window creation so MS-side listen() callbacks see it on the
-    // first poll. Mirrors Mac + Win "deeplink" cold-start replay.
     if (s_coldStartUrl[0] != '\0') {
         ionEnqueueMessage("deeplink", s_coldStartUrl);
-        s_coldStartUrl[0] = '\0';  // one-shot — secondary launches arrive via DBus
+        s_coldStartUrl[0] = '\0';
     }
     return winId;
 }
@@ -157,10 +191,11 @@ void ionCloseWindow(IonWindowId winId) {
 
     ion_frame_window_close(winId);
     if (st) {
+        GdkSurface *surface = surfaceOf(st);
+        if (surface) g_signal_handlers_disconnect_by_data(surface, st);
         g_signal_handlers_disconnect_by_data(st->window, st);
-        g_signal_handlers_disconnect_by_data(st->root, st);
         ionLinuxDetachInput(st);
-        gtk_widget_destroy(st->window);
+        gtk_window_destroy(GTK_WINDOW(st->window));
         free(st);
     }
     slot->platformState = NULL;
@@ -176,11 +211,6 @@ GtkWidget *ionGetMainWindow(void) {
     return s_mainWindow;
 }
 
-// ---- Resource path ----------------------------------------------------------
-// Mirrors Windows' convention: <exe-dir>/resources/. AppImage layout
-// (Phase 5) places resources at the same relative spot inside the squashfs
-// root, so this works for portable runs + installed runs alike.
-
 static char s_resourcePath[PATH_MAX * 2] = {0};
 
 msString ionResourcePath(void) {
@@ -191,14 +221,12 @@ msString ionResourcePath(void) {
     if (n <= 0) return MS_EMPTY_STRING;
     exePath[n] = '\0';
 
-    // Strip filename to keep directory.
     char *slash = strrchr(exePath, '/');
     if (slash == NULL) return MS_EMPTY_STRING;
-    *(slash + 1) = '\0';  // keep trailing '/'
+    *(slash + 1) = '\0';
 
     snprintf(s_resourcePath, sizeof(s_resourcePath), "%sresources", exePath);
 
-    // Only return path if directory exists; matches mac+win "" fallback in dev.
     struct stat st;
     if (stat(s_resourcePath, &st) != 0 || !S_ISDIR(st.st_mode)) {
         s_resourcePath[0] = 0;
@@ -225,9 +253,8 @@ void ionWindowFocusContent(IonWindowId id) {
 
 void ionWindowSetCursor(IonWindowId id, int cursor) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
-    GdkWindow *gw = st ? gtk_widget_get_window(st->window) : NULL;
-    if (!gw) return;
-    const char *name = "default";
+    if (!st) return;
+    const char *name = NULL;
     switch (cursor) {
         case ION_CURSOR_HAND:     name = "pointer"; break;
         case ION_CURSOR_IBEAM:    name = "text"; break;
@@ -236,22 +263,20 @@ void ionWindowSetCursor(IonWindowId id, int cursor) {
         case ION_CURSOR_RESIZE_V: name = "ns-resize"; break;
         default: break;
     }
-    GdkCursor *c = gdk_cursor_new_from_name(gdk_window_get_display(gw), name);
-    gdk_window_set_cursor(gw, c);
-    if (c) g_object_unref(c);
+    gtk_widget_set_cursor_from_name(st->root, name);
 }
 
 void ionShowWindow(IonWindowId id) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
     if (!st) return;
-    gtk_widget_show(st->window);
+    gtk_window_present(GTK_WINDOW(st->window));
     ionLinuxSyncFrameState(st);
 }
 
 void ionHideWindow(IonWindowId id) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
     if (!st) return;
-    gtk_widget_hide(st->window);
+    gtk_widget_set_visible(st->window, FALSE);
     ionLinuxSyncFrameState(st);
 }
 
@@ -262,7 +287,7 @@ void ionFocusWindow(IonWindowId id) {
 
 void ionMinimizeWindow(IonWindowId id) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
-    if (st) gtk_window_iconify(GTK_WINDOW(st->window));
+    if (st) gtk_window_minimize(GTK_WINDOW(st->window));
 }
 
 void ionMaximizeWindow(IonWindowId id) {
@@ -277,18 +302,24 @@ void ionSetWindowTitle(IonWindowId id, const char *title) {
 
 void ionSetWindowSize(IonWindowId id, int width, int height) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
-    if (st) gtk_window_resize(GTK_WINDOW(st->window), width > 0 ? width : 1,
-                                                      height > 0 ? height : 1);
+    if (st) gtk_window_set_default_size(GTK_WINDOW(st->window), width > 0 ? width : 1,
+                                                                height > 0 ? height : 1);
 }
 
 void ionSetWindowPosition(IonWindowId id, int x, int y) {
-    IonLinuxWindowState *st = ionLinuxWindowState(id);
-    if (st) gtk_window_move(GTK_WINDOW(st->window), x, y);
+    (void)x; (void)y;
+    if (!ionLinuxWindowState(id)) return;
+    fprintf(stderr, "[ion] setPosition: unavailable, GTK4 has no gtk_window_move and Wayland gives clients no global position\n");
 }
 
 void ionSetWindowAlwaysOnTop(IonWindowId id, int on) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
-    if (st) gtk_window_set_keep_above(GTK_WINDOW(st->window), on ? TRUE : FALSE);
+    if (!st) return;
+    st->wantAbove = on ? 1 : 0;
+    if (!gtk_widget_get_mapped(st->window)) return;
+    if (!ionLinuxX11SetAbove(st->window, st->wantAbove)) {
+        fprintf(stderr, "[ion] setAlwaysOnTop: unavailable on Wayland, xdg-shell has no stacking request; run with GDK_BACKEND=x11\n");
+    }
 }
 
 void ionSetWindowDecorations(IonWindowId id, int on) {
@@ -308,10 +339,10 @@ msString ionFileOpenWindow(IonWindowId id) {
 
 int ionWindowPixelWidth(IonWindowId id) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
-    return st ? gtk_widget_get_allocated_width(st->root) * gtk_widget_get_scale_factor(st->root) : 0;
+    return st ? (int)lround(gtk_widget_get_width(st->root) * ionLinuxScale(st)) : 0;
 }
 
 int ionWindowPixelHeight(IonWindowId id) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
-    return st ? gtk_widget_get_allocated_height(st->root) * gtk_widget_get_scale_factor(st->root) : 0;
+    return st ? (int)lround(gtk_widget_get_height(st->root) * ionLinuxScale(st)) : 0;
 }

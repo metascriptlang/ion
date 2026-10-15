@@ -215,7 +215,7 @@ int ionInit(void) {
 
     // gtk_init_check returns FALSE if X11/Wayland display unavailable
     // (headless / SSH without X forwarding). Caller can react via return 0.
-    if (!gtk_init_check(NULL, NULL)) return 0;
+    if (!gtk_init_check()) return 0;
     s_initialized = 1;
     return 1;
 }
