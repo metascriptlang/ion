@@ -74,13 +74,13 @@ when (macos) {
 }
 
 when (linux) {
-	// Phase 2: WebKitGTK webview + bootstrap + IPC + nav + custom URI scheme.
-	// Phase 3 wires libayatana-appindicator3 (tray) + libnotify + GtkFileChooser.
-	// Phase 4 wires X11 XGrabKey global hotkey. Phase 5 packages as AppImage.
 	@compile("./platform/linux/state.c");
 	@compile("./platform/linux/core/lifecycle.c");
 	@compile("./platform/linux/core/window.c");
 	@compile("./platform/linux/core/shell.c");
+	@compile("./platform/linux/core/frame.c");
+	@compile("./platform/linux/core/pump.c");
+	@compile("./platform/linux/core/x11.c");
 	@compile("./platform/linux/webview/poll.c");
 	@compile("./platform/linux/webview/setup.c");
 	@compile("./platform/linux/webview/messaging.c");
@@ -96,25 +96,21 @@ when (linux) {
 	@compile("./platform/linux/security/content_protect.c");
 	@compile("./platform/linux/security/keychain.c");
 	@compile("./platform/linux/update/install.c");
-	// GTK3 + WebKitGTK + libnotify + libayatana-appindicator3 + libsecret
-	// include + link flags via pkg-config. Works across x86_64 / aarch64 /
-	// Fedora / musl uniformly. libsecret talks to the freedesktop Secret
-	// Service (GNOME Keyring / KWallet) for ionKeychainSet/Get/Delete.
+	// GTK4 + WebKitGTK 6.0 + libnotify + ayatana-appindicator-glib (GLib-only; the GTK3
+	// appindicator cannot share a process with GTK4) + libsecret, flags via pkg-config.
 	const gtkCflags = @comptime {
-		const r = exec("pkg-config --cflags gtk+-3.0 webkit2gtk-4.1 libnotify ayatana-appindicator3-0.1 libsecret-1");
+		const r = exec("pkg-config --cflags gtk4 webkitgtk-6.0 libnotify ayatana-appindicator-glib libsecret-1");
 		if (!r.ok) return "";
 		return r.value.trim();
 	};
 	const gtkLibs = @comptime {
-		const r = exec("pkg-config --libs gtk+-3.0 webkit2gtk-4.1 libnotify ayatana-appindicator3-0.1 libsecret-1");
+		const r = exec("pkg-config --libs gtk4 webkitgtk-6.0 libnotify ayatana-appindicator-glib libsecret-1");
 		if (!r.ok) return "";
 		return r.value.trim();
 	};
 	@passC(gtkCflags);
 	@passL(gtkLibs);
-	// XGrabKey + XKeysymToKeycode live in libX11. Pkg-config gtk+-3.0 +
-	// webkit2gtk-4.1 link gdk-3 but not X11 directly — ld --as-needed strips
-	// the X11 reference unless we name it explicitly here.
+	// XGrabKey, XSendEvent and XKeysymToKeycode live in libX11; gtk4's pkg-config does not name it.
 	@passL("-lX11");
 }
 
