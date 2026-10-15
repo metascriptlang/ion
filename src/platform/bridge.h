@@ -438,6 +438,24 @@ int         ionAudioRecordRecording(int id);
 double      ionAudioRecordDurationMs(int id);
 const char *ionAudioRecordPath(int id);
 
+// ---- Microphone permission (platform/*/security/microphone.*) ---------------
+// ionMicRequest blocks until the user answers: call it from a spawn, never the loop thread.
+// A return is ION_MIC_GRANTED | DENIED | UNDETERMINED, OR-ed with ION_MIC_CAN_ASK, or negative.
+
+#define ION_MIC_GRANTED       0
+#define ION_MIC_DENIED        1
+#define ION_MIC_UNDETERMINED  2
+#define ION_MIC_STATE_MASK    0xff
+#define ION_MIC_CAN_ASK       0x100
+
+#define ION_MIC_E_UNAVAILABLE (-1)   // the OS API could not be reached
+#define ION_MIC_E_SANDBOX     (-2)   // inside Flatpak: a portal path is not built
+#define ION_MIC_E_QUERY       (-3)   // the OS API answered with a failure
+
+int         ionMicAccess(void);
+int         ionMicRequest(void);
+const char *ionMicErrorName(int code);
+
 // ---- OTA auto-update install (macOS) -------------------------------------
 // Builds on a verified .dmg path (download + sha256 + ed25519 already done
 // in std/ion update.ms). Stateless: each function takes everything it needs
