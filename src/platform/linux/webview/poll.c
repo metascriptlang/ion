@@ -5,6 +5,7 @@
 #include "../../common/inputEvents.h"
 #include "../../common/frameClock.h"
 #include "../../common/windowEvents.h"
+#include "../../common/windowRegistry.h"
 
 #include <gtk/gtk.h>
 
@@ -15,6 +16,15 @@ static gint        s_wakePending;
 void ionWakeLoop(void) {
     g_atomic_int_set(&s_wakePending, 1);
     g_main_context_wakeup(NULL);
+}
+
+// A destroyed window's registry slot stays until the loop has read its DESTROYED event,
+// so the label lookup for that event still resolves.
+void ionLinuxReleaseReadDestroyed(void) {
+    if (s_lastWevtType != ION_EVT_DESTROYED) return;
+    IonWindowSlot *slot = ion_registry_get(s_lastWevtId);
+    if (slot && !slot->platformState) ion_registry_free(s_lastWevtId);
+    s_lastWevtType = 0;
 }
 
 static int drain(void) {
@@ -38,15 +48,17 @@ int ionPollEvent(void) {
         g_timeout_add(16, keepWaking, NULL);
     }
 
+    ionLinuxReleaseReadDestroyed();
+
     int got = drain();
     if (got) return got;
 
     ionLinuxFrameSync();
     while (g_main_context_iteration(NULL, FALSE)) {}
 
-    if (s_quitRequested) return 1;
     got = drain();
     if (got) return got;
+    if (s_quitRequested) return 1;
 
     if (!g_atomic_int_get(&s_wakePending)) g_main_context_iteration(NULL, TRUE);
     got = drain();

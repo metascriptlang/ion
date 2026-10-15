@@ -24,10 +24,13 @@ IonLinuxWindowState *ionLinuxWindowState(IonWindowId id) {
 }
 
 static void refreshMainWindow(void) {
-    IonWindowId pick = ion_registry_find(kMainLabel);
-    if (pick == ION_WINDOW_INVALID) pick = ion_registry_next(ION_WINDOW_INVALID);
-    IonLinuxWindowState *st = ionLinuxWindowState(pick);
-    s_mainWindow = st ? st->window : NULL;
+    IonLinuxWindowState *pick = ionLinuxWindowState(ion_registry_find(kMainLabel));
+    for (IonWindowId i = ion_registry_next(ION_WINDOW_INVALID);
+         pick == NULL && i != ION_WINDOW_INVALID;
+         i = ion_registry_next(i)) {
+        pick = ionLinuxWindowState(i);
+    }
+    s_mainWindow = pick ? pick->window : NULL;
 }
 
 static GdkSurface *surfaceOf(IonLinuxWindowState *st) {
@@ -48,11 +51,17 @@ void ionLinuxSyncFrameState(IonLinuxWindowState *st) {
     ion_frame_window_state(st->id, gtk_window_is_active(GTK_WINDOW(st->window)), visible);
 }
 
+static gboolean destroyLater(gpointer data) {
+    ionCloseWindow((IonWindowId)GPOINTER_TO_INT(data));
+    return G_SOURCE_REMOVE;
+}
+
 static gboolean onCloseRequest(GtkWindow *window, gpointer data) {
     (void)window;
     IonLinuxWindowState *st = (IonLinuxWindowState *)data;
     ion_wevt_push(st->id, ION_EVT_CLOSE_REQUESTED);
     s_quitRequested = 1;
+    g_idle_add(destroyLater, GINT_TO_POINTER(st->id));
     return TRUE;
 }
 
@@ -126,6 +135,7 @@ static void installTransparentCss(void) {
 
 IonWindowId ionCreateWindow(const char *label, const char *title,
                             int width, int height, int flags) {
+    ionLinuxReleaseReadDestroyed();
     IonWindowId winId = ion_registry_alloc(label);
     if (winId == ION_WINDOW_INVALID) return ION_WINDOW_INVALID;
 
@@ -193,7 +203,7 @@ IonWindowId ionCreateWindow(const char *label, const char *title,
 
 void ionCloseWindow(IonWindowId winId) {
     IonWindowSlot *slot = ion_registry_get(winId);
-    if (!slot) return;
+    if (!slot || !slot->platformState) return;
     IonLinuxWindowState *st = (IonLinuxWindowState *)slot->platformState;
 
     for (int wv = ion_webview_next(-1); wv != ION_WEBVIEW_INVALID; wv = ion_webview_next(wv)) {
@@ -201,22 +211,24 @@ void ionCloseWindow(IonWindowId winId) {
     }
 
     ion_frame_window_close(winId);
-    if (st) {
-        GdkSurface *surface = surfaceOf(st);
-        if (surface) g_signal_handlers_disconnect_by_data(surface, st);
-        g_signal_handlers_disconnect_by_data(st->window, st);
-        ionLinuxFrameDetach(st);
-        ionLinuxDetachInput(st);
-        gtk_window_destroy(GTK_WINDOW(st->window));
-        free(st);
-    }
+    GdkSurface *surface = surfaceOf(st);
+    if (surface) g_signal_handlers_disconnect_by_data(surface, st);
+    g_signal_handlers_disconnect_by_data(st->window, st);
+    ionLinuxFrameDetach(st);
+    ionLinuxDetachInput(st);
+    gtk_window_destroy(GTK_WINDOW(st->window));
+    free(st);
     slot->platformState = NULL;
-    ion_registry_free(winId);
+    ion_wevt_push(winId, ION_EVT_DESTROYED);
     refreshMainWindow();
 }
 
 int ionWindowCount(void) {
-    return ion_registry_count();
+    int n = 0;
+    for (IonWindowId i = ion_registry_next(ION_WINDOW_INVALID); i != ION_WINDOW_INVALID; i = ion_registry_next(i)) {
+        if (ionLinuxWindowState(i)) n++;
+    }
+    return n;
 }
 
 GtkWidget *ionGetMainWindow(void) {
