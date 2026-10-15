@@ -177,6 +177,7 @@ import {
 	ionInputType,
 	ionQuit,
 } from "./platform/bridge.h";
+import { exec } from "std/process";
 import { dispatchWindowEvent } from "./windowManager";
 import { routeEmit } from "./webview";
 import { dispatchInput } from "./input";
