@@ -373,7 +373,9 @@ no C source. Metadata on Windows is the icon and version resource and the
 application manifest; plugins reach them through the graph, not through
 vcxproj text. Linux has no IDE that owns an application shell, so its emitter
 writes the shell files directly (`.desktop`, AppStream metainfo, the package
-manifest) with the same split.
+manifest) with the same split. The package is Flatpak (decided 2026-10-16): one
+manifest builds for every distro and publishes to Flathub, and the Flatpak
+remote delivers updates. AppImage may follow; `.deb` and `.rpm` are not planned.
 
 Rejected, and why:
 

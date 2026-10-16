@@ -40,7 +40,7 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 | Event `resized` / `moved` | ✍️ `SDL_EVENT_WINDOW_RESIZED/MOVED`, not re-measured | ✅ measured 2026-10-15 (`WM_SIZE`, `WM_MOVE`; no `moved` while minimized) | ⚠️ `resized` measured 2026-10-16 on WSLg (pushed on create, `setSize`, decorations and maximize, from the probe `resize` signal); `moved` is never pushed (GTK4 reports no position) | same |
 | Event `close-requested` | never pushed: `SDL_EVENT_WINDOW_CLOSE_REQUESTED` quits the app (source) | ✅ measured 2026-10-15: pushed from `WM_CLOSE` (title-bar close), then that window is destroyed; the loop ends once no window is left (measured 2026-10-16 with two windows). No veto | ✅ measured 2026-10-16 on WSLg: `examples/multiWindowLinux.ms` closes a window through `gtk_window_close` (the `close-request` path of the titlebar button); closing one of two windows leaves the loop and the other window running, and the loop ends only after the last window's destroyed event was delivered. No veto | `docs/MULTI-WINDOW.md` lists close interception as open |
 | Event `destroyed` | never pushed (source) | ✅ measured 2026-10-15: pushed from `WM_DESTROY` (also for `closeWindow`); the loop delivers it before quitting | ✅ measured 2026-10-16 on WSLg (`multiWindowLinux`): pushed for each closed window, close-requested first; the registry slot is freed once the loop has read the event | same |
-| Native menu bar | ✅ | ❌ | ❌ | `macos/chrome/menu.m` only |
+| Native menu bar | ✅ the app menu (Quit, Edit, Window) | not planned: the app draws its menu in its own content (decided 2026-10-16) | not planned: same | `macos/chrome/menu.m` only |
 | Window input records (pointer, key, text, IME, focus, resize, leave) | ⛔ unbuilt | ✅ | ✍️ capture-phase `GtkEventControllerLegacy` + `GtkIMContext`, syntax-checked, not run | `windows/input/input.c` / `macos/core/contentHost.m` / `linux/input/input.c` |
 | Pointer forwarding into a webview (`forwardPointer`) | n/a | ✅ | n/a | WebView2 `SendMouseInput`; WKWebView and WebKitGTK take OS input themselves |
 | Window frame clock (`FrameOnDemand` / `FrameContinuous`) | ⛔ unbuilt | ✅ | ✅ measured 2026-10-16 in WSL Ubuntu on WSLg (Wayland), gtk4 4.22.4: `loopWake` gets its one requested frame from the tick callback; a continuous policy is not run | `common/frameClock.c`; Windows compositor clock in `windows/webview/poll.c` |
@@ -185,9 +185,11 @@ Remaining:
 - **OTA install on Windows** — design already noted in
   `platform/windows/update/install.c`: NSIS `.exe` spawned elevated via
   `ShellExecuteEx` + `runas`, or `MOVEFILE_REPLACE_EXISTING` for in-place.
-- **OTA install on Linux** — AppImage atomic replace via `rename(2)`; polkit
-  `pkexec` only if targeting system paths.
-- **Menu bar on Windows / Linux** — macOS-only today.
+- **OTA install on Linux** — the package is Flatpak (decided 2026-10-16), so an
+  update arrives through the Flatpak remote (`flatpak update`), not through Ion.
+- **Menu bar on Windows / Linux** — not planned: decided 2026-10-16 that the
+  app draws its menu in its own content, as VS Code and Discord do; Ion keeps
+  only the macOS app menu, which lives outside the window.
 - **Window content on macOS and Linux (2026-10-15)** — the empty window,
   webview component, input records and per-window frame clock were written to
   the `docs/WINDOW-CONTENT.md` contract on a Windows host and never compiled:
