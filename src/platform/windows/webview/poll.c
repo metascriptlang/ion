@@ -178,8 +178,9 @@ int ionPollEvent(void) {
         wakeEvent();
         HANDLE handles[3];
         DWORD count = 0;
-        handles[count++] = s_wake;
-        handles[count++] = s_mscReady;
+        // The tick goes first: the wait reports the lowest signaled index, and a
+        // wake flood would otherwise hide a pending tick. The tick fires at display
+        // rate, so it cannot starve the wake in turn.
         DWORD tickIndex = (DWORD)-1;
         if (s_tick != NULL) {
             if (wanted) SetEvent(s_want);
@@ -187,6 +188,10 @@ int ionPollEvent(void) {
             tickIndex = count;
             handles[count++] = s_tick;
         }
+        DWORD wakeIndex = count;
+        handles[count++] = s_wake;
+        DWORD readyIndex = count;
+        handles[count++] = s_mscReady;
         DWORD timeout = INFINITE;
         if (s_mscTimed) {
             ULONGLONG now = GetTickCount64();
@@ -198,9 +203,9 @@ int ionPollEvent(void) {
             fprintf(stderr, "[ion] MsgWaitForMultipleObjectsEx failed (%lu)\n", GetLastError());
             abort();
         }
-        if (r == WAIT_OBJECT_0) return 6;
-        if (r == WAIT_TIMEOUT || r == WAIT_OBJECT_0 + 1) return 5;
-        if (r == WAIT_OBJECT_0 + tickIndex) ion_frame_emit(tickMs());
+        if (tickIndex != (DWORD)-1 && r == WAIT_OBJECT_0 + tickIndex) { ion_frame_emit(tickMs()); continue; }
+        if (r == WAIT_OBJECT_0 + wakeIndex) return 6;
+        if (r == WAIT_TIMEOUT || r == WAIT_OBJECT_0 + readyIndex) return 5;
     }
 }
 
