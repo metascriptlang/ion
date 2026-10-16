@@ -3,8 +3,14 @@
 
 @compile("../../src/platform/common/inputEvents.c");
 @compile("../../src/platform/common/keys.c");
+@compile("./inputEventsHelper.c");
+@include("./inputEventsHelper.h");
 @include("../../src/platform/common/inputEvents.h");
 @include("../../src/platform/bridge.h");
+
+import { dispatchInput, onPointer, PointerEvent, PointerKind, KeyMod } from "../../src/input";
+
+extern function ionTestPushPointer(type: int32, window: int32, x: float64, y: float64, p1: float64, p2: float64, mods: int32): int32;
 
 extern function ion_input_push(type: int32, x: float64, y: float64, p1: float64, p2: float64): int32;
 extern function ion_input_next(): int32;
@@ -66,4 +72,50 @@ test "key names follow W3C KeyboardEvent.code" {
 test "an out-of-range key has no name" {
 	assert ionKeyName(-1 as int32) === "";
 	assert ionKeyName(182 as int32) === "";
+}
+
+const ModShiftBit: int32 = 1 as int32;
+const ModCtrlBit: int32 = 2 as int32;
+const ModAltBit: int32 = 4 as int32;
+
+const _seen: PointerEvent[] = [];
+onPointer((e: PointerEvent): void => { _seen.push(e); });
+
+// Pushes one pointer record and runs the dispatcher ion's loop runs on it.
+// The tests assert that exactly one PointerEvent arrived.
+function dispatchPointerRecord(type: int32, mods: int32): void {
+	drain();
+	_seen.length = 0;
+	ionTestPushPointer(type, 3 as int32, 10.0, 20.0, 1.0, 1.0, mods);
+	if (ion_input_next() === 1 as int32) dispatchInput(ionInputType());
+}
+
+test "a button record pushed with Shift reaches PointerEvent as Shift" {
+	dispatchPointerRecord(1 as int32, ModShiftBit);
+	assert _seen.length === 1;
+	const e = _seen[0];
+	assert e.kind === PointerKind.Button;
+	assert e.mods.has(KeyMod.Shift);
+	assert !e.mods.has(KeyMod.Ctrl);
+	assert !e.mods.has(KeyMod.Alt);
+}
+
+test "a motion record pushed with Ctrl and Alt reaches PointerEvent as Ctrl and Alt" {
+	dispatchPointerRecord(2 as int32, ModCtrlBit | ModAltBit);
+	assert _seen.length === 1;
+	const e = _seen[0];
+	assert e.kind === PointerKind.Motion;
+	assert e.mods.has(KeyMod.Ctrl);
+	assert e.mods.has(KeyMod.Alt);
+	assert !e.mods.has(KeyMod.Shift);
+}
+
+test "a pointer record pushed without modifiers reads none" {
+	dispatchPointerRecord(3 as int32, 0 as int32);
+	assert _seen.length === 1;
+	const e = _seen[0];
+	assert e.kind === PointerKind.Wheel;
+	assert !e.mods.has(KeyMod.Shift);
+	assert !e.mods.has(KeyMod.Ctrl);
+	assert !e.mods.has(KeyMod.Alt);
 }
