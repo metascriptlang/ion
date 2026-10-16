@@ -361,6 +361,7 @@ static void pushPointer(int win, int type, int x, int y, double p1, double p2) {
     r.y = y;
     r.p1 = p1;
     r.p2 = p2;
+    r.mods = currentMods();
     ion_input_push_record(&r);
 }
 

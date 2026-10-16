@@ -40,6 +40,7 @@ export struct PointerEvent {
 	pressed: boolean;
 	dx: float64;
 	dy: float64;
+	mods: BitSet<KeyMod>;
 }
 
 export enum KeyAction {
@@ -126,6 +127,7 @@ function dispatchPointer(window: int32, kind: PointerKind): void {
 		pressed: isButton && ionInputP2() !== 0.0,
 		dx: isButton ? 0.0 : ionInputP1(),
 		dy: isButton ? 0.0 : ionInputP2(),
+		mods: keyMods(ionInputMods() as int32),
 	};
 	for (const h of _pointerHandlers) h(e);
 }

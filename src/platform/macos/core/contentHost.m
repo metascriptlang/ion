@@ -12,7 +12,9 @@
 
 #include <string.h>
 
-static void push(int type, IonWindowId win, double x, double y, double p1, double p2) {
+static int modsFromEvent(NSEvent *e);
+
+static void push(int type, IonWindowId win, double x, double y, double p1, double p2, int mods) {
     IonInputRecord r;
     memset(&r, 0, sizeof r);
     r.type = type;
@@ -21,6 +23,7 @@ static void push(int type, IonWindowId win, double x, double y, double p1, doubl
     r.y = y;
     r.p1 = p1;
     r.p2 = p2;
+    r.mods = mods;
     ion_input_push_record(&r);
 }
 
@@ -170,7 +173,7 @@ static void handlePointer(NSEvent *e) {
             int b = (int)e.buttonNumber + 1;
             if (!inside || b > 5) return;
             s_buttonsDown |= 1 << b;
-            push(ION_INPUT_BUTTON, win, px, py, b, 1);
+            push(ION_INPUT_BUTTON, win, px, py, b, 1, modsFromEvent(e));
             break;
         }
         case NSEventTypeLeftMouseUp:
@@ -179,7 +182,7 @@ static void handlePointer(NSEvent *e) {
             int b = (int)e.buttonNumber + 1;
             if (b > 5 || !(s_buttonsDown & (1 << b))) return;
             s_buttonsDown &= ~(1 << b);
-            push(ION_INPUT_BUTTON, win, px, py, b, 0);
+            push(ION_INPUT_BUTTON, win, px, py, b, 0, modsFromEvent(e));
             break;
         }
         case NSEventTypeMouseMoved:
@@ -188,7 +191,7 @@ static void handlePointer(NSEvent *e) {
         case NSEventTypeOtherMouseDragged: {
             if (!inside && !s_buttonsDown) return;
             BOOL known = s_lastWin == win;
-            push(ION_INPUT_MOTION, win, px, py, known ? px - s_lastX : 0, known ? py - s_lastY : 0);
+            push(ION_INPUT_MOTION, win, px, py, known ? px - s_lastX : 0, known ? py - s_lastY : 0, modsFromEvent(e));
             s_lastWin = win;
             s_lastX = px;
             s_lastY = py;
@@ -197,7 +200,7 @@ static void handlePointer(NSEvent *e) {
         case NSEventTypeScrollWheel: {
             if (!inside) return;
             double k = e.hasPreciseScrollingDeltas ? 0.1 : 1.0;
-            push(ION_INPUT_WHEEL, win, px, py, e.scrollingDeltaX * k, e.scrollingDeltaY * k);
+            push(ION_INPUT_WHEEL, win, px, py, e.scrollingDeltaX * k, e.scrollingDeltaY * k, modsFromEvent(e));
             break;
         }
         default:
@@ -241,19 +244,19 @@ static void installPointerMonitor(void) {
 }
 
 - (BOOL)resignFirstResponder {
-    push(ION_INPUT_FOCUS, self.win, 0, 0, 0, 0);
+    push(ION_INPUT_FOCUS, self.win, 0, 0, 0, 0, 0);
     return YES;
 }
 
 - (void)pushFocus {
     BOOL has = self.window.isKeyWindow && self.window.firstResponder == self;
-    push(ION_INPUT_FOCUS, self.win, 0, 0, has ? 1 : 0, 0);
+    push(ION_INPUT_FOCUS, self.win, 0, 0, has ? 1 : 0, 0, 0);
 }
 
 - (void)pushResize {
     double scale = self.window.backingScaleFactor;
     push(ION_INPUT_RESIZE, self.win, scale, 0,
-         self.bounds.size.width * scale, self.bounds.size.height * scale);
+         self.bounds.size.width * scale, self.bounds.size.height * scale, 0);
 }
 
 - (void)setFrameSize:(NSSize)size {
@@ -278,7 +281,7 @@ static void installPointerMonitor(void) {
 
 - (void)mouseExited:(NSEvent *)event {
     s_lastWin = ION_WINDOW_INVALID;
-    push(ION_INPUT_LEAVE, self.win, 0, 0, 0, 0);
+    push(ION_INPUT_LEAVE, self.win, 0, 0, 0, 0, modsFromEvent(event));
 }
 
 - (void)resetCursorRects {

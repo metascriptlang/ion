@@ -158,8 +158,8 @@ static int ionButton(guint gdkButton) {
     }
 }
 
-static void pushPointer(IonLinuxWindowState *st, int type, double x, double y,
-                        double p1, double p2) {
+static void pushPointer(IonLinuxWindowState *st, int type, GtkEventController *controller,
+                        double x, double y, double p1, double p2) {
     IonInputRecord r;
     memset(&r, 0, sizeof r);
     r.type = type;
@@ -168,13 +168,14 @@ static void pushPointer(IonLinuxWindowState *st, int type, double x, double y,
     r.y = y;
     r.p1 = p1;
     r.p2 = p2;
+    r.mods = modsFromState(gtk_event_controller_get_current_event_state(controller));
     ion_input_push_record(&r);
 }
 
-static void pushLeave(IonLinuxWindowState *st) {
+static void pushLeave(IonLinuxWindowState *st, GtkEventController *controller) {
     if (!st->pointerKnown) return;
     st->pointerKnown = 0;
-    pushPointer(st, ION_INPUT_LEAVE, 0, 0, 0, 0);
+    pushPointer(st, ION_INPUT_LEAVE, controller, 0, 0, 0, 0);
 }
 
 static void onKey(IonLinuxWindowState *st, GdkEvent *ev) {
@@ -212,14 +213,14 @@ static void onKey(IonLinuxWindowState *st, GdkEvent *ev) {
     ion_input_push_record(&r);
 }
 
-static void onPointer(IonLinuxWindowState *st, GdkEvent *ev) {
+static void onPointer(IonLinuxWindowState *st, GtkEventController *controller, GdkEvent *ev) {
     double px, py;
     switch (gdk_event_get_event_type(ev)) {
         case GDK_BUTTON_PRESS: {
             int b = ionButton(gdk_button_event_get_button(ev));
             if (!b || !clientPoint(st, ev, &px, &py)) return;
             s_buttonsDown |= 1 << b;
-            pushPointer(st, ION_INPUT_BUTTON, px, py, b, 1);
+            pushPointer(st, ION_INPUT_BUTTON, controller, px, py, b, 1);
             break;
         }
         case GDK_BUTTON_RELEASE: {
@@ -227,13 +228,13 @@ static void onPointer(IonLinuxWindowState *st, GdkEvent *ev) {
             if (!b || !(s_buttonsDown & (1 << b))) return;
             s_buttonsDown &= ~(1 << b);
             clientPoint(st, ev, &px, &py);
-            pushPointer(st, ION_INPUT_BUTTON, px, py, b, 0);
+            pushPointer(st, ION_INPUT_BUTTON, controller, px, py, b, 0);
             break;
         }
         case GDK_MOTION_NOTIFY: {
             int inside = clientPoint(st, ev, &px, &py);
             if (!inside && !s_buttonsDown) {
-                pushLeave(st);
+                pushLeave(st, controller);
                 return;
             }
             double dx = st->pointerKnown ? px - st->lastX : 0;
@@ -241,7 +242,7 @@ static void onPointer(IonLinuxWindowState *st, GdkEvent *ev) {
             st->pointerKnown = 1;
             st->lastX = px;
             st->lastY = py;
-            pushPointer(st, ION_INPUT_MOTION, px, py, dx, dy);
+            pushPointer(st, ION_INPUT_MOTION, controller, px, py, dx, dy);
             break;
         }
         case GDK_SCROLL: {
@@ -258,7 +259,7 @@ static void onPointer(IonLinuxWindowState *st, GdkEvent *ev) {
                 default: return;
             }
             if (!clientPoint(st, ev, &px, &py)) return;
-            pushPointer(st, ION_INPUT_WHEEL, px, py, dx, dy);
+            pushPointer(st, ION_INPUT_WHEEL, controller, px, py, dx, dy);
             break;
         }
         default:
@@ -267,7 +268,6 @@ static void onPointer(IonLinuxWindowState *st, GdkEvent *ev) {
 }
 
 static gboolean onEvent(GtkEventControllerLegacy *controller, GdkEvent *ev, gpointer data) {
-    (void)controller;
     IonLinuxWindowState *st = (IonLinuxWindowState *)data;
     switch (gdk_event_get_event_type(ev)) {
         case GDK_KEY_PRESS:
@@ -275,15 +275,14 @@ static gboolean onEvent(GtkEventControllerLegacy *controller, GdkEvent *ev, gpoi
             if (contentHasKeyboard(st)) onKey(st, ev);
             break;
         default:
-            onPointer(st, ev);
+            onPointer(st, GTK_EVENT_CONTROLLER(controller), ev);
             break;
     }
     return FALSE;
 }
 
 static void onLeave(GtkEventControllerMotion *controller, gpointer data) {
-    (void)controller;
-    pushLeave((IonLinuxWindowState *)data);
+    pushLeave((IonLinuxWindowState *)data, GTK_EVENT_CONTROLLER(controller));
 }
 
 static void onCommit(GtkIMContext *im, gchar *str, gpointer data) {
