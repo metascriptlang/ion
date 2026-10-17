@@ -4,7 +4,7 @@
 // on macOS, stub on Windows).
 //
 // Usage:
-//   bun ~/metascript/recompiler/bun/run.ts build examples/keychainTest.ms -f
+//   msc build examples/keychainTest.ms
 //   ./out/debug/keychainTest
 //
 // Expected output:
@@ -18,6 +18,7 @@
 // recipe) actually fire. Importing from ../src/keychain alone skips ipc.ms
 // → linker can't find ionKeychainDelete because keychain.c never compiles.
 import { setSecret, getSecret, deleteSecret } from "../src/index";
+import { exit } from "std/process";
 
 function main(): int32 {
 	const svc = "io.ion.test";
@@ -38,3 +39,5 @@ function main(): int32 {
 
 	return 0 as int32;
 }
+
+exit(main());
