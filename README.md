@@ -43,11 +43,11 @@ macOS or iOS Xcode application project, an Android Gradle project
 (`examples/helloWebviewProject.ms`):
 
 ```bash
-tooling/generator/ion-generate examples/generator/project.ms /private/tmp/ion-generated
+ion generate examples/generator/project.ms /private/tmp/ion-generated
 ```
 
-Nothing is built first: the wrapper runs the generator through `msc run
---target=raiser`. With no arguments it takes `project.ms` from the current
+`ion` is the package command `msc install -g @metascript/ion@file:<checkout>`
+puts on `PATH`; it runs the generator through `msc run --target=raiser`. With no arguments it takes `project.ms` from the current
 directory and writes to `out/xcode` beside it. Set `MSC` to pick a compiler
 other than the `msc` on `PATH`. The output directory must not exist. See
 [docs/PROJECT-GENERATOR.md](docs/PROJECT-GENERATOR.md) for the manifest API,
@@ -66,14 +66,14 @@ msc run examples/helloWebview.ms
 msc run examples/protocolDemo.ms
 
 # Or build a release binary via the ion CLI
-./bin/ion build examples/helloWebview.ms
+ion build examples/helloWebview.ms
 # → out/release/helloWebview (~242 KB)
 ```
 
 ### Package as a `.app`
 
 ```bash
-./bin/ion app out/release/helloWebview MyApp com.example.myapp \
+ion app out/release/helloWebview MyApp com.example.myapp \
   --out=out --url-scheme=myapp \
   --icon=assets/icon.icns \
   --asset=assets/tray-icon.png \
@@ -83,17 +83,25 @@ msc run examples/protocolDemo.ms
 
 # → out/MyApp.app (~2.7 MB)
 
-./bin/ion dmg out/MyApp.app
+ion dmg out/MyApp.app
 # → out/MyApp.dmg (~1.2 MB)
 
 # Optional: notarize for distribution
-./bin/ion notarize out/MyApp.dmg NOTARY_PROFILE
+ion notarize out/MyApp.dmg NOTARY_PROFILE
 ```
 
 ### The `ion` CLI
 
-`bin/ion` is a single binary built from `cli/main.ms` that orchestrates the
-full build → bundle → DMG → notarize pipeline. Subcommands:
+`ion` is the package command declared in `build.ms` (`bin`), built from
+`cli/main.ms`. Install it once from the checkout; `msc` builds it on first use
+and rebuilds it after `cli/main.ms` changes:
+
+```bash
+msc install -g @metascript/ion@file:$PWD
+```
+
+It orchestrates the build → bundle → DMG → notarize pipeline and generates
+native projects. Subcommands:
 
 | Subcommand | Purpose |
 |---|---|
@@ -101,19 +109,15 @@ full build → bundle → DMG → notarize pipeline. Subcommands:
 | `ion app <bin> <name> <bundle-id>` | Wrap binary as `.app` (icon, assets, sign, hardened, entitlements, dylib bundle) |
 | `ion dmg <Foo.app>` | Wrap `.app` in UDZO-compressed DMG with /Applications symlink |
 | `ion notarize <target> <profile>` | xcrun notarytool submit + wait + staple |
-| `ion test` | Run all unit tests across `test/` and `command-builder/test/` |
+| `ion test` | Run all unit tests across `test/`, `test/common/` and `src/cli/test/` |
+| `ion generate [manifest] [output]` | Generate an Xcode, Gradle or Visual Studio project from a `project.ms` manifest |
 
-Run `ion <command> --help` for command-specific options. Add `bin/` to your PATH
-or symlink `bin/ion` to `/usr/local/bin/ion` for system-wide install.
+Run `ion <command> --help` for command-specific options. Scripts, templates and
+the generator are read from the checkout `ion` was installed from; output goes
+under the current directory.
 
 The CLI itself is built on top of `command-builder/` — a small cac-inspired
-CLI library written in MetaScript, also in this repo. To rebuild the CLI after
-editing `cli/main.ms`:
-
-```bash
-msc build cli/main.ms --release --strip
-cp out/release/main bin/ion
-```
+CLI library written in MetaScript, also in this repo.
 
 ### Use ion from a MetaScript app
 

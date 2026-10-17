@@ -60,10 +60,10 @@ project.ms
 and bundle identities. `xcode.ms` is the platform emitter. `generate.ms`
 validates filesystem inputs, renders everything before writing and refuses to
 touch an existing output directory; missing parent directories of the output
-are created. `cli.ms` is the orchestration entry point: it creates a temporary
-evaluator module and invokes `msc run --target=raiser` for the manifest,
-resolver, plugins and emitter. `ion-generate` is a shell wrapper that runs
-`cli.ms` itself through Raiser, so the generator ships no compiled binary.
+are created. `evaluator.ms` is the orchestration entry point behind
+`ion generate` (`cli/main.ms`): it creates a temporary evaluator module and
+invokes `msc run --target=raiser` for the manifest, resolver, plugins and
+emitter.
 
 A plugin is a `Plugin { name, contribute }` value. `contribute` receives an
 owned snapshot of the target list and returns `BundleId { target, value }`
@@ -95,20 +95,21 @@ couldn't find target 'Missing' required by 'Studio'
 the target 'Studio' is declared multiple times
 ```
 
-Validation stops at the first error. `ion-generate` prints it on stderr as
+Validation stops at the first error. `ion generate` prints it on stderr as
 `ion generate: <message>` and exits 1 without creating the output directory.
 
 ## Build and run
 
 ```bash
-tooling/generator/ion-generate examples/generator/project.ms /private/tmp/ion-generated
+msc install -g @metascript/ion@file:$PWD   # once, from the Ion checkout
+ion generate examples/generator/project.ms /private/tmp/ion-generated
 ```
 
 Both arguments are optional: the manifest defaults to `project.ms` in the
 current directory and the output to `out/xcode` beside the manifest. The
-compiler is the `msc` on `PATH` unless `MSC` names another one. The wrapper
-passes its inputs to `cli.ms` as `ION_GENERATE_MANIFEST`, `ION_GENERATE_OUTPUT`
-and `ION_GENERATE_ROOT`. The output path must not exist. A successful generation writes:
+compiler is the `msc` on `PATH` unless `MSC` names another one. The generator
+sources are the ones of the checkout `ion` was installed from. The output path
+must not exist. A successful generation writes:
 
 ```text
 /private/tmp/ion-generated/
@@ -144,7 +145,7 @@ desktop runtime on iOS and not a Neon integration. Its native lifecycle bridge
 is local to the example; the subsequent iOS host work owns the reusable host.
 
 ```bash
-MSC="$HOME/.metascript/bin/msc" tooling/generator/ion-generate \
+MSC="$HOME/.metascript/bin/msc" ion generate \
   examples/generatorIos/project.ms /private/tmp/ion-ios-generated
 
 xcodebuild -project /private/tmp/ion-ios-generated/IonIos.xcodeproj \
@@ -183,7 +184,7 @@ fixture uses the same `@link` contract as Recompiler's native-boundary guard.
 ## Android application
 
 ```bash
-bash tooling/generator/ion-generate examples/generatorAndroid/project.ms out/ionAndroid
+ion generate examples/generatorAndroid/project.ms out/ionAndroid
 cd out/ionAndroid
 ./gradlew assembleDebug
 adb install app/build/outputs/apk/debug/app-debug.apk
@@ -320,7 +321,7 @@ byte for byte. Why the shape is what it is:
 ## Windows application
 
 ```bash
-MSC=C:/Users/you/.metascript/bin/msc.exe bash tooling/generator/ion-generate   examples/helloWebviewProject.ms C:/work/ion-hello
+MSC=C:/Users/you/.metascript/bin/msc.exe ion generate examples/helloWebviewProject.ms C:/work/ion-hello
 MSBuild C:/work/ion-hello/IonHello.sln -p:Configuration=Debug -p:Platform=x64
 C:/work/ion-hello/bin/IonHello/Debug/IonHello.exe
 ```
@@ -563,8 +564,6 @@ a consumer gate, not a substitute for compiler verification.
   and subprocess operations; there is no capability sandbox.
 - Evaluation starts a fresh Raiser process for each generation. There is no
   persistent evaluator, hot reload or manifest cache.
-- `ion-generate` remains a separate shell entry point, not `ion generate`.
-  Migrating it to the compiler's package-command surface is separate work.
 - Products are unsigned by default. Simulator ad-hoc signing is exercised by
   enabling Xcode signing; physical-device signing/run, archive/export,
   universal binaries and App Store distribution are not verified or promised.
