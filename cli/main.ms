@@ -7,22 +7,29 @@
 //   notarize  <target> <profile>     Submit + wait + staple via xcrun notarytool.
 //   test                              Run all ion + command-builder unit tests.
 //
-// Compile:  msc build --release --strip cli/main.ms
-// Output:   out/release/main → rename or symlink to bin/ion
+// Install:  msc install -g @metascript/ion@file:<this repo>   (build.ms `bin`)
 
 import { cli, run } from "../src/cli/index";
-import { exec, exit, cwd, env, cmdExists, platform } from "std/process";
-import { exists, isFile, readDir, readFile, writeFile, copyFile, mkdir, removeAll, ensureDir, rename, chmod, symlink } from "std/fs";
+import { exec, exit, cwd, env, cmdExists, findOnPath, platform } from "std/process";
+import { exists, isFile, readDir, readFile, writeFile, copyFile, mkdir, removeAll, ensureDir, rename, chmod, symlink, dirname } from "std/fs";
+import { expansionFile } from "std/meta";
 
 const VERSION = "0.0.1";
 
+const root = @comptime { return dirname(dirname(expansionFile())); };
+
 // ---- helpers ---------------------------------------------------------------
 
-function msc(): string {
+function compiler(): string {
 	const fromEnv = env.get("MSC");
 	const tool = fromEnv.length > 0 ? fromEnv : "msc";
-	if (!cmdExists(tool)) die(`msc not found: ${tool} (put msc on PATH or set MSC)`);
-	return `"${tool}"`;
+	const found = findOnPath(tool);
+	if (found == "") die(`msc not found: ${tool} (put msc on PATH or set MSC)`);
+	return found;
+}
+
+function msc(): string {
+	return `"${compiler()}"`;
 }
 
 // exec captures output; echo it so the child's output stays visible, and map any
@@ -68,7 +75,7 @@ function winApp(
 	if (!isFile(binary)) die(`binary not found: ${binary}`);
 
 	const here = cwd();
-	const loaderPath = `${here}/vendor/webview2/runtime/x64/WebView2Loader.dll`;
+	const loaderPath = `${root}/vendor/webview2/runtime/x64/WebView2Loader.dll`;
 	if (!isFile(loaderPath)) die(`WebView2Loader.dll missing at ${loaderPath} (see vendor/webview2/README.md)`);
 
 	// Two separate dirs so the installer payload doesn't accidentally pick up
@@ -94,7 +101,7 @@ function winApp(
 	}
 
 	// ---- Render NSI template into build dir ----
-	const tplPath = `${here}/scripts/make-app-windows.nsi`;
+	const tplPath = `${root}/scripts/make-app-windows.nsi`;
 	const tplRes = readFile(tplPath);
 	if (!tplRes.ok) {
 		die(`failed to read template: ${tplPath}`);
@@ -117,7 +124,7 @@ function winApp(
 		.replaceAll("@@OUTFILE@@",        outFileUnsigned);
 
 	writeFile(`${buildDir}/installer.nsi`, rendered);
-	copyFile(`${here}/scripts/utils.nsh`, `${buildDir}/utils.nsh`);
+	copyFile(`${root}/scripts/utils.nsh`, `${buildDir}/utils.nsh`);
 
 	// ---- Invoke makensis ----
 	if (!cmdExists("makensis")) die("makensis not on PATH (NSIS: brew install makensis on macOS, nsis.sourceforge.io on Windows)");
@@ -274,8 +281,7 @@ app.command("app <binary> <name> <bundle-id>", "Wrap a binary as a platform inst
 		// bash script. Future: port to pure MS once subprocess output capture
 		// lands in std/process.
 		const outDir = args.string("out", "");
-		const here = cwd();
-		const script = `${here}/scripts/make-app.sh`;
+		const script = `${root}/scripts/make-app.sh`;
 		if (!isFile(script)) die(`scripts/make-app.sh not found at ${script}`);
 
 		let cmd = `"${script}" "${binary}" "${name}" "${bundleId}"`;
@@ -344,11 +350,9 @@ app.command("test", "Run all ion + command-builder unit tests")
 		let totalFail = 0;
 
 		for (const dir of dirs) {
-			if (!exists(dir)) continue;
-			const files = readDir(dir);
-			for (const file of files) {
+			for (const file of readDir(`${root}/${dir}`)) {
 				if (!file.endsWith(".ms")) continue;
-				const path = `${dir}/${file}`;
+				const path = `${root}/${dir}/${file}`;
 				console.log(`==> ${path}`);
 				const r = exec(`${msc()} test "${path}"`);
 				const text = r.ok ? r.value : r.error.output + r.error.errorOutput;
@@ -366,6 +370,7 @@ app.command("test", "Run all ion + command-builder unit tests")
 				}
 			}
 		}
+		if (totalPass + totalFail == 0) die(`no test files under ${root}`);
 		console.log(`${totalPass} passed, ${totalFail} failed`);
 		if (totalFail > 0) exit(1);
 	});
