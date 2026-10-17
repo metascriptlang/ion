@@ -200,6 +200,7 @@ void ionFocusWindow(IonWindowId winId) {
     if (!st) return;
     if (st->sdlWindow) SDL_RaiseWindow(st->sdlWindow);
     if (st->nsWindow)  [st->nsWindow makeKeyAndOrderFront:nil];
+    [NSApp activateIgnoringOtherApps:YES];
 }
 
 void ionMinimizeWindow(IonWindowId winId) {
