@@ -23,9 +23,12 @@
 #include "../../common/inputEvents.h"
 #include "../../common/frameClock.h"
 
+#include <stdatomic.h>
+
 static IonWindowId s_last_wevt_id   = ION_WINDOW_INVALID;
 static int         s_last_wevt_type = 0;
 static int         s_quit = 0;
+static atomic_int  s_wakePending;
 
 static IonWindowId windowIdForSdlWindowId(SDL_WindowID sdlWindowId) {
     SDL_Window *w = SDL_GetWindowFromID(sdlWindowId);
@@ -39,7 +42,10 @@ static IonWindowId windowIdForSdlWindowId(SDL_WindowID sdlWindowId) {
     return ION_WINDOW_INVALID;
 }
 
+// Wakes coalesce into one pending flag, as on Linux, so a flood from another thread posts one
+// SDL event per loop turn instead of filling SDL's queue.
 void ionWakeLoop(void) {
+    if (atomic_exchange(&s_wakePending, 1)) return;
     SDL_Event ev;
     SDL_zero(ev);
     ev.type = SDL_EVENT_USER;
@@ -62,7 +68,7 @@ int ionPollEvent(void) {
     SDL_Event ev;
     int got = SDL_WaitEventTimeout(&ev, 16);
     if (got) {
-        if (ev.type == SDL_EVENT_USER) return 6;
+        if (ev.type == SDL_EVENT_USER && atomic_exchange(&s_wakePending, 0)) return 6;
         if (ev.type == SDL_EVENT_QUIT) s_quit = 1;
 
         IonWindowId wid;
