@@ -468,9 +468,10 @@ const char *ionMicErrorName(int code);
 //   ionUpdateFindAppInVolume: scan the mount point for the first .app at the
 //     volume root. Returns the absolute .app path on success, "" if none.
 //
-//   ionUpdateReplaceApp: ONE admin auth prompt (AppleScript do-shell-script
-//     with administrator privileges) runs /bin/rm -rf <dest> followed by
-//     /usr/bin/ditto <src> <dest>. -3 on user cancel; -4 on other error.
+//   ionUpdateReplaceApp: ditto <src> beside <dest>, then swap it in
+//     atomically; one admin prompt only when <dest>'s directory is not
+//     writable. -2 when the copy fails, -3 on user cancel, -4 when the swap
+//     fails (the previous app stays in place).
 //
 //   ionUpdateUnmountDmg: hdiutil detach -force.
 //

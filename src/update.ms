@@ -1,10 +1,8 @@
 // Cross-platform OTA auto-update client for ion-based apps.
 //
-// Pulls manifest from an ion-ota service, verifies an Ed25519 signature on
-// the artifact, atomically replaces the running binary, relaunches. See
-// `docs/AUTO-UPDATE-SPEC.md` (client spec) and `docs/OTA.md` (server +
-// protocol). Server already deployed at `updates.example.com`; MyApp is
-// customer #1 — protocol is ion-owned.
+// Pulls a manifest, verifies an Ed25519 signature on the artifact, replaces
+// the installed app and relaunches it. The manifest format and the signing
+// steps are what `examples/updateMacos.sh` serves on localhost.
 //
 // API:
 //   check(cfg)                    → manifest fetch + version compare. Pure read.
@@ -346,13 +344,13 @@ export function applyWebview(cfg: UpdateConfig, info: UpdateInfo, destDir: strin
 	return Result.ok(null);
 }
 
-// Install a verified .dmg into destAppPath, then relaunch. Single admin
-// prompt for the rm + ditto. NEVER returns on success — the current process
+// Install a verified .dmg into destAppPath, then relaunch. An admin prompt
+// appears only when destAppPath's directory is not writable. NEVER returns on success — the current process
 // is _exit(0)'d inside the relaunch helper. Returns Result.err on:
 //   - mount failure (corrupt .dmg or hdiutil refused)
 //   - no .app at the volume root
 //   - user clicked Cancel on the auth dialog (recoverable; app stays open)
-//   - any other privileged-op failure
+//   - a copy or swap failure (the previous app stays in place)
 export function installMacOS(dmgPath: string, destAppPath: string): Result<void, string> {
 	const mountPath = ionUpdateMountDmg(dmgPath);
 	if (mountPath === "") return Result.err(`hdiutil attach failed for ${dmgPath}`);

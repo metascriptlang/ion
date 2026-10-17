@@ -1,13 +1,12 @@
 // Ion macOS — OTA install bridge.
 //
 // Four primitives, stateless: mount the .dmg, find the .app inside, replace
-// the on-disk .app at /Applications (with one admin prompt), detach the
+// the installed .app (an admin prompt only when its directory is not writable), detach the
 // image, then spawn a detached helper that waits for our pid to die before
 // opening the new .app. Caller (std/ion update.ms) does the verify, scoring,
 // and progress UX; this file is pure plumbing.
 //
-// We use AppleScript "do shell script with administrator privileges" as the
-// privilege-elevation pipe. The non-deprecated alternative, AuthorizationServices
+// The privileged path uses AppleScript "do shell script with administrator privileges". The non-deprecated alternative, AuthorizationServices
 // + SMAppService, requires shipping a privileged helper tool with a one-time
 // SMJobBless install — overkill for v0. AppleScript admin prompts use the
 // system auth dialog (Touch ID supported) and need no helper. Sparkle's
@@ -20,6 +19,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <spawn.h>
+#include <errno.h>
+#include <sys/time.h>
 #include "../../bridge.h"
 #include "runtime/core/string.h"
 
@@ -107,47 +108,98 @@ msString ionUpdateFindAppInVolume(const char *mountPoint) {
 	return MS_EMPTY_STRING;
 }
 
-int ionUpdateReplaceApp(const char *srcAppPath, const char *destAppPath) {
-	if (!srcAppPath || !destAppPath) return -1;
+// The new bundle is copied beside the old one, on its volume, and exchanged with it by
+// renamex_np(RENAME_SWAP), so the install path never stops holding a complete app.
+// HFS+ cannot swap; there the old bundle moves aside, the new one moves in, and the old
+// one is moved back if that second rename fails. The admin prompt appears only when the
+// destination's directory is not writable, as for a standard user's /Applications.
+static int moveIntoPlace(NSString *staged, NSString *dest, NSString *backup) {
+	if (renamex_np(staged.fileSystemRepresentation, dest.fileSystemRepresentation, RENAME_SWAP) == 0) {
+		[[NSFileManager defaultManager] removeItemAtPath:staged error:nil];
+		return 0;
+	}
+	if (errno == ENOENT && access(dest.fileSystemRepresentation, F_OK) != 0) {
+		return rename(staged.fileSystemRepresentation, dest.fileSystemRepresentation) == 0 ? 0 : -1;
+	}
+	if (rename(dest.fileSystemRepresentation, backup.fileSystemRepresentation) != 0) return -1;
+	if (rename(staged.fileSystemRepresentation, dest.fileSystemRepresentation) != 0) {
+		int saved = errno;
+		if (rename(backup.fileSystemRepresentation, dest.fileSystemRepresentation) != 0) {
+			fprintf(stderr, "[ion] update: the previous app is at %s\n", backup.fileSystemRepresentation);
+		}
+		errno = saved;
+		return -1;
+	}
+	[[NSFileManager defaultManager] removeItemAtPath:backup error:nil];
+	return 0;
+}
 
-	// One admin prompt covers both rm + ditto. We delete first so that any
-	// stale files / mismatched bundle structure don't survive. `ditto`
-	// preserves extended attributes, ACLs, and resource forks — `cp -R`
-	// would silently drop quarantine flags and code-signature metadata.
-	//
-	// Two-stage escaping: paths are sh-quoted (single-quote-safe) before
-	// being assembled into a shell command, then the assembled command is
-	// AppleScript-escaped before being embedded in the do-shell-script
-	// double-quoted argument. Either stage alone leaves an injection hole.
-	NSString *src  = shQuoteCString(srcAppPath);
-	NSString *dst  = shQuoteCString(destAppPath);
-	NSString *cmd  = [NSString stringWithFormat:
-		@"/bin/rm -rf %@ && /usr/bin/ditto %@ %@", dst, src, dst];
-	NSString *body = appleScriptEscape(cmd);
+// Root's copy would leave the new bundle owned by root, and every later update would ask
+// for a password again, so the copy takes the owner of the bundle it replaces.
+static int replaceWithAuthorization(NSString *src, NSString *dest, NSString *staged, NSString *backup) {
+	NSString *s = shQuoteCString(src.fileSystemRepresentation);
+	NSString *d = shQuoteCString(dest.fileSystemRepresentation);
+	NSString *st = shQuoteCString(staged.fileSystemRepresentation);
+	NSString *b = shQuoteCString(backup.fileSystemRepresentation);
+	NSString *cmd = [NSString stringWithFormat:
+		@"/bin/rm -rf %@ %@ && /usr/bin/ditto %@ %@ && "
+		 "{ [ ! -e %@ ] || { /usr/sbin/chown -R \"$(/usr/bin/stat -f %%u:%%g %@)\" %@ && /bin/mv -f %@ %@; }; } && "
+		 "{ /bin/mv -f %@ %@ || { /bin/mv -f %@ %@; /bin/rm -rf %@; exit 1; }; } && /bin/rm -rf %@",
+		st, b, s, st,
+		d, d, st, d, b,
+		st, d, b, d, st, b];
 
-	NSString *destPath = @(destAppPath);
-	NSString *appName  = [[destPath lastPathComponent] stringByDeletingPathExtension];
-	NSString *destDir  = [destPath stringByDeletingLastPathComponent];
-	if (appName.length == 0) appName = @"This application";
-	if (destDir.length == 0) destDir = @"/Applications";
-	NSString *prompt = appleScriptEscape([NSString stringWithFormat:
-		@"%@ needs to install an update to %@.", appName, destDir]);
-
+	NSString *appName = [[dest lastPathComponent] stringByDeletingPathExtension];
+	NSString *prompt = [NSString stringWithFormat:@"%@ needs to install an update to %@.",
+		appName.length ? appName : @"This application", [dest stringByDeletingLastPathComponent]];
 	NSString *script = [NSString stringWithFormat:
-		@"do shell script \"%@\" "
-		 "with administrator privileges "
-		 "with prompt \"%@\"",
-		body, prompt];
+		@"do shell script \"%@\" with administrator privileges with prompt \"%@\"",
+		appleScriptEscape(cmd), appleScriptEscape(prompt)];
 
-	NSAppleScript *as = [[NSAppleScript alloc] initWithSource:script];
 	NSDictionary *errInfo = nil;
-	[as executeAndReturnError:&errInfo];
-	if (errInfo) {
-		// -128 = userCanceledErr (clicked Cancel on the auth dialog).
-		NSNumber *code = errInfo[NSAppleScriptErrorNumber];
-		if (code && code.intValue == -128) return -3;
+	[[[NSAppleScript alloc] initWithSource:script] executeAndReturnError:&errInfo];
+	if (!errInfo) return 0;
+	NSNumber *code = errInfo[NSAppleScriptErrorNumber];
+	if (code && code.intValue == -128) return -3;
+	fprintf(stderr, "[ion] update: privileged install of %s failed: %s\n",
+		dest.fileSystemRepresentation, [errInfo[NSAppleScriptErrorMessage] description].UTF8String ?: "unknown error");
+	return -4;
+}
+
+int ionUpdateReplaceApp(const char *srcAppPath, const char *destAppPath) {
+	if (!srcAppPath || !destAppPath || !*destAppPath) return -1;
+	NSString *src = @(srcAppPath);
+	NSString *dest = @(destAppPath);
+	NSString *dir = [dest stringByDeletingLastPathComponent];
+	NSString *staged = [dir stringByAppendingPathComponent:
+		[NSString stringWithFormat:@".%@.ion-update", dest.lastPathComponent]];
+	NSString *backup = [staged stringByAppendingString:@".old"];
+
+	if (access(dir.fileSystemRepresentation, W_OK) != 0) {
+		if (errno == EACCES || errno == EPERM) {
+			int rc = replaceWithAuthorization(src, dest, staged, backup);
+			if (rc == 0) utimes(dest.fileSystemRepresentation, NULL);
+			return rc;
+		}
+		fprintf(stderr, "[ion] update: cannot write %s: %s\n", dir.fileSystemRepresentation, strerror(errno));
+		return -2;
+	}
+
+	NSFileManager *fm = [NSFileManager defaultManager];
+	[fm removeItemAtPath:staged error:nil];
+	[fm removeItemAtPath:backup error:nil];
+	if (runTaskSync(@"/usr/bin/ditto", @[src, staged]) != 0) {
+		fprintf(stderr, "[ion] update: cannot copy %s to %s\n", srcAppPath, staged.fileSystemRepresentation);
+		[fm removeItemAtPath:staged error:nil];
+		return -2;
+	}
+	if (moveIntoPlace(staged, dest, backup) != 0) {
+		fprintf(stderr, "[ion] update: cannot replace %s: %s\n", destAppPath, strerror(errno));
+		[fm removeItemAtPath:staged error:nil];
 		return -4;
 	}
+	// Launch Services and Finder read the bundle's modification date to notice the new version.
+	utimes(dest.fileSystemRepresentation, NULL);
 	return 0;
 }
 
