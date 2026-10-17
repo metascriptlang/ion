@@ -5,6 +5,7 @@
 #import "../../bridge.h"
 #import "../internal.h"
 #include "../../common/frameClock.h"
+#include "../../common/windowEvents.h"
 #include "../../common/webviewRegistry.h"
 #include "../../common/windowRegistry.h"
 
@@ -13,6 +14,7 @@
 #include <string.h>
 
 static const char kMainLabel[] = "main";
+static int s_hadWindow;
 
 static void teardownWindow(IonMacWindowState *st) {
     if (!st) return;
@@ -67,7 +69,7 @@ IonWindowId ionCreateWindow(const char *label, const char *title,
 
     // Build menu only once (first window). SDL would otherwise set its own
     // main menu each time, clobbering ours.
-    if (ion_registry_count() == 1) ionEnsureMenu(appName);
+    if (!s_hadWindow) ionEnsureMenu(appName);
 
     SDL_PropertiesID props = SDL_GetWindowProperties(st->sdlWindow);
     void *winPtr = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
@@ -85,6 +87,7 @@ IonWindowId ionCreateWindow(const char *label, const char *title,
     slot->platformState = st;
     ion_frame_window_open(winId);
     ionSyncFrameState(winId);
+    s_hadWindow = 1;
 
     if (strcmp(label, kMainLabel) == 0) syncMainGlobals(st);
 
@@ -93,7 +96,7 @@ IonWindowId ionCreateWindow(const char *label, const char *title,
 
 void ionCloseWindow(IonWindowId winId) {
     IonWindowSlot *slot = ion_registry_get(winId);
-    if (!slot) return;
+    if (!slot || !slot->platformState) return;
     IonMacWindowState *st = (IonMacWindowState *)slot->platformState;
     int isMain = (strcmp(slot->label, kMainLabel) == 0);
 
@@ -105,13 +108,28 @@ void ionCloseWindow(IonWindowId winId) {
     teardownWindow(st);
     free(st);
     slot->platformState = NULL;
-    ion_registry_free(winId);
+    ion_wevt_push(winId, ION_EVT_DESTROYED);
 
     if (isMain) syncMainGlobals(NULL);
 }
 
+// A destroyed window's registry slot stays until the loop has read its DESTROYED event,
+// so the label lookup for that event still resolves.
+void ionMacReleaseDestroyed(IonWindowId winId) {
+    IonWindowSlot *slot = ion_registry_get(winId);
+    if (slot && !slot->platformState) ion_registry_free(winId);
+}
+
+int ionMacAllWindowsClosed(void) {
+    return s_hadWindow && ionWindowCount() == 0;
+}
+
 int ionWindowCount(void) {
-    return ion_registry_count();
+    int n = 0;
+    for (IonWindowId i = ion_registry_next(ION_WINDOW_INVALID); i != ION_WINDOW_INVALID; i = ion_registry_next(i)) {
+        if (ionMacWindowState(i)) n++;
+    }
+    return n;
 }
 
 void ionSyncFrameState(IonWindowId winId) {

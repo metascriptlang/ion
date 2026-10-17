@@ -10,9 +10,9 @@
 //   5. frame records for windows due one → return 4
 //   6. otherwise → return 0 (idle)
 //
-// Quit (Cmd+Q via SDL_EVENT_QUIT, or close button on the "main" window in
-// legacy mode) → return 1. Step 4 will transition close-requested to
-// ION_EVT_CLOSE_REQUESTED with MS-side default close.
+// A title-bar close pushes close-requested, then destroys that window (destroyed follows).
+// Quit (Cmd+Q, or SDL_EVENT_QUIT after the last close) and the last window gone → return 1,
+// once the queued lifecycle events have been delivered.
 
 #import "../state.h"
 #import "../../bridge.h"
@@ -25,6 +25,7 @@
 
 static IonWindowId s_last_wevt_id   = ION_WINDOW_INVALID;
 static int         s_last_wevt_type = 0;
+static int         s_quit = 0;
 
 static IonWindowId windowIdForSdlWindowId(SDL_WindowID sdlWindowId) {
     SDL_Window *w = SDL_GetWindowFromID(sdlWindowId);
@@ -49,16 +50,20 @@ void ionWakeLoop(void) {
 }
 
 int ionPollEvent(void) {
+    if (s_last_wevt_type == ION_EVT_DESTROYED) {
+        ionMacReleaseDestroyed(s_last_wevt_id);
+        s_last_wevt_type = 0;
+    }
     if (ion_wevt_pop(&s_last_wevt_id, &s_last_wevt_type)) return 3;
     if (ion_queue_pop()) return 2;
     if (ion_input_next()) return 4;
+    if (s_quit || ionMacAllWindowsClosed()) return 1;
 
     SDL_Event ev;
     int got = SDL_WaitEventTimeout(&ev, 16);
     if (got) {
-        if (ev.type == SDL_EVENT_QUIT) return 1;
-        if (ev.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) return 1;
         if (ev.type == SDL_EVENT_USER) return 6;
+        if (ev.type == SDL_EVENT_QUIT) s_quit = 1;
 
         IonWindowId wid;
         switch (ev.type) {
@@ -82,6 +87,13 @@ int ionPollEvent(void) {
             case SDL_EVENT_WINDOW_SHOWN:
                 wid = windowIdForSdlWindowId(ev.window.windowID);
                 if (wid != ION_WINDOW_INVALID) ionSyncFrameState(wid);
+                break;
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                wid = windowIdForSdlWindowId(ev.window.windowID);
+                if (wid != ION_WINDOW_INVALID) {
+                    ion_wevt_push(wid, ION_EVT_CLOSE_REQUESTED);
+                    ionCloseWindow(wid);
+                }
                 break;
             case SDL_EVENT_WINDOW_RESIZED:
                 wid = windowIdForSdlWindowId(ev.window.windowID);

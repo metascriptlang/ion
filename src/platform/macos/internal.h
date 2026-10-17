@@ -28,6 +28,8 @@ void       ionInstallURLHandler(void);
 void       ionEnsureMenu(NSString *appName);
 
 void       ionSyncFrameState(IonWindowId winId);
+void       ionMacReleaseDestroyed(IonWindowId winId);
+int        ionMacAllWindowsClosed(void);
 
 NSView    *ionContentHostCreate(IonWindowId winId, NSWindow *nsWindow);
 void       ionContentHostDestroy(NSView *host);
