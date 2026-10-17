@@ -372,10 +372,13 @@ keeps the whole executable through one build step, the counterpart of the
 no C source. Metadata on Windows is the icon and version resource and the
 application manifest; plugins reach them through the graph, not through
 vcxproj text. Linux has no IDE that owns an application shell, so its emitter
-writes the shell files directly (`.desktop`, AppStream metainfo, the package
-manifest) with the same split. The package is Flatpak (decided 2026-10-16): one
-manifest builds for every distro and publishes to Flathub, and the Flatpak
-remote delivers updates. AppImage may follow; `.deb` and `.rpm` are not planned.
+writes the shell files directly with the same split: `ion app --target linux`
+puts the executable, its resources, the `.desktop` entry and the icon in an
+AppDir and packs it with `appimagetool`. The package is an AppImage that uses
+the system's GTK4 and WebKitGTK 6.0 (decided 2026-10-18), because Ion's OTA
+updates it in place: `apply` renames the new AppImage over `$APPIMAGE`. Flatpak
+was weighed and set aside: its `/app` is read-only, so Ion's update channel
+would not reach a Flatpak app. `.deb` and `.rpm` are not planned.
 
 Rejected, and why:
 

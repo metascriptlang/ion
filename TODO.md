@@ -54,7 +54,7 @@ version (2026-05-18) had drifted badly from what's actually on disk.
 | Audio recording (`startRecording`, pause, resume, stop, status) | ✍️ builds on macOS 2026-10-18 (`examples/audio.ms` links); not run, because it records from the microphone and plays aloud | ✅ | ✅ measured 2026-10-16 in WSL on WSLg: `audio.ms` records 2 s to a 192280-byte WAV (`durationMs=2002`) | `common/audio.c`: capture `ma_device` into `ma_encoder`, WAV 16-bit only |
 | Microphone access (`microphoneAccess`, `requestMicrophoneAccess`) | ✍️ builds on macOS 2026-10-18 (`examples/micPermission.ms` links), not run (TCC prompt): `AVCaptureDevice` check and `requestAccessForMediaType` in `macos/security/microphone.m`; `make-app.sh` writes a fixed `NSMicrophoneUsageDescription` (no manifest field exists), a hardened app also needs the `com.apple.security.device.audio-input` entitlement | ✅ measured 2026-10-16: `examples/micPermission.ms` on an unpackaged exe reads `granted` through `DeviceAccessInformation` (AudioCapture, the call Electron makes); no OS prompt exists for desktop apps, so request returns the state and `canAskAgain` is false. Settings flip measured the same day: turning "Microphone access" off gives `denied`, and on again gives `granted` (watched twice against the `ConsentStore` value); the "Let desktop apps access your microphone" toggle was not flipped, so whether `DeviceAccessInformation` follows it is not measured | ✅ measured 2026-10-16 in WSL Ubuntu: `granted`, `canAskAgain: true`; with `/.flatpak-info` present it is the error `running inside Flatpak: the microphone portal is not built` (not run) | `permission.ms` owns the build directives; the native call blocks, so request runs on a `spawn` |
 | OTA `check` / `download` / verify | ✅; not re-measured 2026-10-18: the `update*Test` examples define `main` without calling it, and point at the placeholder `updates.example.com` | ✅ | ✅ | pure MS (`src/update.ms`) |
-| OTA `apply` (install + relaunch) | ✅; not re-measured 2026-10-18: the `update*Test` examples define `main` without calling it, and point at the placeholder `updates.example.com` | ⛔ stub | ⛔ stub | `update/install.{m,c}` |
+| OTA `apply` (install + relaunch) | ✅; not re-measured 2026-10-18: the `update*Test` examples define `main` without calling it, and point at the placeholder `updates.example.com` | ⛔ stub | ✅ measured 2026-10-18 in WSL on an AppImage: `examples/updateLinux.ms` version 1 copies version 2 beside itself, `rename(2)`s it over `$APPIMAGE` and relaunches as version 2; in a read-only directory it prints `[ion] update: cannot create …: Permission denied` and version 1 stays. `apply` from a manifest server (download, verify, install) not run end to end | `update/install.{m,c}`, linked from `update.ms` |
 
 Window text input, measured 2026-10-15 on Windows 11: `examples/textFilter.ms` sends `WM_CHAR` and `WM_SYSCHAR` straight to the window procedure (so `TranslateMessage` is not exercised) and asserts `onText`. Units below 0x20 and DEL produce no text and no key record `text`, `WM_SYSCHAR` (Alt accelerators) produces none, and printable units, surrogate pairs and Ctrl+Alt (AltGr) text still arrive; this matches macOS `isTypedText` and winit `keyboard.rs:232-250`.
 
@@ -107,6 +107,16 @@ launched from another directory logs `auto-probe: ipc alive`. With NSIS 3.13,
 builds `out/IonHello-setup.exe` (463 KB, unsigned). Not measured: running that
 installer (per-machine, needs elevation), Visual Studio IDE debugging, an icon
 resource.
+
+Linux application, measured 2026-10-18 in WSL Ubuntu 26.04 on WSLg with
+appimagetool 1.9.1: `ion app out/debug/helloWebview IonHello dev.ion.IonHello
+--target linux --asset examples/hello.html` builds `out/IonHello-x86_64.AppImage`
+(2.3 MB); started from `/tmp` it logs `auto-probe: ipc alive`, `MS command
+addNumbers(100, 23)` and `[ion] IPC rejected: invalid invoke_key`. GTK4 and
+WebKitGTK 6.0 come from the user's system (decided 2026-10-18); the binary's
+highest glibc symbol is `GLIBC_2.36`. Not measured: a distro older than the
+build host (Ubuntu 24.04 ships GTK 4.14, and a GTK call newer than that fails
+at load), AppStream metainfo, desktop integration (menu entry, URL scheme).
 
 Windows Android build-host boundary, measured 2026-09-30: unified generation
 and the generated NDK tool selection run on Windows. APK construction is
@@ -186,8 +196,6 @@ Remaining:
 - **OTA install on Windows** — design already noted in
   `platform/windows/update/install.c`: NSIS `.exe` spawned elevated via
   `ShellExecuteEx` + `runas`, or `MOVEFILE_REPLACE_EXISTING` for in-place.
-- **OTA install on Linux** — the package is Flatpak (decided 2026-10-16), so an
-  update arrives through the Flatpak remote (`flatpak update`), not through Ion.
 - **Menu bar on Windows / Linux** — not planned: decided 2026-10-16 that the
   app draws its menu in its own content, as VS Code and Discord do; Ion keeps
   only the macOS app menu, which lives outside the window.
