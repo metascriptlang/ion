@@ -221,6 +221,7 @@ void ionSetWindowTitle(IonWindowId winId, const char *title) {
 void ionSetWindowSize(IonWindowId winId, int width, int height) {
     IonMacWindowState *st = ionMacWindowState(winId);
     if (!st || !st->sdlWindow) return;
+    if (SDL_GetWindowFlags(st->sdlWindow) & SDL_WINDOW_MAXIMIZED) SDL_RestoreWindow(st->sdlWindow);
     SDL_SetWindowSize(st->sdlWindow, width  > 0 ? width  : 1,
                                      height > 0 ? height : 1);
 }
