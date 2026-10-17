@@ -31,6 +31,11 @@ void       ionSyncFrameState(IonWindowId winId);
 void       ionMacReleaseDestroyed(IonWindowId winId);
 int        ionMacAllWindowsClosed(void);
 
+// core/frame.m
+void       ionMacFrameSync(void);
+void       ionMacFrameDetach(NSView *host);
+int        ionMacFrameTakeTick(double *timeMs);
+
 NSView    *ionContentHostCreate(IonWindowId winId, NSWindow *nsWindow);
 void       ionContentHostDestroy(NSView *host);
 void       ionContentHostSetCursor(NSView *host, int cursor);

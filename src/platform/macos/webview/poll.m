@@ -7,8 +7,9 @@
 //      letting WKScriptMessageHandler + URL handler enqueue while we wait);
 //      classify SDL_EVENT_WINDOW_* → push to wevt queue
 //   4. drain wevt + IPC again — events that arrived during wait
-//   5. frame records for windows due one → return 4
-//   6. otherwise → return 0 (idle)
+//   5. frame records for windows due one, on the vsync tick (core/frame.m) → return 4
+//   6. a coalesced ionWakeLoop → return 6
+//   7. otherwise → return 0 (idle)
 //
 // A title-bar close pushes close-requested, then destroys that window (destroyed follows).
 // Quit (Cmd+Q, or SDL_EVENT_QUIT after the last close) and the last window gone → return 1,
@@ -55,6 +56,11 @@ void ionWakeLoop(void) {
     }
 }
 
+static int emitDueFrames(void) {
+    double timeMs;
+    return ionMacFrameTakeTick(&timeMs) && ion_frame_emit(timeMs) > 0 && ion_input_next();
+}
+
 int ionPollEvent(void) {
     if (s_last_wevt_type == ION_EVT_DESTROYED) {
         ionMacReleaseDestroyed(s_last_wevt_id);
@@ -65,10 +71,12 @@ int ionPollEvent(void) {
     if (ion_input_next()) return 4;
     if (s_quit || ionMacAllWindowsClosed()) return 1;
 
+    // The run loop is pumped every turn, and the tick taken before a wake, because the display
+    // link only fires while SDL pumps: a wake flood that skipped the pump starved the frames
+    // (66 of 240), as a wake ahead of the tick did on Windows (44 of 330).
+    ionMacFrameSync();
     SDL_Event ev;
-    int got = SDL_WaitEventTimeout(&ev, 16);
-    if (got) {
-        if (ev.type == SDL_EVENT_USER && atomic_exchange(&s_wakePending, 0)) return 6;
+    if (SDL_WaitEventTimeout(&ev, atomic_load(&s_wakePending) ? 0 : 16)) {
         if (ev.type == SDL_EVENT_QUIT) s_quit = 1;
 
         IonWindowId wid;
@@ -91,6 +99,8 @@ int ionPollEvent(void) {
             case SDL_EVENT_WINDOW_RESTORED:
             case SDL_EVENT_WINDOW_HIDDEN:
             case SDL_EVENT_WINDOW_SHOWN:
+            case SDL_EVENT_WINDOW_OCCLUDED:
+            case SDL_EVENT_WINDOW_EXPOSED:
                 wid = windowIdForSdlWindowId(ev.window.windowID);
                 if (wid != ION_WINDOW_INVALID) ionSyncFrameState(wid);
                 break;
@@ -115,10 +125,10 @@ int ionPollEvent(void) {
     }
 
     if (ion_input_next()) return 4;
-
     if (ion_wevt_pop(&s_last_wevt_id, &s_last_wevt_type)) return 3;
     if (ion_queue_pop()) return 2;
-    if (ion_frame_emit((double)SDL_GetTicksNS() / 1e6) > 0 && ion_input_next()) return 4;
+    if (emitDueFrames()) return 4;
+    if (atomic_exchange(&s_wakePending, 0)) return 6;
     return 0;
 }
 

@@ -19,6 +19,7 @@ static int s_hadWindow;
 static void teardownWindow(IonMacWindowState *st) {
     if (!st) return;
     if (st->host) {
+        ionMacFrameDetach(st->host);
         ionContentHostDestroy(st->host);
         st->host = nil;
     }
@@ -136,7 +137,7 @@ void ionSyncFrameState(IonWindowId winId) {
     IonMacWindowState *st = ionMacWindowState(winId);
     if (!st || !st->sdlWindow) return;
     SDL_WindowFlags f = SDL_GetWindowFlags(st->sdlWindow);
-    int visible = !(f & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED));
+    int visible = !(f & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED));
     ion_frame_window_state(winId, (f & SDL_WINDOW_INPUT_FOCUS) != 0, visible);
 }
 

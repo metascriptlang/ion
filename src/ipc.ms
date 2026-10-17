@@ -41,6 +41,7 @@ when (macos) {
 	@compile("./platform/macos/core/lifecycle.m", "-fobjc-arc");
 	@compile("./platform/macos/core/window.m", "-fobjc-arc");
 	@compile("./platform/macos/core/contentHost.m", "-fobjc-arc");
+	@compile("./platform/macos/core/frame.m", "-fobjc-arc");
 	@compile("./platform/macos/core/shell.m", "-fobjc-arc");
 	@compile("./platform/macos/webview/bootstrap.m", "-fobjc-arc");
 	@compile("./platform/macos/webview/nav_delegate.m", "-fobjc-arc");
@@ -67,6 +68,7 @@ when (macos) {
 	@passL("-Wl,-headerpad_max_install_names");
 	@passL("-framework Cocoa");
 	@passL("-framework WebKit");
+	@passL("-framework QuartzCore");
 	@passL("-framework UserNotifications");
 	@passL("-framework Carbon");
 	@passL("-framework Security");
