@@ -227,13 +227,9 @@ void ionSetWindowSize(IonWindowId winId, int width, int height) {
 
 void ionSetWindowPosition(IonWindowId winId, int x, int y) {
     IonMacWindowState *st = ionMacWindowState(winId);
-    if (!st || !st->sdlWindow) return;
-    int top = 0, left = 0;
-    if (!SDL_GetWindowBordersSize(st->sdlWindow, &top, &left, NULL, NULL)) {
-        fprintf(stderr, "[ion] ionSetWindowPosition: SDL_GetWindowBordersSize failed: %s\n", SDL_GetError());
-        return;
-    }
-    SDL_SetWindowPosition(st->sdlWindow, x + left, y + top);
+    if (!st || st->nsWindow == nil) return;
+    CGFloat top = NSScreen.screens[0].frame.size.height - y;
+    [st->nsWindow setFrameTopLeftPoint:NSMakePoint(x, top)];
 }
 
 void ionSetWindowAlwaysOnTop(IonWindowId winId, int on) {
