@@ -5,7 +5,7 @@
 // Run with stdout redirected (GUI subsystem): frameStarve.exe > log.txt
 
 import {
-	createWindow, defaultOptions, commit, setFramePolicy, FrameContinuous,
+	createWindow, defaultOptions, commit, setFramePolicy, setFrameWhenInactive, FrameContinuous,
 	onWake, onFrame, runLoop, closeWindow, Window,
 } from "../src/index";
 import { exit } from "std/process";
@@ -75,6 +75,7 @@ function main(): int32 {
 	win = created;
 	commit(created);
 	setFramePolicy(created, FrameContinuous);
+	setFrameWhenInactive(created, true);
 	onFrame((window: int32, timeMs: float64): void => { frames++; });
 	onWake((): void => {
 		wakes++;
