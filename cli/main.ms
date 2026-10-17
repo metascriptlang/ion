@@ -6,13 +6,16 @@
 //   dmg       <Foo.app> [output]     Wrap .app in a UDZO-compressed .dmg.
 //   notarize  <target> <profile>     Submit + wait + staple via xcrun notarytool.
 //   test                              Run all ion + command-builder unit tests.
+//   generate  [manifest] [output]    Generate an Xcode or Gradle project from a project.ms manifest.
 //
 // Install:  msc install -g @metascript/ion@file:<this repo>   (build.ms `bin`)
 
 import { cli, run } from "../src/cli/index";
 import { exec, exit, cwd, env, cmdExists, findOnPath, platform } from "std/process";
 import { exists, isFile, readDir, readFile, writeFile, copyFile, mkdir, removeAll, ensureDir, rename, chmod, symlink, dirname } from "std/fs";
+import { writeStderr } from "std/io";
 import { expansionFile } from "std/meta";
+import { generateFromManifest } from "../tooling/generator/evaluator";
 
 const VERSION = "0.0.1";
 
@@ -373,6 +376,19 @@ app.command("test", "Run all ion + command-builder unit tests")
 		if (totalPass + totalFail == 0) die(`no test files under ${root}`);
 		console.log(`${totalPass} passed, ${totalFail} failed`);
 		if (totalFail > 0) exit(1);
+	});
+
+// ---- generate --------------------------------------------------------------
+
+app.command("generate [manifest] [output]", "Generate an Xcode or Gradle project from a project.ms manifest")
+	.action((args) => {
+		const result = generateFromManifest(args.positional("manifest"), args.positional("output"), compiler());
+		if (!result.ok) {
+			writeStderr(`ion generate: ${result.error}\n`);
+			exit(1);
+			return;
+		}
+		console.log(result.value);
 	});
 
 // ---- dispatch --------------------------------------------------------------
