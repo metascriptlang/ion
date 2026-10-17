@@ -29,6 +29,19 @@ import {
 	ionUpdateRelaunchAndExit,
 } from "./platform/bridge.h";
 
+when (macos) {
+	@compile("./platform/macos/update/install.m", "-fobjc-arc");
+	@passL("-framework Cocoa");
+}
+
+when (linux) {
+	@compile("./platform/linux/update/install.c");
+}
+
+when (windows) {
+	@compile("./platform/windows/update/install.c");
+}
+
 // Caller passes this at every check/apply call. App embeds publicKey at
 // compile time; everything else is per-runtime config (env, channel, etc).
 export interface UpdateConfig {

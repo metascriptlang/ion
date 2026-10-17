@@ -56,7 +56,6 @@ when (macos) {
 	@compile("./platform/macos/chrome/dialog.m", "-fobjc-arc");
 	@compile("./platform/macos/input/hotkey.m", "-fobjc-arc");
 	@compile("./platform/macos/security/content_protect.m", "-fobjc-arc");
-	@compile("./platform/macos/update/install.m", "-fobjc-arc");
 	@passC("-I/opt/homebrew/opt/sdl3/include");
 	@passL("-L/opt/homebrew/opt/sdl3/lib");
 	@passL("-lSDL3");
@@ -93,7 +92,6 @@ when (linux) {
 	@compile("./platform/linux/input/hotkey.c");
 	@compile("./platform/linux/input/input.c");
 	@compile("./platform/linux/security/content_protect.c");
-	@compile("./platform/linux/update/install.c");
 	// GTK4 + WebKitGTK 6.0 + libnotify + ayatana-appindicator-glib (GLib-only; the GTK3
 	// appindicator cannot share a process with GTK4) + libsecret, flags via pkg-config.
 	const gtkCflags = @comptime {
@@ -135,7 +133,6 @@ when (windows) {
 	@compile("./platform/windows/input/hotkey.c");
 	@compile("./platform/windows/input/input.c");
 	@compile("./platform/windows/security/content_protect.c");
-	@compile("./platform/windows/update/install.c");
 	// WebView2 SDK headers — vendored under vendor/webview2/include/.
 	// Path is resolved relative to this module's directory (src/).
 	@passC("-I../vendor/webview2/include");
