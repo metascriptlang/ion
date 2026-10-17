@@ -10,20 +10,20 @@
 
 void ionWakeLoop(void);
 
-static int nowMs(void) {
+static long long nowMs(void) {
 #ifdef _WIN32
-    return (int)GetTickCount64();
+    return (long long)GetTickCount64();
 #else
     struct timespec t;
     clock_gettime(CLOCK_MONOTONIC, &t);
-    return (int)(t.tv_sec * 1000 + t.tv_nsec / 1000000);
+    return (long long)t.tv_sec * 1000 + t.tv_nsec / 1000000;
 #endif
 }
 
 int elapsedMs(void) {
-    static int start = -1;
+    static long long start = -1;
     if (start < 0) start = nowMs();
-    return nowMs() - start;
+    return (int)(nowMs() - start);
 }
 
 static int s_delay;
