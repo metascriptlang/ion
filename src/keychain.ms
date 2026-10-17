@@ -18,6 +18,36 @@
 // side (see platform/bridge.h header note), so this wrapper is a 1:1
 // passthrough with no fromC/msStringFromCStr wrapping at the MS site.
 
+// Build directives live here: a program that only stores secrets must not pull in the window host.
+when (windows) {
+	@compile("./platform/windows/security/keychain.c");
+	@compile("./platform/windows/utf8.c");
+	@passL("-ladvapi32");
+}
+
+when (macos) {
+	@compile("./platform/macos/security/keychain.m", "-fobjc-arc");
+	@passL("-framework Foundation");
+	@passL("-framework Security");
+}
+
+when (linux) {
+	const secretCflags = @comptime {
+		const r = exec("pkg-config --cflags libsecret-1");
+		if (!r.ok) return "";
+		return r.value.trim();
+	};
+	const secretLibs = @comptime {
+		const r = exec("pkg-config --libs libsecret-1");
+		if (!r.ok) return "";
+		return r.value.trim();
+	};
+	@compile("./platform/linux/security/keychain.c");
+	@passC(secretCflags);
+	@passL(secretLibs);
+}
+
+import { exec } from "std/process";
 import {
 	ionKeychainSet,
 	ionKeychainGet,
