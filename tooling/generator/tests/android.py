@@ -43,9 +43,9 @@ def tree(root):
             for path in sorted(root.rglob("*")) if path.is_file()}
 
 
-generator = repo / "tooling/generator/ion-generate"
+generator = [os.environ["ION"], "generate"]
 for name in ("first", "second"):
-    run("generate-" + name, [generator, manifest, results / name])
+    run("generate-" + name, [*generator, manifest, results / name])
 project = results / "first"
 assert tree(project) == tree(results / "second"), "fresh generations differ"
 assert os.access(project / "gradlew", os.X_OK)
@@ -56,7 +56,7 @@ assert hashlib.sha256(vendored.read_bytes()).hexdigest() == \
 assert not [p for p in tree(project) if p.endswith((".c", ".h", ".cpp", "CMakeLists.txt", ".mk"))]
 generated = tree(project)
 
-refused = run("overwrite", [generator, manifest, project], success=False)
+refused = run("overwrite", [*generator, manifest, project], success=False)
 assert "output already exists" in refused
 assert tree(project) == generated
 invalid = source / "invalid.ms"
@@ -64,7 +64,7 @@ invalid.write_text(manifest.read_text().replace(
     'targets: [Target.androidApp("IonAndroid", "main.ms")]',
     'targets: [{ ...Target.androidApp("IonAndroid", "main.ms"), android: '
     '{ ...Target.androidApp("IonAndroid", "main.ms").android, minSdk: 21 } }]'))
-rejected = run("invalid", [generator, invalid, results / "invalid"], success=False)
+rejected = run("invalid", [*generator, invalid, results / "invalid"], success=False)
 assert "needs minSdk >= 23, got 21" in rejected
 assert not (results / "invalid").exists()
 invalid.unlink()

@@ -8,7 +8,7 @@ import tempfile
 repo = Path(__file__).resolve().parents[3]
 results = Path(sys.argv[1]).resolve()
 results.mkdir(parents=True, exist_ok=True)
-generator = ["bash", str(repo / "tooling/generator/ion-generate")]
+generator = [os.environ["ION"], "generate"]
 
 
 def evaluators():

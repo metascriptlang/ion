@@ -12,6 +12,11 @@ case "$(uname -s)" in
 	*) printf 'FAIL: no generator lane for host %s\n' "$(uname -s)" >&2; exit 1 ;;
 esac
 
+ion="$results/ion"
+if [ "$host" = windows ]; then ion="$ion.exe"; fi
+"$compiler" build cli/main.ms --output="$ion" > "$results/ion-build.log" 2>&1
+export ION="$ion"
+
 "$compiler" run --target=raiser tooling/generator/tests/resolve.ms > "$results/resolve.log" 2>&1
 "$compiler" run --target=raiser tooling/generator/tests/pluginIsolation.ms > "$results/isolation.log" 2>&1
 "$compiler" run --target=raiser tooling/generator/tests/android.ms > "$results/android-unit.log" 2>&1

@@ -30,9 +30,9 @@ def run(name, args, *, env=None, success=True):
     return result.stdout
 
 
-generator = repo / "tooling/generator/ion-generate"
+generator = [os.environ["ION"], "generate"]
 for name in ("first", "second"):
-    run("generate-" + name, [generator, manifest, results / name])
+    run("generate-" + name, [*generator, manifest, results / name])
 project = results / "first/IonIos.xcodeproj"
 pbx = project / "project.pbxproj"
 for relative in ("graph.json", "IonIos.xcodeproj/project.pbxproj"):

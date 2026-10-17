@@ -45,7 +45,7 @@ def git_status():
 
 
 source_before = git_status()
-generator = ["bash", str(repo / "tooling/generator/ion-generate")]
+generator = [os.environ["ION"], "generate"]
 project = results / "generated project"
 second = results / "second"
 shutil.rmtree(project, ignore_errors=True)
