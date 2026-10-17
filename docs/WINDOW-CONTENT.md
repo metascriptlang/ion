@@ -101,6 +101,28 @@ warm-up, a D3D11 clear plus `Present(1)` per frame:
 | continuous, minimized | — | 0 frames |
 | continuous, cloaked 5 s by `DWMWA_CLOAK` | — | 0 frames (801 with the hook removed) |
 
+**macOS tick source.** A `CADisplayLink` from the content host of the first visible window
+(`macos/core/frame.m`), as Linux ticks from GTK's frame clock, runs only while a window is due a
+frame. Its callback fires only while SDL pumps the Cocoa run loop, so `ionPollEvent` pumps on
+every turn and takes the tick before a wake; returning a pending wake before the pump starved the
+frames (66 of 240 under a wake flood). A window covered by other windows counts as not visible
+through `SDL_WINDOW_OCCLUDED`, which Windows lacks.
+
+## Traps measured on macOS
+
+- **A native view over a webview must take `mouseDown` itself.** AppKit hit-tests and gives the
+  click to the top view, but a plain `NSView` (or a label in it) leaves `mouseDown` to its
+  responder chain, and the page under it received the click (measured 2026-10-18: `pointerdown`
+  at 250,10 CSS px for a click on the badge). A view that implements `mouseDown`,
+  `rightMouseDown` and `otherMouseDown` keeps it (`ContentPanel` in
+  `examples/content/contentMac.m`). Ion's pointer records arrive either way: they come from a
+  local event monitor, not from the host view.
+- **The root is not flipped.** `windowRoot` is SDL's contentView with a bottom-left origin, while
+  every coordinate Ion takes or reports is device pixels from the top-left. A child placed by its
+  top keeps its distance from the bottom when the window's height changes, until the app places
+  it again on the resize record; an app can parent its own flipped, autoresizing container in the
+  root instead.
+
 ## Traps measured on Windows
 
 - **`IDCompositionVisual::AddVisual(child, insertAbove, NULL)` inverts `insertAbove`.** With a NULL
@@ -133,6 +155,16 @@ warm-up, a D3D11 clear plus `Present(1)` per frame:
 2026-10-16, Windows 11, msc v0.3.4 (`fd03df3e`): `examples/multiWindow.ms` runs two such windows at
 once; its results are in `TODO.md` under "Multi-window, measured".
 
-Not measured: macOS and Linux (written to this contract on a Windows host, never compiled), a
-real foreground session with physical input (the harness cannot take the foreground), IME
-composition into the content.
+2026-10-18, macOS 26.6 (Retina scale 2, 120 Hz), msc v0.3.4 (`3e645dc4c`):
+
+- `examples/contentInputMacos.ms`: the nativeContent layout driven by NSEvents posted to the
+  app's own queue. The panel and the badge over the webview got their clicks, the page got none
+  for the badge and `110,118` CSS px for a click at (700,260); key focus moved to the webview on
+  its click and back to the content on a panel click; key, text and preedit records as listed in
+  `TODO.md`.
+- `examples/frameStarve.ms` and `examples/frameStateMacos.ms`: the frame clock table above holds
+  on macOS, numbers in `TODO.md`.
+
+Not measured: Linux input records, a real foreground session with physical input on Windows
+(the harness cannot take the foreground), a physical device on macOS (wheel, motion, leave and
+the right button are not driven), IME composition through a real input method.
