@@ -26,7 +26,7 @@ function reset(): void {
 test "a label is unique and names its window" {
 	reset();
 	const a = ion_webview_alloc("docs", 3 as int32);
-	assert a >= 0 as int32;
+	assert a >= 0;
 	assert ion_webview_alloc("docs", 0 as int32) === -1 as int32;
 	assert ionFindWebview("docs") === a;
 	assert ionWebviewLabel(a) === "docs";
@@ -49,12 +49,12 @@ test "a freed slot frees its label and leaves iteration" {
 	assert ion_webview_find("a") === -1 as int32;
 	assert ion_webview_next(-1 as int32) === b;
 	assert ion_webview_next(b) === -1 as int32;
-	assert ion_webview_alloc("a", 1 as int32) >= 0 as int32;
+	assert ion_webview_alloc("a", 1 as int32) >= 0;
 }
 
 test "the table holds 32 webviews" {
 	reset();
-	for (let i = 0; i < 32; i++) assert ion_webview_alloc(`w${i}`, 0 as int32) >= 0 as int32;
+	for (let i = 0; i < 32; i++) assert ion_webview_alloc(`w${i}`, 0 as int32) >= 0;
 	assert ion_webview_alloc("one more", 0 as int32) === -1 as int32;
 }
 
