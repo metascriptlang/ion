@@ -376,7 +376,7 @@ char *ion_build_bootstrap_js(const char *invokeKey,
 ionPollEvent()
 ├── check window event queue → return 3
 ├── check IPC message queue → return 2
-├── SDL_WaitEventTimeout(16ms)
+├── wait for the platform's next event (until msc's next timer on Windows and macOS; 16 ms on Linux)
 │   ├── SDL_EVENT_QUIT → return 1
 │   ├── SDL_EVENT_WINDOW_CLOSE_REQUESTED → push ION_EVT_CLOSE_REQUESTED, return 3
 │   ├── SDL_EVENT_WINDOW_FOCUS_GAINED → push ION_EVT_FOCUSED, return 3

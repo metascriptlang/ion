@@ -103,9 +103,10 @@ warm-up, a D3D11 clear plus `Present(1)` per frame:
 
 **macOS tick source.** A `CADisplayLink` from the content host of the first visible window
 (`macos/core/frame.m`), as Linux ticks from GTK's frame clock, runs only while a window is due a
-frame. Its callback fires only while SDL pumps the Cocoa run loop, so `ionPollEvent` pumps on
-every turn and takes the tick before a wake; returning a pending wake before the pump starved the
-frames (66 of 240 under a wake flood). A window covered by other windows counts as not visible
+frame. Its callback fires only while the Cocoa run loop runs, so `ionPollEvent` pumps on every
+turn and takes the tick before a wake; returning a pending wake before the pump starved the
+frames (66 of 240 under a wake flood). The callback nudges the loop's wait like every other
+producer (`macos/webview/poll.m`). A window covered by other windows counts as not visible
 through `SDL_WINDOW_OCCLUDED`, which Windows lacks.
 
 ## Traps measured on macOS
