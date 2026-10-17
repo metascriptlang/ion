@@ -136,7 +136,7 @@ function platformExt(platform: string): string {
 	if (platform === "web") return "zip";
 	if (platform.startsWith("darwin"))  return "dmg";
 	if (platform.startsWith("windows")) return "exe";
-	if (platform.startsWith("linux"))   return "tar.gz";
+	if (platform.startsWith("linux"))   return "AppImage";
 	return "bin";
 }
 
@@ -226,22 +226,21 @@ export function download(cfg: UpdateConfig, info: UpdateInfo,
 // One-shot update: download + verify + install + relaunch. Relaunch never
 // returns on success — the current process is _exit(0)'d as part of swap.
 // Callers that want to UI between download and install should call download()
-// then installMacOS() (or future installLinux/Windows) directly.
+// then installMacOS() or installLinux() directly.
 //
-// `destAppPath` is taken from the caller — for MyApp this is the running
-// app's NSBundle path on macOS. ion intentionally does not introspect its own
+// `destAppPath` is taken from the caller: the running app's NSBundle path on
+// macOS, `env.get("APPIMAGE")` on Linux. ion intentionally does not introspect its own
 // bundle because the same binary is reused for dev/test builds outside an
 // installed .app.
 export function apply(cfg: UpdateConfig, info: UpdateInfo, destAppPath: string,
                       onProgress: (bytes: int64, total: int64) => void): Result<void, string> {
 	const dl = download(cfg, info, onProgress);
 	if (!dl.ok) return Result.err(dl.error);
-	// Only macOS is wired today. Linux + Windows ship as `installLinux` /
-	// `installWindows` in later phases (AppImage atomic replace + NSIS
-	// uninstall-then-install respectively). Selecting by cfg.platform here
-	// keeps the public API stable across that future split.
 	if (cfg.platform.startsWith("darwin")) {
 		return installMacOS(dl.value, destAppPath);
+	}
+	if (cfg.platform.startsWith("linux")) {
+		return installLinux(dl.value, destAppPath);
 	}
 	return Result.err(`apply() not implemented for platform "${cfg.platform}" yet`);
 }
@@ -382,5 +381,16 @@ export function installMacOS(dmgPath: string, destAppPath: string): Result<void,
 	// Hands off to the relaunch helper and exits this process. Never returns.
 	ionUpdateRelaunchAndExit(destAppPath);
 	// Unreachable — left for compiler control-flow happiness.
+	return Result.err("relaunch returned unexpectedly (this should never happen)");
+}
+
+// Replace the AppImage at destAppPath with the verified download, then
+// relaunch. NEVER returns on success: the relaunch helper waits for this
+// process to exit. The AppImage's directory must be writable by the user.
+export function installLinux(appImagePath: string, destAppPath: string): Result<void, string> {
+	if (destAppPath === "") return Result.err("no AppImage path to replace (APPIMAGE is unset: not running from an AppImage)");
+	const rr = ionUpdateReplaceApp(appImagePath, destAppPath);
+	if (rr !== 0) return Result.err(`replace failed rc=${rr}`);
+	ionUpdateRelaunchAndExit(destAppPath);
 	return Result.err("relaunch returned unexpectedly (this should never happen)");
 }
