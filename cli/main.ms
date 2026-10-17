@@ -12,7 +12,7 @@
 
 import { cli, run } from "../src/cli/index";
 import { exec, exit, cwd, env, cmdExists, platform } from "std/process";
-import { exists, isFile, readDir, readFile, writeFile, copyFile, mkdir, removeAll, ensureDir, rename } from "std/fs";
+import { exists, isFile, readDir, readFile, writeFile, copyFile, mkdir, removeAll, ensureDir, rename, chmod, symlink } from "std/fs";
 
 const VERSION = "0.0.1";
 
@@ -143,6 +143,63 @@ function winApp(
 	console.log(`==> built: ${outFileFinal}`);
 }
 
+const STUB_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" rx="48" fill="#3b82f6"/></svg>\n`;
+
+// GTK4 and WebKitGTK 6.0 come from the user's system, so the AppDir holds only
+// the binary, its resources and the desktop entry.
+function linuxApp(
+	binary: string,
+	name: string,
+	bundleId: string,
+	outDir: string,
+	urlScheme: string,
+	icon: string,
+	assets: string[]
+): void {
+	if (platform !== "linux") die("--target linux builds on a Linux host (appimagetool is Linux-only)");
+	if (!cmdExists("appimagetool")) die("appimagetool not on PATH (github.com/AppImage/appimagetool/releases, 1.9.1)");
+
+	const here = cwd();
+	const exe = basename(binary);
+	const appDir = `${here}/out/_linux-appdir`;
+	removeAll(appDir);
+	if (!ensureDir(`${appDir}/usr/bin`).ok) die(`mkdir failed: ${appDir}/usr/bin`);
+
+	if (!copyFile(binary, `${appDir}/usr/bin/${exe}`).ok) die(`copy failed: ${binary}`);
+	chmod(`${appDir}/usr/bin/${exe}`, 493);
+	if (assets.length > 0) {
+		mkdir(`${appDir}/usr/bin/resources`);
+		for (const asset of assets) {
+			if (!isFile(asset)) die(`asset not found: ${asset}`);
+			copyFile(asset, `${appDir}/usr/bin/resources/${basename(asset)}`);
+		}
+	}
+	if (!symlink(`usr/bin/${exe}`, `${appDir}/AppRun`).ok) die(`symlink failed: ${appDir}/AppRun`);
+
+	if (icon.length > 0) {
+		if (!isFile(icon)) die(`icon not found: ${icon}`);
+		const ext = icon.endsWith(".svg") ? "svg" : icon.endsWith(".png") ? "png" : "";
+		if (ext.length == 0) die(`icon must be .png or .svg: ${icon}`);
+		copyFile(icon, `${appDir}/${bundleId}.${ext}`);
+	} else {
+		writeFile(`${appDir}/${bundleId}.svg`, STUB_ICON_SVG);
+	}
+
+	const mime = urlScheme.length > 0 ? `MimeType=x-scheme-handler/${urlScheme};\n` : "";
+	writeFile(`${appDir}/${bundleId}.desktop`,
+		`[Desktop Entry]\nType=Application\nName=${name}\nExec=${exe} %u\nIcon=${bundleId}\nCategories=Utility;\nTerminal=false\nStartupWMClass=${exe}\n${mime}`);
+
+	const outDirAbs = outDir.length > 0 ? outDir : `${here}/out`;
+	ensureDir(outDirAbs);
+	const outFile = `${outDirAbs}/${name}-x86_64.AppImage`;
+	removeAll(outFile);
+	console.log("==> running appimagetool...");
+	const code = bash(`ARCH=x86_64 appimagetool "${appDir}" "${outFile}"`);
+	if (code !== 0) die(`appimagetool failed (exit ${code})`);
+	if (!isFile(outFile)) die(`appimagetool produced no output at ${outFile}`);
+	console.log(`==> built: ${outFile}`);
+}
+
 // ---- main ------------------------------------------------------------------
 
 const app = cli("ion", VERSION);
@@ -162,11 +219,11 @@ app.command("build <entry>", "Compile an MS entry to an optimized binary")
 
 // ---- app -------------------------------------------------------------------
 
-app.command("app <binary> <name> <bundle-id>", "Wrap a binary as a platform installer (.app on macOS, .exe NSIS on Windows)")
-	.option("--target <target>", "Target platform: macos or windows (default: host)", false)
+app.command("app <binary> <name> <bundle-id>", "Wrap a binary as a platform installer (.app on macOS, .exe NSIS on Windows, .AppImage on Linux)")
+	.option("--target <target>", "Target platform: macos, windows or linux (default: host)", false)
 	.option("--out <dir>", "Output directory (default: dirname of binary)", false)
 	.option("--url-scheme <name>", "Register a URL scheme", false)
-	.option("--icon <path>", "App icon (.icns on macOS, ignored on Windows v0)", false)
+	.option("--icon <path>", "App icon (.icns on macOS, .png or .svg on Linux, ignored on Windows v0)", false)
 	.option("--asset <path>", "Bundle a resource file (repeatable)", true)
 	.option("--sign <identity>", "Code-sign (macOS identity / Windows .pfx)", false)
 	.option("--hardened", "Enable Hardened Runtime (macOS, implies --sign)", false)
@@ -182,7 +239,7 @@ app.command("app <binary> <name> <bundle-id>", "Wrap a binary as a platform inst
 		const targetFlag = args.string("target", "");
 		const target = targetFlag.length > 0
 			? targetFlag
-			: (platform === "windows" ? "windows" : "macos");
+			: (platform === "windows" ? "windows" : platform === "linux" ? "linux" : "macos");
 
 		if (target === "windows") {
 			const assets = args.multi("asset");
@@ -198,7 +255,19 @@ app.command("app <binary> <name> <bundle-id>", "Wrap a binary as a platform inst
 			);
 			return;
 		}
-		if (target !== "macos") die(`unknown --target: ${target} (expected: macos | windows)`);
+		if (target === "linux") {
+			linuxApp(
+				binary,
+				name,
+				bundleId,
+				args.string("out", ""),
+				args.string("url-scheme", ""),
+				args.string("icon", ""),
+				args.multi("asset")
+			);
+			return;
+		}
+		if (target !== "macos") die(`unknown --target: ${target} (expected: macos | windows | linux)`);
 
 		// Build the make-app.sh invocation. v0 of the CLI delegates the heavy
 		// dylib + install_name_tool + codesign orchestration to the existing
