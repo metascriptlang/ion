@@ -9,7 +9,6 @@
 // first SDL_WaitEventTimeout pumps it. By then ionInstallURLHandler() has run.
 
 #import "../state.h"
-#include "../../common/queue.h"
 
 @interface IonURLHandler : NSObject
 - (void)handleURLEvent:(NSAppleEventDescriptor *)event
@@ -22,7 +21,7 @@
     NSString *urlString = [[event paramDescriptorForKeyword:keyDirectObject] stringValue];
     if (urlString == nil) return;
     NSLog(@"[ion] deeplink: %@", urlString);
-    ion_queue_push("deeplink", [urlString UTF8String]);
+    ionEnqueueMessage(@"deeplink", urlString);
 }
 @end
 

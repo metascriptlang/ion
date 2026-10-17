@@ -1,7 +1,7 @@
 // Ion macOS — the vsync tick behind the frame clock. One CADisplayLink on the content host of
 // the first visible window (Linux ticks the same way, through GTK's frame clock), running only
-// while some window is due a frame. Its callback runs on the main run loop while SDL pumps it,
-// records the time and posts one SDL event, so the wait in ionPollEvent returns.
+// while some window is due a frame. Its callback runs on the main run loop while it runs,
+// records the time and nudges the wait in ionPollEvent.
 
 #import "../state.h"
 #import "../internal.h"
@@ -25,13 +25,7 @@ static double         s_tickMs;
 - (void)tick:(CADisplayLink *)link {
     s_tickMs = link.timestamp * 1000.0;
     if (atomic_exchange(&s_tickPending, 1)) return;
-    SDL_Event ev;
-    SDL_zero(ev);
-    ev.type = SDL_EVENT_USER;
-    if (!SDL_PushEvent(&ev)) {
-        fprintf(stderr, "[ion] frame clock: SDL_PushEvent failed: %s\n", SDL_GetError());
-        abort();
-    }
+    ionMacNudge();
 }
 @end
 
@@ -66,6 +60,10 @@ void ionMacFrameSync(void) {
 
 void ionMacFrameDetach(NSView *host) {
     if (host == s_driver) stopTick();
+}
+
+int ionMacFrameTickPending(void) {
+    return atomic_load(&s_tickPending);
 }
 
 int ionMacFrameTakeTick(double *timeMs) {

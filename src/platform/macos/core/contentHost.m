@@ -14,6 +14,11 @@
 
 static int modsFromEvent(NSEvent *e);
 
+static void pushRecord(const IonInputRecord *r) {
+    ion_input_push_record(r);
+    ionMacNudge();
+}
+
 static void push(int type, IonWindowId win, double x, double y, double p1, double p2, int mods) {
     IonInputRecord r;
     memset(&r, 0, sizeof r);
@@ -24,7 +29,7 @@ static void push(int type, IonWindowId win, double x, double y, double p1, doubl
     r.p1 = p1;
     r.p2 = p2;
     r.mods = mods;
-    ion_input_push_record(&r);
+    pushRecord(&r);
 }
 
 static void pushText(int type, IonWindowId win, NSString *s, double p1) {
@@ -34,7 +39,7 @@ static void pushText(int type, IonWindowId win, NSString *s, double p1) {
     r.window = win;
     r.p1 = p1;
     r.text = s.UTF8String;
-    ion_input_push_record(&r);
+    pushRecord(&r);
 }
 
 static int macKeyToIon(unsigned short code) {
@@ -326,7 +331,7 @@ static void installPointerMonitor(void) {
     NSString *bare = [event charactersByApplyingModifiers:0];
     r.unshifted = isTypedText(bare) ? [bare characterAtIndex:0] : 0;
     r.text = typed.UTF8String;
-    ion_input_push_record(&r);
+    pushRecord(&r);
 
     for (NSString *s in rest) pushText(ION_INPUT_TEXT, self.win, s, 0);
 }
@@ -340,7 +345,7 @@ static void installPointerMonitor(void) {
     r.key = macKeyToIon(event.keyCode);
     r.scancode = event.keyCode;
     r.mods = modsFromEvent(event);
-    ion_input_push_record(&r);
+    pushRecord(&r);
 }
 
 - (void)flagsChanged:(NSEvent *)event {
@@ -354,7 +359,7 @@ static void installPointerMonitor(void) {
     r.key = macKeyToIon(event.keyCode);
     r.scancode = event.keyCode;
     r.mods = modsFromEvent(event);
-    ion_input_push_record(&r);
+    pushRecord(&r);
 }
 
 - (void)doCommandBySelector:(SEL)selector {}

@@ -1,6 +1,7 @@
 // macOS-only globals + ObjC shim around the common IPC queue.
 
 #import "state.h"
+#import "internal.h"
 #include "../common/queue.h"
 #include "../common/webviewRegistry.h"
 #include "../common/windowRegistry.h"
@@ -28,4 +29,5 @@ void ionEnqueueMessage(NSString *name, NSString *payload) {
 
 void ionEnqueueMessageFrom(int webview, NSString *name, NSString *payload) {
     ion_queue_push_w(webview, [name UTF8String], payload ? [payload UTF8String] : "");
+    ionMacNudge();
 }

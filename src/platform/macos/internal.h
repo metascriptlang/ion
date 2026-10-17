@@ -31,9 +31,13 @@ void       ionSyncFrameState(IonWindowId winId);
 void       ionMacReleaseDestroyed(IonWindowId winId);
 int        ionMacAllWindowsClosed(void);
 
+// webview/poll.m — wakes the loop's wait; any thread
+void       ionMacNudge(void);
+
 // core/frame.m
 void       ionMacFrameSync(void);
 void       ionMacFrameDetach(NSView *host);
+int        ionMacFrameTickPending(void);
 int        ionMacFrameTakeTick(double *timeMs);
 
 NSView    *ionContentHostCreate(IonWindowId winId, NSWindow *nsWindow);

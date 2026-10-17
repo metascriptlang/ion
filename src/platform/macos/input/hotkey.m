@@ -14,7 +14,6 @@
 #import "../state.h"
 #import "../../bridge.h"
 #import <Carbon/Carbon.h>
-#include "../../common/queue.h"
 #include <stdio.h>
 
 typedef struct {
@@ -33,7 +32,7 @@ static OSStatus hotkeyCallback(EventHandlerCallRef next, EventRef event, void *u
                           NULL, sizeof(hk), NULL, &hk) == noErr) {
         char buf[16];
         snprintf(buf, sizeof(buf), "%u", (unsigned)hk.id);
-        ion_queue_push("hotkey", buf);
+        ionEnqueueMessage(@"hotkey", @(buf));
     }
     return noErr;
 }
