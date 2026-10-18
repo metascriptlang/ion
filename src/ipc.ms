@@ -146,6 +146,7 @@ when (windows) {
 	@passL("-luuid");
 	@passL("-ladvapi32");  // Credential Manager: CredWriteW / CredReadW / CredDeleteW
 	@passL("-ldcomp");
+	@passL("-ldwmapi");
 	@passL("-ld3d11");
 	@passL("-ld2d1");
 	@passL("-ldxgi");

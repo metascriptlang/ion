@@ -7,9 +7,14 @@
 #include "../../common/windowRegistry.h"
 #include "../../common/windowEvents.h"
 
+#include <dwmapi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+#define DWMWA_USE_IMMERSIVE_DARK_MODE 20
+#endif
 
 static const wchar_t kIonClassName[] = L"IonMainWindow";
 static const char kMainLabel[] = "main";
@@ -78,6 +83,19 @@ static void setClientSize(HWND hwnd, int cw, int ch) {
     clientToOuter((DWORD)GetWindowLongPtrW(hwnd, GWL_STYLE), (DWORD)GetWindowLongPtrW(hwnd, GWL_EXSTYLE),
                   GetDpiForWindow(hwnd), cw > 0 ? cw : 1, ch > 0 ? ch : 1, &ow, &oh);
     SetWindowPos(hwnd, NULL, 0, 0, ow, oh, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+static BOOL systemAppsDark(void) {
+    DWORD light = 1, size = sizeof light;
+    LSTATUS rc = RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                              L"AppsUseLightTheme", RRF_RT_REG_DWORD, NULL, &light, &size);
+    return rc == ERROR_SUCCESS && light == 0;
+}
+
+static void applySystemTheme(HWND hwnd) {
+    BOOL dark = systemAppsDark();
+    HRESULT hr = DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof dark);
+    if (FAILED(hr)) fprintf(stderr, "[ion] dark title bar: DwmSetWindowAttribute failed (0x%08lx)\n", (unsigned long)hr);
 }
 
 static void reportFrameWindow(IonWinWindow *w) {
@@ -199,6 +217,9 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             ionWebView2ParentMoved(w->id);
             if (!IsIconic(hwnd)) ion_wevt_push(w->id, ION_EVT_MOVED);
             return 0;
+        case WM_SETTINGCHANGE:
+            if (lParam != 0 && lstrcmpW((LPCWSTR)lParam, L"ImmersiveColorSet") == 0) applySystemTheme(hwnd);
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
         case WM_GETOBJECT:
             if (ionWebView2HostAutomation(hwnd, &w->uia, wParam, lParam, &handled)) return handled;
             return DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -277,6 +298,7 @@ IonWindowId ionCreateWindow(const char *label, const char *title, int width, int
                                 CW_USEDEFAULT, CW_USEDEFAULT, ow, oh, NULL, NULL, s_hInstance, NULL);
     free(wtitle);
     if (hwnd == NULL) { freeWindow(w); return ION_WINDOW_INVALID; }
+    applySystemTheme(hwnd);
 
     // The window's own DPI is known only now (a secondary monitor may differ
     // from the system DPI): size the client area again with it.
