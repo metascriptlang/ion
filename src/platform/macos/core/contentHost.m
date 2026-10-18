@@ -205,7 +205,8 @@ static void handlePointer(NSEvent *e) {
         case NSEventTypeScrollWheel: {
             if (!inside) return;
             double k = e.hasPreciseScrollingDeltas ? 0.1 : 1.0;
-            push(ION_INPUT_WHEEL, win, px, py, e.scrollingDeltaX * k, e.scrollingDeltaY * k, modsFromEvent(e));
+            // AppKit's deltaX is positive to the left; Ion's, like WM_MOUSEHWHEEL and GDK, to the right.
+            push(ION_INPUT_WHEEL, win, px, py, -e.scrollingDeltaX * k, e.scrollingDeltaY * k, modsFromEvent(e));
             break;
         }
         default:
