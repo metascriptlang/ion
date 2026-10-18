@@ -11,12 +11,12 @@ void ipActivate(void *root);
 void ipClick(void *root, int x, int y, int button, int mods);
 // One press and release of button 1 (left), 2 (right) or 3 (middle).
 void ipButton(void *root, int x, int y, int button, int mods);
-void ipMove(void *root, int x, int y);
+void ipMove(void *root, int x, int y, int mods);
 // `down` lines (or pixels with unitPixels) toward the user, `right` to the right.
-void ipScroll(void *root, int x, int y, int unitPixels, int down, int right);
+void ipScroll(void *root, int x, int y, int unitPixels, int down, int right, int mods);
 // The pointer entering and leaving the content, routed through its tracking area (AppKit drops
 // an exit for an area it never saw entered).
-void ipLeave(void *root);
+void ipLeave(void *root, int mods);
 // Selects an installed input source by id, enabling it if needed; ipRestoreInputSource puts
 // back the person's source and disables what this enabled. 0 when it is not installed.
 int ipSelectInputSource(const char *sourceId);

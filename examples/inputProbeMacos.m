@@ -67,13 +67,13 @@ void ipButton(void *root, int x, int y, int button, int mods) {
     }
 }
 
-void ipMove(void *root, int x, int y) {
-    postCG(deviceEvent(root, x, y, kCGEventMouseMoved, 0));
+void ipMove(void *root, int x, int y, int mods) {
+    postCG(deviceEvent(root, x, y, kCGEventMouseMoved, mods));
 }
 
 // Axis 1 is vertical (positive away from the user), axis 2 horizontal (positive to the left).
-void ipScroll(void *root, int x, int y, int unitPixels, int down, int right) {
-    CGEventRef e = deviceEvent(root, x, y, kCGEventScrollWheel, 0);
+void ipScroll(void *root, int x, int y, int unitPixels, int down, int right, int mods) {
+    CGEventRef e = deviceEvent(root, x, y, kCGEventScrollWheel, mods);
     CGEventSetIntegerValueField(e, kCGScrollWheelEventIsContinuous, unitPixels);
     if (unitPixels) {
         CGEventSetIntegerValueField(e, kCGScrollWheelEventPointDeltaAxis1, -down);
@@ -87,14 +87,14 @@ void ipScroll(void *root, int x, int y, int unitPixels, int down, int right) {
 
 // The window server sends mouseExited from a tracking area; a posted exit event carries that
 // area as its tracking number, which is how AppKit routes it to the area's owner.
-void ipLeave(void *root) {
+void ipLeave(void *root, int mods) {
     NSView *content = (__bridge NSView *)root;
     for (NSView *v in content.subviews) {
         if (![NSStringFromClass(v.class) isEqualToString:@"IonContentHost"]) continue;
         NSTrackingArea *ta = v.trackingAreas.firstObject;
         for (int i = 0; i < 2; i++) {
             post([NSEvent enterExitEventWithType:(i == 0 ? NSEventTypeMouseEntered : NSEventTypeMouseExited)
-                                        location:NSMakePoint(-1, -1) modifierFlags:0
+                                        location:NSMakePoint(-1, -1) modifierFlags:flags(mods)
                                        timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:win(root).windowNumber
                                          context:nil eventNumber:0 trackingNumber:(NSInteger)ta userData:NULL]);
         }

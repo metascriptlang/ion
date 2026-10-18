@@ -25,9 +25,9 @@ when (macos) {
 extern function ipActivate(root: Ptr<void>): void;
 extern function ipClick(root: Ptr<void>, x: int32, y: int32, button: int32, mods: int32): void;
 extern function ipButton(root: Ptr<void>, x: int32, y: int32, button: int32, mods: int32): void;
-extern function ipMove(root: Ptr<void>, x: int32, y: int32): void;
-extern function ipScroll(root: Ptr<void>, x: int32, y: int32, unitPixels: int32, down: int32, right: int32): void;
-extern function ipLeave(root: Ptr<void>): void;
+extern function ipMove(root: Ptr<void>, x: int32, y: int32, mods: int32): void;
+extern function ipScroll(root: Ptr<void>, x: int32, y: int32, unitPixels: int32, down: int32, right: int32, mods: int32): void;
+extern function ipLeave(root: Ptr<void>, mods: int32): void;
 extern function ipSelectInputSource(id: cstring): int32;
 extern function ipRestoreInputSource(): void;
 extern function ipAppActive(root: Ptr<void>): int32;
@@ -45,6 +45,7 @@ const PAGE = "data:text/html,<body style='margin:0;background:%23f4f4f4'><input 
 const STEP_MS = 300;
 const SHIFT: int32 = 1 as int32;
 const CTRL: int32 = 2 as int32;
+const ALT: int32 = 4 as int32;
 
 struct Rect {
 	x: int32;
@@ -79,6 +80,7 @@ let pageKeys = "";
 let pageWheels = "";
 let motions = "";
 let wheels = "";
+let pointerMods = "";
 let leaves = 0;
 
 function check(what: string, ok: boolean): void {
@@ -105,6 +107,7 @@ function resetStep(name: string): void {
 	pageWheels = "";
 	motions = "";
 	wheels = "";
+	pointerMods = "";
 	leaves = 0;
 }
 
@@ -161,20 +164,20 @@ function act(win: Window, root: Ptr<void>, i: int32): void {
 		ipButton(root, 200 as int32, 120 as int32, 3 as int32, 0 as int32);
 	} else if (i === 14) {
 		resetStep("motion");
-		ipMove(root, 210 as int32, 130 as int32);
-		ipMove(root, 230 as int32, 150 as int32);
+		ipMove(root, 210 as int32, 130 as int32, CTRL);
+		ipMove(root, 230 as int32, 150 as int32, CTRL);
 	} else if (i === 15) {
 		resetStep("wheel one line down over the webview");
-		ipScroll(root, 700 as int32, 260 as int32, 0 as int32, 1 as int32, 0 as int32);
+		ipScroll(root, 700 as int32, 260 as int32, 0 as int32, 1 as int32, 0 as int32, 0 as int32);
 	} else if (i === 16) {
 		resetStep("wheel one line right over the webview");
-		ipScroll(root, 700 as int32, 260 as int32, 0 as int32, 0 as int32, 1 as int32);
+		ipScroll(root, 700 as int32, 260 as int32, 0 as int32, 0 as int32, 1 as int32, 0 as int32);
 	} else if (i === 17) {
 		resetStep("precise scroll 20 px down");
-		ipScroll(root, 200 as int32, 120 as int32, 1 as int32, 20 as int32, 0 as int32);
+		ipScroll(root, 200 as int32, 120 as int32, 1 as int32, 20 as int32, 0 as int32, SHIFT);
 	} else if (i === 18) {
 		resetStep("leave");
-		ipLeave(root);
+		ipLeave(root, ALT);
 	} else if (i === 19) {
 		resetStep("select Vietnamese Telex");
 		telex = ipSelectInputSource(TELEX) !== (0 as int32);
@@ -229,6 +232,7 @@ function verify(root: Ptr<void>, i: int32): void {
 		check(`host click '${clicks}' == 'panel 200,120 b3'`, clicks === "panel 200,120 b3 ");
 	} else if (i === 14) {
 		check(`motion '${motions}' has '210,130 then 230,150 +20,+20'`, motions.includes("230,150 +20,+20 ") && motions.includes("210,130 "));
+		check(`motion mods '${pointerMods}' are all Ctrl`, pointerMods !== "" && pointerMods.split("ctrl ").join("") === "");
 	} else if (i === 15) {
 		check(`page wheel '${pageWheels}' == '0,1' (WebKit: +deltaY is down)`, pageWheels === "0,1");
 		check(`wheel '${wheels}' == '0,-1' (+y is up)`, wheels === "0,-1 ");
@@ -237,8 +241,10 @@ function verify(root: Ptr<void>, i: int32): void {
 		check(`wheel '${wheels}' == '1,0' (+x is right)`, wheels === "1,0 ");
 	} else if (i === 17) {
 		check(`wheel '${wheels}' is one record down`, wheels.startsWith("0,-") && wheels.split(" ").length === 2);
+		check(`wheel mods '${pointerMods}' == 'shift'`, pointerMods === "shift ");
 	} else if (i === 18) {
 		check(`leave records ${leaves} == 1`, leaves === 1);
+		check(`leave mods '${pointerMods}' == 'alt'`, pointerMods === "alt ");
 	} else if (i === 20) {
 		ipRestoreInputSource();
 		if (!telex || !active) {
@@ -261,6 +267,14 @@ function step(win: Window, root: Ptr<void>, i: int32): void {
 		verify(root, i);
 		step(win, root, (i + 1) as int32);
 	}, STEP_MS);
+}
+
+function modNames(mods: BitSet<KeyMod>): string {
+	const names: string[] = [];
+	if (mods.has(KeyMod.Shift)) names.push("shift");
+	if (mods.has(KeyMod.Ctrl)) names.push("ctrl");
+	if (mods.has(KeyMod.Alt)) names.push("alt");
+	return names.join("+");
 }
 
 function main(): int32 {
@@ -294,6 +308,7 @@ function main(): int32 {
 		if (e.kind === PointerKind.Motion) motions += `${e.x as int32},${e.y as int32} ${sign(e.dx)},${sign(e.dy)} `;
 		if (e.kind === PointerKind.Wheel) wheels += `${e.dx},${e.dy} `;
 		if (e.kind === PointerKind.Leave) leaves += 1;
+		if (e.kind !== PointerKind.Button) pointerMods += `${modNames(e.mods)} `;
 		if (e.kind !== PointerKind.Button || !e.pressed) return;
 		const shift = e.mods.has(KeyMod.Shift) ? " shift" : "";
 		clicks += `${hit} ${e.x as int32},${e.y as int32} b${e.button}${shift} `;
