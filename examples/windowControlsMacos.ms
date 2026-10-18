@@ -31,7 +31,7 @@ extern function wcActive(): int32;
 extern function wcUserClose(): void;
 
 const STEP_MS = 700;
-const LAST_STEP = 14;
+const LAST_STEP = 15;
 const TITLE = "Ion é中文 controls";
 
 let failures = 0;
@@ -110,6 +110,9 @@ function act(win: Window, i: int32): void {
 	} else if (i === 13) {
 		stepName = "focus from minimized";
 		focus(win);
+	} else if (i === 14) {
+		stepName = "minimize the key window";
+		minimize(win);
 	} else {
 		stepName = "user close";
 		wcUserClose();
@@ -157,6 +160,9 @@ function verify(win: Window, i: int32): void {
 		check("visible", wcVisible() !== (0 as int32));
 		check("key window", wcActive() !== (0 as int32));
 		expectEvent(WindowEventFocused, false);
+	} else if (i === 14) {
+		check("minimized", wcMinimized() !== (0 as int32));
+		expectEvent(WindowEventBlurred, false);
 	}
 }
 
