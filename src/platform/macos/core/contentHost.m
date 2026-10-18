@@ -365,8 +365,9 @@ static void installPointerMonitor(void) {
 - (void)doCommandBySelector:(SEL)selector {}
 
 - (void)insertText:(id)string replacementRange:(NSRange)range {
-    NSString *s = [string isKindOfClass:[NSAttributedString class]]
-        ? [(NSAttributedString *)string string] : (NSString *)string;
+    // Text Services passes a mutable string it reuses once the key is handled.
+    NSString *s = [([string isKindOfClass:[NSAttributedString class]]
+        ? [(NSAttributedString *)string string] : (NSString *)string) copy];
     [self unmarkText];
     if (self.commits != nil) [self.commits addObject:s];
     else pushText(ION_INPUT_TEXT, self.win, s, 0);
