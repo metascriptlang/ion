@@ -1,8 +1,10 @@
 // macOS content input check: the nativeContent layout (a panel, a webview child, a badge over
-// the webview's corner) driven by NSEvents posted to the app's own queue (inputProbeMacos.m).
-// Checks the window records (resize, focus, pointer button, key, text, preedit), the app's
-// hit-test giving the badge the click over the webview, the webview's own click in CSS pixels,
-// and keyboard focus moving between the content and the webview.
+// the webview's corner) driven by events posted to the app's own queue (inputProbeMacos.m).
+// Checks the window records (resize, focus, pointer buttons 1-3, motion, wheel, leave, key,
+// text, preedit), the app's hit-test giving the badge the click over the webview, the webview's
+// own click in CSS pixels, keyboard focus moving between the content and the webview, the wheel
+// signs against the page's WheelEvent, and the Vietnamese Telex input method typing "việt"
+// (enabled for the run and put back; skipped when the app is not frontmost).
 // Run: msc build examples/contentInputMacos.ms && out/debug/contentInputMacos
 
 import {
@@ -22,6 +24,14 @@ when (macos) {
 
 extern function ipActivate(root: Ptr<void>): void;
 extern function ipClick(root: Ptr<void>, x: int32, y: int32, button: int32, mods: int32): void;
+extern function ipButton(root: Ptr<void>, x: int32, y: int32, button: int32, mods: int32): void;
+extern function ipMove(root: Ptr<void>, x: int32, y: int32): void;
+extern function ipScroll(root: Ptr<void>, x: int32, y: int32, unitPixels: int32, down: int32, right: int32): void;
+extern function ipLeave(root: Ptr<void>): void;
+extern function ipSelectInputSource(id: cstring): int32;
+extern function ipRestoreInputSource(): void;
+extern function ipAppActive(root: Ptr<void>): int32;
+extern function ipDeviceKey(root: Ptr<void>, keyCode: int32): void;
 extern function ipKey(root: Ptr<void>, keyCode: int32, chars: cstring, bare: cstring, mods: int32): void;
 extern function ipMarked(root: Ptr<void>, utf8: cstring, caretUtf16: int32): void;
 extern function ipCommit(root: Ptr<void>, utf8: cstring): void;
@@ -29,7 +39,8 @@ extern function ipWebviewIsFirstResponder(root: Ptr<void>): int32;
 
 const PAGE = "data:text/html,<body style='margin:0;background:%23f4f4f4'><input id=box>"
 	+ "<script>addEventListener('pointerdown',e=>window.__ion__.post('webview.click',e.clientX+','+e.clientY));"
-	+ "addEventListener('keydown',e=>window.__ion__.post('webview.key',e.code))</script></body>";
+	+ "addEventListener('keydown',e=>window.__ion__.post('webview.key',e.code));"
+	+ "addEventListener('wheel',e=>window.__ion__.post('webview.wheel',Math.sign(e.deltaX)+','+Math.sign(e.deltaY)))</script></body>";
 
 const STEP_MS = 300;
 const SHIFT: int32 = 1 as int32;
@@ -62,8 +73,13 @@ let clicks = "";
 let keys = "";
 let texts = "";
 let preedits = "";
+let typed = "";
 let pageClicks = "";
 let pageKeys = "";
+let pageWheels = "";
+let motions = "";
+let wheels = "";
+let leaves = 0;
 
 function check(what: string, ok: boolean): void {
 	if (!ok) failures += 1;
@@ -83,11 +99,22 @@ function resetStep(name: string): void {
 	keys = "";
 	texts = "";
 	preedits = "";
+	typed = "";
 	pageClicks = "";
 	pageKeys = "";
+	pageWheels = "";
+	motions = "";
+	wheels = "";
+	leaves = 0;
 }
 
-function act(root: Ptr<void>, i: int32): void {
+const TELEX = "com.apple.inputmethod.VietnameseIM.VietnameseSimpleTelex";
+// v i e e j t space
+const TELEX_KEYS: int32[] = [0x09 as int32, 0x22 as int32, 0x0E as int32, 0x0E as int32, 0x26 as int32, 0x11 as int32, 0x31 as int32];
+let telex = false;
+let active = false;
+
+function act(win: Window, root: Ptr<void>, i: int32): void {
 	if (i === 0) {
 		resetStep("activate");
 		ipActivate(root);
@@ -126,6 +153,36 @@ function act(root: Ptr<void>, i: int32): void {
 		ipMarked(root, "日本", 1 as int32);
 		ipMarked(root, "😀x", 3 as int32);
 		ipCommit(root, "日本語");
+	} else if (i === 12) {
+		resetStep("right button on the panel");
+		ipButton(root, 200 as int32, 120 as int32, 2 as int32, 0 as int32);
+	} else if (i === 13) {
+		resetStep("middle button on the panel");
+		ipButton(root, 200 as int32, 120 as int32, 3 as int32, 0 as int32);
+	} else if (i === 14) {
+		resetStep("motion");
+		ipMove(root, 210 as int32, 130 as int32);
+		ipMove(root, 230 as int32, 150 as int32);
+	} else if (i === 15) {
+		resetStep("wheel one line down over the webview");
+		ipScroll(root, 700 as int32, 260 as int32, 0 as int32, 1 as int32, 0 as int32);
+	} else if (i === 16) {
+		resetStep("wheel one line right over the webview");
+		ipScroll(root, 700 as int32, 260 as int32, 0 as int32, 0 as int32, 1 as int32);
+	} else if (i === 17) {
+		resetStep("precise scroll 20 px down");
+		ipScroll(root, 200 as int32, 120 as int32, 1 as int32, 20 as int32, 0 as int32);
+	} else if (i === 18) {
+		resetStep("leave");
+		ipLeave(root);
+	} else if (i === 19) {
+		resetStep("select Vietnamese Telex");
+		telex = ipSelectInputSource(TELEX) !== (0 as int32);
+		focusContent(win);
+	} else if (i === 20) {
+		resetStep("Vietnamese Telex: vieejt then space");
+		active = ipAppActive(root) !== (0 as int32);
+		if (telex && active) for (const k of TELEX_KEYS) ipDeviceKey(root, k);
 	}
 }
 
@@ -166,16 +223,40 @@ function verify(root: Ptr<void>, i: int32): void {
 	} else if (i === 11) {
 		check(`preedit '${preedits}' == '日本@1 😀x@3 @0'`, preedits === "日本@1 😀x@3 @0 ");
 		check(`text '${texts}' == '日本語'`, texts === "日本語 ");
+	} else if (i === 12) {
+		check(`host click '${clicks}' == 'panel 200,120 b2'`, clicks === "panel 200,120 b2 ");
+	} else if (i === 13) {
+		check(`host click '${clicks}' == 'panel 200,120 b3'`, clicks === "panel 200,120 b3 ");
+	} else if (i === 14) {
+		check(`motion '${motions}' has '210,130 then 230,150 +20,+20'`, motions.includes("230,150 +20,+20 ") && motions.includes("210,130 "));
+	} else if (i === 15) {
+		check(`page wheel '${pageWheels}' == '0,1' (WebKit: +deltaY is down)`, pageWheels === "0,1");
+		check(`wheel '${wheels}' == '0,-1' (+y is up)`, wheels === "0,-1 ");
+	} else if (i === 16) {
+		check(`page wheel '${pageWheels}' == '1,0' (WebKit: +deltaX is right)`, pageWheels === "1,0");
+		check(`wheel '${wheels}' == '1,0' (+x is right)`, wheels === "1,0 ");
+	} else if (i === 17) {
+		check(`wheel '${wheels}' is one record down`, wheels.startsWith("0,-") && wheels.split(" ").length === 2);
+	} else if (i === 18) {
+		check(`leave records ${leaves} == 1`, leaves === 1);
+	} else if (i === 20) {
+		ipRestoreInputSource();
+		if (!telex || !active) {
+			console.log(`SKIP [${stepName}] ${!telex ? TELEX + " cannot be selected" : "the app is not frontmost, so no input method serves it"}`);
+			return;
+		}
+		check(`typed '${typed}' == 'việt '`, typed === "việt ");
+		check(`preedit '${preedits}' ends with 'iệt@3 @0'`, preedits.endsWith("iệt@3 @0 "));
 	}
 }
 
 function step(win: Window, root: Ptr<void>, i: int32): void {
-	if (i > (11 as int32)) {
+	if (i > (20 as int32)) {
 		console.log(failures === 0 ? "contentInputMacos: all PASS" : `contentInputMacos: ${failures} FAIL`);
 		closeWindow(win);
 		return;
 	}
-	act(root, i);
+	act(win, root, i);
 	setTimeout((): void => {
 		verify(root, i);
 		step(win, root, (i + 1) as int32);
@@ -209,6 +290,10 @@ function main(): int32 {
 
 	onPointer((e: PointerEvent): void => {
 		const hit = hitName(e.x, e.y);
+		const sign = (v: float64): string => v > 0.0 ? `+${v}` : `${v}`;
+		if (e.kind === PointerKind.Motion) motions += `${e.x as int32},${e.y as int32} ${sign(e.dx)},${sign(e.dy)} `;
+		if (e.kind === PointerKind.Wheel) wheels += `${e.dx},${e.dy} `;
+		if (e.kind === PointerKind.Leave) leaves += 1;
 		if (e.kind !== PointerKind.Button || !e.pressed) return;
 		const shift = e.mods.has(KeyMod.Shift) ? " shift" : "";
 		clicks += `${hit} ${e.x as int32},${e.y as int32} b${e.button}${shift} `;
@@ -221,8 +306,12 @@ function main(): int32 {
 		const shift = e.mods.has(KeyMod.Shift) ? " shift" : "";
 		const consumed = e.consumedMods.has(KeyMod.Shift) ? " consumed-shift" : "";
 		keys += `${keyName(e.key)}:${e.text}${shift}${consumed} `;
+		typed += e.text;
 	});
-	onText((window: int32, text: string): void => { texts += `${text} `; });
+	onText((window: int32, text: string): void => {
+		texts += `${text} `;
+		typed += text;
+	});
 	onImePreedit((window: int32, text: string, cursor: int32): void => { preedits += `${text}@${cursor} `; });
 	onFocus((window: int32, focused: boolean): void => { if (focused) focusTrue += 1; });
 	onResize((window: int32, w: int32, h: int32, s: float64): void => {
@@ -234,6 +323,7 @@ function main(): int32 {
 	listen((name: string, payload: string): void => {
 		if (name === "webview.click") pageClicks += payload;
 		if (name === "webview.key") pageKeys += payload;
+		if (name === "webview.wheel") pageWheels += payload;
 	});
 
 	setTimeout((): void => { step(win, root, 0 as int32); }, 800);
