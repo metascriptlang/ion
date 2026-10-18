@@ -167,5 +167,6 @@ once; its results are in `TODO.md` under "Multi-window, measured".
   on macOS, numbers in `TODO.md`.
 
 Not measured: Linux input records, a real foreground session with physical input on Windows
-(the harness cannot take the foreground), a physical device on macOS (wheel, motion, leave and
-the right button are not driven), IME composition through a real input method.
+(the harness cannot take the foreground), IME composition through a real input method on Windows
+and Linux. On macOS the probe drives every pointer record and Apple's Vietnamese Telex, and a
+physical trackpad and keyboard were checked by hand; numbers in `TODO.md`.
