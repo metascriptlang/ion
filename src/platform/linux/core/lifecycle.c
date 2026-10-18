@@ -201,6 +201,19 @@ static int tryAcquireSingleInstance(void) {
     return 0;
 }
 
+// gtk 4.22.4 sets gtk-interface-color-scheme from the portal, yet its built-in theme
+// stays light (header bar RGB 246,245,244 under prefer-dark): keep this mirror.
+static void followColorScheme(GtkSettings *settings) {
+    GtkInterfaceColorScheme scheme = GTK_INTERFACE_COLOR_SCHEME_DEFAULT;
+    g_object_get(settings, "gtk-interface-color-scheme", &scheme, NULL);
+    g_object_set(settings, "gtk-application-prefer-dark-theme", scheme == GTK_INTERFACE_COLOR_SCHEME_DARK, NULL);
+}
+
+static void onColorSchemeChanged(GObject *settings, GParamSpec *pspec, gpointer data) {
+    (void)pspec; (void)data;
+    followColorScheme(GTK_SETTINGS(settings));
+}
+
 int ionInit(void) {
     if (s_initialized) return 1;
 
@@ -216,6 +229,9 @@ int ionInit(void) {
     // gtk_init_check returns FALSE if X11/Wayland display unavailable
     // (headless / SSH without X forwarding). Caller can react via return 0.
     if (!gtk_init_check()) return 0;
+    GtkSettings *settings = gtk_settings_get_default();
+    followColorScheme(settings);
+    g_signal_connect(settings, "notify::gtk-interface-color-scheme", G_CALLBACK(onColorSchemeChanged), NULL);
     s_initialized = 1;
     return 1;
 }
