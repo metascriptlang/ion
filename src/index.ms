@@ -55,6 +55,6 @@ export {
 	startRecording, pauseRecording, resumeRecording, stopRecording, closeRecording, recordingStatus,
 	SoundStatus, RecordingStatus, PcmStream,
 } from "./audio";
-export { microphoneAccess, requestMicrophoneAccess, MicAccess } from "./permission";
+export { microphoneAccess, requestMicrophoneAccess, cameraAccess, requestCameraAccess, MediaAccess } from "./permission";
 export { ModCmd, ModShift, ModAlt, ModCtrl } from "./mods";
 export { check, download, apply, checkWebview, applyWebview, UpdateConfig, UpdateInfo } from "./update";

@@ -438,23 +438,27 @@ int         ionAudioRecordRecording(int id);
 double      ionAudioRecordDurationMs(int id);
 const char *ionAudioRecordPath(int id);
 
-// ---- Microphone permission (platform/*/security/microphone.*) ---------------
-// ionMicRequest blocks until the user answers: call it from a spawn, never the loop thread.
-// A return is ION_MIC_GRANTED | DENIED | UNDETERMINED, OR-ed with ION_MIC_CAN_ASK, or negative.
+// ---- Media device permission (platform/*/security/mediaAccess.*) -----------
+// ionMediaRequest blocks until the user answers: call it from a spawn, never the loop thread.
+// A return is ION_MEDIA_GRANTED | DENIED | UNDETERMINED, OR-ed with ION_MEDIA_CAN_ASK, or negative.
 
-#define ION_MIC_GRANTED       0
-#define ION_MIC_DENIED        1
-#define ION_MIC_UNDETERMINED  2
-#define ION_MIC_STATE_MASK    0xff
-#define ION_MIC_CAN_ASK       0x100
+#define ION_MEDIA_MICROPHONE    0
+#define ION_MEDIA_CAMERA        1
 
-#define ION_MIC_E_UNAVAILABLE (-1)   // the OS API could not be reached
-#define ION_MIC_E_SANDBOX     (-2)   // inside Flatpak: a portal path is not built
-#define ION_MIC_E_QUERY       (-3)   // the OS API answered with a failure
+#define ION_MEDIA_GRANTED       0
+#define ION_MEDIA_DENIED        1
+#define ION_MEDIA_UNDETERMINED  2
+#define ION_MEDIA_STATE_MASK    0xff
+#define ION_MEDIA_CAN_ASK       0x100
 
-int         ionMicAccess(void);
-int         ionMicRequest(void);
-const char *ionMicErrorName(int code);
+#define ION_MEDIA_E_UNAVAILABLE (-1)   // the OS API could not be reached
+#define ION_MEDIA_E_SANDBOX     (-2)   // inside Flatpak: a portal path is not built
+#define ION_MEDIA_E_QUERY       (-3)   // the OS API answered with a failure
+#define ION_MEDIA_E_KIND        (-4)   // not ION_MEDIA_MICROPHONE or ION_MEDIA_CAMERA
+
+int         ionMediaAccess(int kind);
+int         ionMediaRequest(int kind);
+const char *ionMediaErrorName(int code);
 
 // ---- OTA auto-update install (macOS) -------------------------------------
 // Builds on a verified .dmg path (download + sha256 + ed25519 already done

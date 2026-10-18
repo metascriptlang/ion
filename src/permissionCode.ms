@@ -1,6 +1,6 @@
-// What a microphone state from the bridge means. Pure MetaScript so it is testable without an OS.
+// What a microphone or camera state from the bridge means. Pure MetaScript so it is testable without an OS.
 
-export struct MicAccess {
+export struct MediaAccess {
 	status: string;
 	canAskAgain: boolean;
 }
@@ -8,13 +8,13 @@ export struct MicAccess {
 const stateMask = 0xff;
 const canAskFlag = 0x100;
 
-// Decodes ionMicAccess / ionMicRequest: a state OR-ed with the can-ask flag. A negative code is
+// Decodes ionMediaAccess / ionMediaRequest: a state OR-ed with the can-ask flag. A negative code is
 // the caller's to name, so it never reaches here.
-export function micAccessFromCode(code: int32): Result<MicAccess, string> {
+export function mediaAccessFromCode(code: int32): Result<MediaAccess, string> {
 	const state = code & stateMask;
 	const canAskAgain = (code & canAskFlag) !== 0;
 	if (state === 0) { return Result.ok({ status: "granted", canAskAgain }); }
 	if (state === 1) { return Result.ok({ status: "denied", canAskAgain }); }
 	if (state === 2) { return Result.ok({ status: "undetermined", canAskAgain }); }
-	return Result.err("unknown microphone state " + state.toString());
+	return Result.err("unknown media access state " + state.toString());
 }
