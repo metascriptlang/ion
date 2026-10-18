@@ -196,6 +196,8 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <string>11.0</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>$APP_NAME needs the microphone to record audio.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>$APP_NAME needs the camera to show video and take pictures.</string>
     <key>NSHighResolutionCapable</key>
     <true/>$ICON_ENTRY$URL_TYPES_BLOCK
 </dict>
