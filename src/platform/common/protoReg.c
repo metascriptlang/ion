@@ -178,11 +178,17 @@ void ionProtoResetForTests(void) {
 
 // ---- lookup helpers -------------------------------------------------------
 
+static int isSep(char c) {
+    return c == '/' || c == '\\';
+}
+
 static int pathUnderRoot(const char *path, const char *root) {
     size_t rl = strlen(root);
-    if (strncmp(path, root, rl) != 0) return 0;
+    for (size_t i = 0; i < rl; i++) {
+        if (path[i] != root[i] && !(isSep(path[i]) && isSep(root[i]))) return 0;
+    }
     // Either exact match or next char is a separator.
-    if (path[rl] == 0 || path[rl] == '/' || path[rl] == '\\') return 1;
+    if (path[rl] == 0 || isSep(path[rl])) return 1;
     return 0;
 }
 
@@ -227,13 +233,16 @@ IonProtoStatus ionProtoLookup(
         path[MAX_PATH_LEN - 1] = 0;
         cleanPath(path);
         percentDecode(path);
+        if (path[0] == '/' && isalpha((unsigned char)path[1]) && path[2] == ':') {
+            memmove(path, path + 1, strlen(path));
+        }
         if (!pathIsSafe(path)) {
             if (outMime) *outMime = "text/plain; charset=utf-8";
             if (outStatus) *outStatus = 403;
             return IonProtoForbidden;
         }
 
-        // asset:// uses absolute path: /Users/.../photo.jpg
+        // asset:// uses absolute path: /Users/.../photo.jpg or C:/Users/.../photo.jpg
         const char *abs = path;
         int allowed = 0;
         for (int i = 0; i < sAssetRootCount; i++) {
