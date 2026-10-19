@@ -73,3 +73,5 @@ IonWindowId ionWindowEventId(void)   { return s_lastWevtId; }
 int         ionWindowEventType(void) { return s_lastWevtType; }
 
 void ionLoopArm(void) {}
+
+int ionPollReady(void) { return 0; }

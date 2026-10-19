@@ -238,34 +238,75 @@ void ionLoopArm(void) {
     SetEvent(s_mscDrained);
 }
 
-int ionPollEvent(void) {
+static void armTick(void) {
+    int wanted = ion_frame_wanted() && startClock();
+    if (wanted) notePacingMonitor();
+    if (s_tick == NULL) return;
+    if (wanted) SetEvent(s_want);
+    else ResetEvent(s_want);
+}
+
+static void releaseDestroyed(void) {
     if (s_lastWevtType == ION_EVT_DESTROYED) {
         ionWinReleaseDestroyed(s_lastWevtId);
         s_lastWevtType = 0;
     }
+}
+
+static int popQueued(void) {
+    if (ion_wevt_pop(&s_lastWevtId, &s_lastWevtType)) return 3;
+    if (ion_queue_pop()) return 2;
+    if (ion_input_next()) return 4;
+    return 0;
+}
+
+// A move/size loop runs inside DispatchMessageW (gpui events.rs:296-333): ionWndProc's timer calls this.
+// Pump only while ionPollEvent dispatches, since a handler that pumps messages is already inside MS.
+static int s_dispatching;
+static int s_inModalTurn;
+
+void ionModalPump(void) {
+    if (!s_dispatching || s_inModalTurn) return;
+    s_inModalTurn = 1;
+    if (s_tick != NULL && WaitForSingleObject(s_tick, 0) == WAIT_OBJECT_0) ion_frame_emit(tickMs());
+    ionWinKeyFlush();
+    ionModalTurn();
+    armTick();
+    s_inModalTurn = 0;
+}
+
+int ionPollReady(void) {
+    releaseDestroyed();
+    int type = popQueued();
+    if (type != 0) return type;
+    wakeEvent();
+    return WaitForSingleObject(s_wake, 0) == WAIT_OBJECT_0 ? 6 : 0;
+}
+
+int ionPollEvent(void) {
+    releaseDestroyed();
     for (;;) {
-        if (ion_wevt_pop(&s_lastWevtId, &s_lastWevtType)) return 3;
-        if (ion_queue_pop()) return 2;
-        if (ion_input_next()) return 4;
+        int type = popQueued();
+        if (type != 0) return type;
 
         // Quit waits until the queued lifecycle events (close-requested,
         // destroyed) have been delivered.
         MSG msg;
+        s_dispatching = 1;
         while (!s_quit && PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) { s_quit = 1; break; }
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
+        s_dispatching = 0;
         ionWinKeyFlush();
 
-        if (ion_wevt_pop(&s_lastWevtId, &s_lastWevtType)) return 3;
-        if (ion_queue_pop()) return 2;
-        if (ion_input_next()) return 4;
+        type = popQueued();
+        if (type != 0) return type;
 
         if (s_quit || ionWindowCount() == 0) return 1;
 
-        int wanted = ion_frame_wanted() && startClock();
-        if (wanted) notePacingMonitor();
+        armTick();
         wakeEvent();
         HANDLE handles[3];
         DWORD count = 0;
@@ -274,8 +315,6 @@ int ionPollEvent(void) {
         // rate, so it cannot starve the wake in turn.
         DWORD tickIndex = (DWORD)-1;
         if (s_tick != NULL) {
-            if (wanted) SetEvent(s_want);
-            else ResetEvent(s_want);
             tickIndex = count;
             handles[count++] = s_tick;
         }

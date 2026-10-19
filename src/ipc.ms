@@ -165,7 +165,7 @@ when (windows) {
 }
 
 import {
-	ionPollEvent, ionLoopArm,
+	ionPollEvent, ionPollReady, ionLoopArm,
 	ionMessageName, ionMessagePayload, ionMessageWebviewId,
 	ionWindowEventId, ionWindowEventType, ionWindowLabel,
 	ionInputType,
@@ -203,6 +203,40 @@ export function messageWebviewId(): int32 {
 // and src/platform/common/protocol.h (ION_CHANNEL_EMIT).
 const CHANNEL_EMIT = "__emit";
 
+function dispatchRecord(evt: int32): void {
+	if (evt === 2) {
+		const name = ionMessageName();
+		const payload = ionMessagePayload();
+		if (name === CHANNEL_EMIT) {
+			routeEmit(payload);
+		} else {
+			for (const h of handlers) h(name, payload);
+		}
+	} else if (evt === 3) {
+		const id    = ionWindowEventId();
+		const type  = ionWindowEventType();
+		const label = ionWindowLabel(id);
+		dispatchWindowEvent(label, type);
+	} else if (evt === 4) {
+		dispatchInput(ionInputType());
+	} else if (evt === 6) {
+		dispatchWake();
+	}
+}
+
+// One non-blocking turn for the Win32 move/size loop, which never returns to runLoop
+// (src/platform/windows/webview/poll.c ionModalPump): msc's loop, then every record ready.
+@exportName("ionModalTurn")
+function modalTurn(): void {
+	msRunOnce(0 as int32);
+	ionLoopArm();
+	let evt = ionPollReady();
+	while (evt !== 0) {
+		dispatchRecord(evt);
+		evt = ionPollReady();
+	}
+}
+
 // Block on the platform event loop, dispatching IPC messages to registered
 // listeners and running msc's timers and completions. Returns when the
 // user closes the window (or Cmd+Q). Tears down ion afterwards.
@@ -214,23 +248,8 @@ export function runLoop(): void {
 		const evt = ionPollEvent();
 		if (evt === 1) {
 			running = false;
-		} else if (evt === 2) {
-			const name = ionMessageName();
-			const payload = ionMessagePayload();
-			if (name === CHANNEL_EMIT) {
-				routeEmit(payload);
-			} else {
-				for (const h of handlers) h(name, payload);
-			}
-		} else if (evt === 3) {
-			const id    = ionWindowEventId();
-			const type  = ionWindowEventType();
-			const label = ionWindowLabel(id);
-			dispatchWindowEvent(label, type);
-		} else if (evt === 4) {
-			dispatchInput(ionInputType());
-		} else if (evt === 6) {
-			dispatchWake();
+		} else {
+			dispatchRecord(evt);
 		}
 	}
 	ionQuit();

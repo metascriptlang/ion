@@ -54,6 +54,8 @@ void    ionWebView2RevokeDrop(HWND host);
 int     ionWebView2HostAutomation(HWND host, void **provider, WPARAM wParam, LPARAM lParam, LRESULT *result);
 void    ionWebView2DetachAutomation(HWND host, void **provider);
 
+void ionModalPump(void);
+void ionModalTurn(void);
 int  ionWinHandleInput(IonWinWindow *w, UINT msg, WPARAM wParam, LPARAM lParam, LRESULT *result);
 void ionWinKeyFlush(void);
 void ionWinPushResize(IonWinWindow *w);

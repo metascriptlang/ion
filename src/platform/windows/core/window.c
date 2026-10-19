@@ -19,6 +19,7 @@
 static const wchar_t kIonClassName[] = L"IonMainWindow";
 static const char kMainLabel[] = "main";
 static int s_classRegistered = 0;
+#define ION_MODAL_TIMER 1
 static HWINEVENTHOOK s_cloakHook = NULL;
 
 IonWinWindow *ionWinWindow(IonWindowId id) {
@@ -213,6 +214,18 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             if (EqualRect(&before, &after)) ionWinPushResize(w);
             return 0;
         }
+        case WM_ENTERSIZEMOVE:
+        case WM_ENTERMENULOOP:
+            SetTimer(hwnd, ION_MODAL_TIMER, USER_TIMER_MINIMUM, NULL);
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        case WM_EXITSIZEMOVE:
+        case WM_EXITMENULOOP:
+            KillTimer(hwnd, ION_MODAL_TIMER);
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        case WM_TIMER:
+            if (wParam != ION_MODAL_TIMER) return DefWindowProcW(hwnd, msg, wParam, lParam);
+            ionModalPump();
+            return 0;
         case WM_MOVE:
             ionWebView2ParentMoved(w->id);
             if (!IsIconic(hwnd)) ion_wevt_push(w->id, ION_EVT_MOVED);

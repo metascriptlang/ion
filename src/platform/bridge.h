@@ -229,6 +229,11 @@ int  ionPollEvent(void);
 // every 16 ms and need nothing).
 void ionLoopArm(void);
 
+// One record or wake ionPollEvent would return (2, 3, 4 or 6), or 0 when none is ready.
+// Never pumps platform messages and never waits. Windows' move/size loop calls it from the
+// window proc; macOS and Linux have no such loop and return 0.
+int  ionPollReady(void);
+
 // Makes ionPollEvent return 6 once, so the loop thread runs the onWake
 // handlers. Callable from any thread, with or without a window; calls made
 // before the loop runs them coalesce into one. An idle loop stays asleep

@@ -294,3 +294,5 @@ int ionWindowPixelHeight(IonWindowId id) {
     return h;
 }
 
+
+int ionPollReady(void) { return 0; }
