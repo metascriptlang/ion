@@ -106,6 +106,7 @@ IonProtoStatus ionProtoRegister(const char *scheme, const char *baseDir) {
     if (sFrozen) return IonProtoFrozen;
     if (scheme == NULL || scheme[0] == 0) return IonProtoInvalid;
     if (baseDir == NULL || baseDir[0] == 0) return IonProtoInvalid;
+    if (eqLower(scheme, "asset")) return IonProtoDuplicate;
     if (strlen(scheme) >= MAX_SCHEME_LEN) return IonProtoInvalid;
     if (strlen(baseDir) >= MAX_PATH_LEN) return IonProtoInvalid;
     if (!pathReadableDir(baseDir)) return IonProtoInvalid;
@@ -159,10 +160,11 @@ int ionProtoIsFrozen(void) {
 }
 
 int ionProtoSchemeCount(void) {
-    return sSchemeCount;
+    return sSchemeCount + sAssetRegistered;
 }
 
 const char *ionProtoSchemeAt(int i) {
+    if (i == sSchemeCount && sAssetRegistered) return "asset";
     if (i < 0 || i >= sSchemeCount) return NULL;
     return sSchemes[i].scheme;
 }

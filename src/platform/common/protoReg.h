@@ -45,7 +45,8 @@ void ionProtoFreeze(void);
 // late" warning.
 int ionProtoIsFrozen(void);
 
-// Count of registered schemes. Used by platform impls to iterate.
+// Count of registered schemes, `asset` included once its scope is registered.
+// Used by platform impls to iterate.
 int ionProtoSchemeCount(void);
 // Scheme name at index i. Caller must NOT free. NULL if out of range.
 const char *ionProtoSchemeAt(int i);
