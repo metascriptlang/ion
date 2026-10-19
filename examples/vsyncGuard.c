@@ -5,6 +5,9 @@
 // sleep before each call (the first call after ion parks the thread). Touches no other window.
 //
 //   vsyncGuard.exe [guard]      writes the per-phase table to stdout
+//   vsyncGuard.exe [guard] --long <seconds>
+//                               one visible window and the clock thread for that long; one line
+//                               per call that took under 1 ms or over 3 periods
 //
 // With `guard` the loop treats a call that took under 1 ms as early and sleeps one refresh
 // period (gpui's vsync.rs mechanism), so the two interval distributions can be compared.
@@ -28,6 +31,12 @@ static int s_guard;
 static double s_periodMs;
 static volatile LONG s_phase;
 static volatile LONG s_stop;
+static int s_long;
+static LONG s_longCalls;
+static LONG s_longLogged;
+static LONGLONG s_longStart;
+
+#define LONG_LOG_CAP 200000
 
 static double s_interval[5][MAX_SAMPLES];
 static double s_call[5][MAX_SAMPLES];
@@ -53,6 +62,17 @@ static DWORD WINAPI clockThread(void *arg) {
             SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE);
             WaitForSingleObject(timer, INFINITE);
             QueryPerformanceCounter(&t1);
+        }
+        if (s_long) {
+            s_longCalls++;
+            if ((call < 1.0 || call > 3.0 * s_periodMs) && s_longLogged < LONG_LOG_CAP) {
+                s_longLogged++;
+                printf("t=%.3f s call=%.3f ms interval=%.3f ms ret=%lu\n", ms(t1.QuadPart - s_longStart) / 1000.0, call,
+                       last.QuadPart ? ms(t1.QuadPart - last.QuadPart) : 0.0, r);
+                fflush(stdout);
+            }
+            last = t1;
+            continue;
         }
         int p = (int)s_phase;
         LONG n = s_count[p];
@@ -117,7 +137,12 @@ static void pump(DWORD totalMs) {
 }
 
 int main(int argc, char **argv) {
-    s_guard = argc > 1 && strcmp(argv[1], "guard") == 0;
+    double longSeconds = 0;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "guard") == 0) s_guard = 1;
+        else if (strcmp(argv[i], "--long") == 0 && i + 1 < argc) { longSeconds = atof(argv[++i]); s_long = longSeconds > 0; }
+        else if (strcmp(argv[i], "plain") != 0) { printf("usage: vsyncGuard [plain|guard] [--long <seconds>]\n"); return 2; }
+    }
     HMODULE dcomp = LoadLibraryW(L"dcomp.dll");
     s_wait = dcomp ? (WaitFn)(void *)GetProcAddress(dcomp, "DCompositionWaitForCompositorClock") : NULL;
     if (!s_wait) { printf("DCompositionWaitForCompositorClock not found\n"); return 1; }
@@ -141,8 +166,20 @@ int main(int argc, char **argv) {
     HWND win = CreateWindowExW(0, L"vsyncGuard", L"vsyncGuard probe", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 200, 200, 400, 300, NULL, NULL, inst, NULL);
     HWND cover = NULL;
 
+    LARGE_INTEGER start;
+    QueryPerformanceCounter(&start);
+    s_longStart = start.QuadPart;
     HANDLE th = CreateThread(NULL, 0, clockThread, NULL, 0, NULL);
     SetThreadPriority(th, THREAD_PRIORITY_TIME_CRITICAL);
+
+    if (s_long) {
+        pump((DWORD)(longSeconds * 1000.0));
+        s_stop = 1;
+        WaitForSingleObject(th, 2000);
+        printf("long: %.1f s, calls=%ld logged=%ld (cap %d)\n", longSeconds, s_longCalls, s_longLogged, LONG_LOG_CAP);
+        DestroyWindow(win);
+        return 0;
+    }
 
     pump(PHASE_MS);
     s_phase = 1;
