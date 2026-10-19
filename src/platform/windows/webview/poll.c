@@ -26,6 +26,7 @@
 #include "../../common/mscLoop.h"
 #include "runtime/promise/dispatch.h"
 
+#include <dxgi.h>
 #include <stdio.h>
 
 static IonWindowId   s_lastWevtId   = ION_WINDOW_INVALID;
@@ -48,15 +49,98 @@ static ULONGLONG     s_mscDeadline;
 typedef DWORD (WINAPI *WaitCompositorClockFn)(UINT count, const HANDLE *handles, DWORD timeoutMs);
 static WaitCompositorClockFn s_waitCompositorClock;
 
+// The vsync thread waits on the vblank of the display that paces the frame tick
+// (IDXGIOutput::WaitForVBlank). DCompositionWaitForCompositorClock stalls 50-270 ms on its
+// first call after about 250 ms idle (measured 2026-10-19); WaitForVBlank returns in 0-6 ms.
+// The clock stays as the fallback when no output resolves. With several windows on different
+// monitors the monitor of the window that requested a frame last paces every window.
+#define VBLANK_RETRY_MS     1000
+#define DEFAULT_PERIOD_MS   16.0
+
+static volatile LONG_PTR s_pacingMonitor;
+static IDXGIOutput *s_output;
+static HMONITOR     s_outputMonitor;
+static double       s_periodMs = DEFAULT_PERIOD_MS;
+static ULONGLONG    s_resolveRetryAt;
+
+static const GUID kIidFactory1 = {0x770aae78, 0xf26f, 0x4dba, {0xa8, 0x29, 0x25, 0x3c, 0x83, 0xd1, 0xb3, 0x87}};
+
+static IDXGIOutput *outputOf(HMONITOR monitor) {
+    typedef HRESULT (WINAPI *CreateFactoryFn)(REFIID, void **);
+    HMODULE dxgi = LoadLibraryW(L"dxgi.dll");
+    CreateFactoryFn create = dxgi ? (CreateFactoryFn)(void *)GetProcAddress(dxgi, "CreateDXGIFactory1") : NULL;
+    IDXGIFactory1 *factory = NULL;
+    if (create == NULL || FAILED(create(&kIidFactory1, (void **)&factory))) return NULL;
+    IDXGIOutput *found = NULL;
+    IDXGIAdapter1 *adapter;
+    for (UINT i = 0; found == NULL && factory->lpVtbl->EnumAdapters1(factory, i, &adapter) == S_OK; i++) {
+        IDXGIOutput *output;
+        for (UINT j = 0; found == NULL && adapter->lpVtbl->EnumOutputs(adapter, j, &output) == S_OK; j++) {
+            DXGI_OUTPUT_DESC desc;
+            if (SUCCEEDED(output->lpVtbl->GetDesc(output, &desc)) && desc.Monitor == monitor) {
+                DEVMODEW mode = {0};
+                mode.dmSize = sizeof mode;
+                s_periodMs = EnumDisplaySettingsW(desc.DeviceName, ENUM_CURRENT_SETTINGS, &mode) && mode.dmDisplayFrequency > 1
+                                 ? 1000.0 / (double)mode.dmDisplayFrequency
+                                 : DEFAULT_PERIOD_MS;
+                found = output;
+            } else {
+                output->lpVtbl->Release(output);
+            }
+        }
+        adapter->lpVtbl->Release(adapter);
+    }
+    factory->lpVtbl->Release(factory);
+    return found;
+}
+
+static void dropOutput(void) {
+    if (s_output != NULL) s_output->lpVtbl->Release(s_output);
+    s_output = NULL;
+    s_outputMonitor = NULL;
+}
+
+// Re-resolves when the pacing monitor changed, and retries a lost output once a second.
+static void followPacingMonitor(void) {
+    HMONITOR want = (HMONITOR)InterlockedCompareExchangePointer((PVOID volatile *)&s_pacingMonitor, NULL, NULL);
+    if (want == NULL) want = MonitorFromPoint((POINT){0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    if (s_output != NULL && want == s_outputMonitor) return;
+    ULONGLONG now = GetTickCount64();
+    if (s_output == NULL && want == s_outputMonitor && now < s_resolveRetryAt) return;
+    dropOutput();
+    s_output = outputOf(want);
+    s_outputMonitor = want;
+    s_resolveRetryAt = now + VBLANK_RETRY_MS;
+    if (s_output == NULL) fprintf(stderr, "[ion] frame clock: no DXGI output for the window's monitor, using the compositor clock\n");
+}
+
+static double qpcMs(LARGE_INTEGER a, LARGE_INTEGER b) {
+    return (double)(b.QuadPart - a.QuadPart) * 1000.0 / (double)s_freq.QuadPart;
+}
+
 static DWORD WINAPI vsyncThread(void *arg) {
     (void)arg;
     for (;;) {
         WaitForSingleObject(s_want, INFINITE);
-        s_waitCompositorClock(0, NULL, INFINITE);
-        LARGE_INTEGER t;
+        followPacingMonitor();
+        LARGE_INTEGER t0, t;
+        QueryPerformanceCounter(&t0);
+        int failed = 0;
+        if (s_output != NULL) {
+            if (FAILED(s_output->lpVtbl->WaitForVBlank(s_output))) {
+                dropOutput();
+                s_resolveRetryAt = 0;
+                failed = 1;
+            }
+        } else {
+            s_waitCompositorClock(0, NULL, INFINITE);
+        }
         QueryPerformanceCounter(&t);
         InterlockedExchange64(&s_tickCounter, t.QuadPart);
         SetEvent(s_tick);
+        // gpui vsync.rs:40-57: a failed or sub-millisecond wait means the monitor sleeps or
+        // went away; sleep one period so the thread never spins.
+        if (failed || qpcMs(t0, t) < 1.0) Sleep((DWORD)(s_periodMs + 0.5));
     }
     return 0;
 }
@@ -85,6 +169,12 @@ static int startClock(void) {
     SetThreadPriority(thread, THREAD_PRIORITY_TIME_CRITICAL);
     CloseHandle(thread);
     return 1;
+}
+
+static void notePacingMonitor(void) {
+    HWND hwnd = ionWinHwnd(ion_frame_pacing_window());
+    if (hwnd != NULL)
+        InterlockedExchangePointer((PVOID volatile *)&s_pacingMonitor, MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY));
 }
 
 static double tickMs(void) {
@@ -175,6 +265,7 @@ int ionPollEvent(void) {
         if (s_quit || ionWindowCount() == 0) return 1;
 
         int wanted = ion_frame_wanted() && startClock();
+        if (wanted) notePacingMonitor();
         wakeEvent();
         HANDLE handles[3];
         DWORD count = 0;

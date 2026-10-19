@@ -14,6 +14,7 @@ typedef struct {
 } IonFrameWindow;
 
 static IonFrameWindow s_windows[ION_MAX_WINDOWS];
+static int s_lastRequested = -1;
 
 static IonFrameWindow *windowAt(int win) {
     if (win < 0 || win >= ION_MAX_WINDOWS || !s_windows[win].open) return NULL;
@@ -53,6 +54,13 @@ int ion_frame_wanted(void) {
     return 0;
 }
 
+int ion_frame_pacing_window(void) {
+    if (s_lastRequested >= 0 && s_windows[s_lastRequested].open && due(&s_windows[s_lastRequested])) return s_lastRequested;
+    for (int i = 0; i < ION_MAX_WINDOWS; i++)
+        if (s_windows[i].open && due(&s_windows[i])) return i;
+    return -1;
+}
+
 int ion_frame_emit(double timeMs) {
     int n = 0;
     for (int i = 0; i < ION_MAX_WINDOWS; i++) {
@@ -86,4 +94,5 @@ void ionWindowRequestFrame(IonWindowId id) {
     IonFrameWindow *w = windowAt(id);
     if (w == NULL) return;
     w->requested = 1;
+    s_lastRequested = id;
 }
