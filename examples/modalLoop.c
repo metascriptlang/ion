@@ -23,6 +23,7 @@ static LONG s_exitSnap[KindCount + 1];
 static double s_enterMs;
 static double s_exitMs;
 static int s_scenario;
+static double s_controlRate[KindCount];
 
 static double nowMs(void) {
     LARGE_INTEGER t;
@@ -83,9 +84,18 @@ static void postKey(WORD vk) {
     PostMessageW(s_hwnd, WM_KEYUP, vk, 0);
 }
 
-static void line(const char *name, double ms, const LONG *a, const LONG *b) {
+#define MIN_RATE_OF_CONTROL 0.25
+
+static void line(const char *name, double ms, const LONG *a, const LONG *b, int control) {
     printf("%s window=%.1fms frames=%ld timer10ms=%ld wakeHandlerRuns=%ld wakesSent=%ld\n", name, ms,
            b[KindFrame] - a[KindFrame], b[KindTimer] - a[KindTimer], b[KindWake] - a[KindWake], b[KindCount] - a[KindCount]);
+    int ok = 1;
+    for (int k = 0; k < KindCount; k++) {
+        double rate = (double)(b[k] - a[k]) / ms;
+        if (control) s_controlRate[k] = rate;
+        else if (rate <= 0 || rate < MIN_RATE_OF_CONTROL * s_controlRate[k]) ok = 0;
+    }
+    if (!control) printf("modalLoop %s: %s\n", ok ? "PASS" : "FAIL", name);
     fflush(stdout);
 }
 
@@ -98,7 +108,7 @@ static DWORD WINAPI scenarioThread(void *arg) {
         double t0 = nowMs();
         Sleep(SCENARIO_MS);
         snapshot(b);
-        line("control          ", nowMs() - t0, a, b);
+        line("control          ", nowMs() - t0, a, b, 1);
     } else {
         const char *name = sc == 1 ? "modal SC_MOVE    " : "modal SC_SIZE    ";
         POINT cursor;
@@ -120,7 +130,7 @@ static DWORD WINAPI scenarioThread(void *arg) {
                 WaitForSingleObject(s_exited, ENTER_WAIT_MS);
             }
             printf("%s WM_EXITSIZEMOVE %.1f ms after the Escape post\n", name, s_exitMs - esc);
-            line(name, s_exitMs - s_enterMs, s_enterSnap, s_exitSnap);
+            line(name, s_exitMs - s_enterMs, s_enterSnap, s_exitSnap, 0);
         }
         SetCursorPos(cursor.x, cursor.y);
     }
