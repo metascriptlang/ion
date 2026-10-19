@@ -12,6 +12,8 @@ import { exit } from "std/process";
 extern function latStamp(): float64;
 extern function latRecordSince(phase: int32, t0: float64): void;
 extern function latReport(phase: int32): void;
+extern function latCpuBegin(): void;
+extern function latCpuReport(): void;
 
 const GAPS_MS: int32[] = [250, 1000, 37];
 const TRIALS: int32[] = [40, 20, 40];
@@ -24,12 +26,23 @@ let pending = false;
 
 function startPhase(): void {
 	if (phase >= GAPS_MS.length) {
-		if (win !== null) closeWindow(win);
+		if (win !== null) setFramePolicy(win, FrameOnDemand);
+		setTimeout(cpuBegin, 500);
 		return;
 	}
 	trial = 0;
 	if (win !== null) setFramePolicy(win, phase === 2 ? FrameContinuous : FrameOnDemand);
 	setTimeout(request, GAPS_MS[phase]);
+}
+
+function cpuBegin(): void {
+	latCpuBegin();
+	setTimeout(cpuEnd, 3000);
+}
+
+function cpuEnd(): void {
+	latCpuReport();
+	if (win !== null) closeWindow(win);
 }
 
 function request(): void {

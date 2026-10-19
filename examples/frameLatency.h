@@ -11,6 +11,9 @@ double latStamp(void);
 void latRecordSince(int phase, double t0);
 // Prints a phase: 0 idle 250 ms, 1 idle 1000 ms, 2 continuous; count, min, p50, p90, max next to the refresh period.
 void latReport(int phase);
+// Marks the start of an idle CPU window, then prints this process's CPU time against wall time since the mark.
+void latCpuBegin(void);
+void latCpuReport(void);
 
 #ifdef __cplusplus
 }

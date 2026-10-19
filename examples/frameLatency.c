@@ -35,6 +35,27 @@ static double refreshPeriodMs(void) {
     return 1000.0 * ti.rateRefresh.uiDenominator / ti.rateRefresh.uiNumerator;
 }
 
+static ULONGLONG s_cpuBegin;
+static double s_wallBegin;
+
+static ULONGLONG processCpu100ns(void) {
+    FILETIME c, e, k, u;
+    GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u);
+    return (((ULONGLONG)k.dwHighDateTime << 32) | k.dwLowDateTime) + (((ULONGLONG)u.dwHighDateTime << 32) | u.dwLowDateTime);
+}
+
+void latCpuBegin(void) {
+    s_cpuBegin = processCpu100ns();
+    s_wallBegin = latStamp();
+}
+
+void latCpuReport(void) {
+    double cpuMs = (double)(processCpu100ns() - s_cpuBegin) / 10000.0;
+    double wallMs = latStamp() - s_wallBegin;
+    printf("idle cpu, on demand: cpu %.2f ms over wall %.0f ms (%.3f%% of a core)\n", cpuMs, wallMs, 100.0 * cpuMs / wallMs);
+    fflush(stdout);
+}
+
 void latReport(int phase) {
     static const char *const names[3] = {"idle 250 ms, on demand", "idle 1000 ms, on demand", "continuous frames, request mid-stream"};
     const char *name = names[phase];
