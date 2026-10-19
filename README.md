@@ -170,6 +170,7 @@ const result = await window.ion.call("greet", { name: "Sơn" });
 | `security` | `setContentProtected` |
 | `protocol` | `registerStaticProtocol`, `registerAssetScope` |
 | `tray` | `installTray`, `installTrayImage`, `uninstallTray` |
+| `menu` | `setAppMenu` with `Submenu` and `MenuItem.action` / `.standard` / `.separator`; an action item delivers `"menu.click"` with its id to `listen` (macOS only) |
 | `notify` | `notify` |
 | `hotkey` | `registerHotkey`, `registerHotkeyKey`, `unregisterHotkey`, `keyCodeFromName` |
 | `mods` | `ModCmd`, `ModShift`, `ModAlt`, `ModCtrl` |
