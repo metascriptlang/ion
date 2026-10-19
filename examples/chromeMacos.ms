@@ -78,8 +78,10 @@ function act(win: Window, web: Webview, root: Ptr<void>, i: int32): void {
 	if (i === 0) {
 		stepName = "tray";
 		installTray(TRAY);
-		if (person) console.log(`ACTION click '${TRAY}' in the menu bar`);
-		else chromeTrayClick(TRAY);
+		if (person) {
+			chromeHideApp();
+			console.log(`ACTION click '${TRAY}' in the menu bar`);
+		} else chromeTrayClick(TRAY);
 	} else if (i === 1) {
 		stepName = "content protection off";
 		console.log(`CAPTURE ${chromeWindowNumber(root)} off`);
@@ -143,7 +145,8 @@ function done(i: int32): boolean {
 }
 
 function waitMs(i: int32): number {
-	if (i === 7 || i === 10 || (person && (i === 0 || i === 9))) return 60000;
+	if (person && (i === 0 || i === 9 || i === 10)) return 120000;
+	if (i === 7 || i === 10) return 60000;
 	if (i === 1 || i === 2 || i === 9) return 2500;
 	if (i === 8) return 1000;
 	return 5000;
@@ -177,7 +180,7 @@ function verify(root: Ptr<void>, i: int32): void {
 		check(`a file outside the scope is refused (${assetOutside})`, assetOutside.startsWith("403:"));
 	} else if (i === 6) {
 		if (person) {
-			check(`fileOpen returned the picked path '${picked}'`, picked.startsWith("/"));
+			check(`fileOpen returned the picked path '${picked}' after ${pickedMs} ms`, picked.startsWith("/"));
 			return;
 		}
 		check(`fileOpen returned '${picked}' after ${pickedMs} ms`, picked === "" && pickedMs >= 1400 && pickedMs < 5000);
@@ -231,6 +234,7 @@ function main(): int32 {
 	});
 	setTimeout((): void => { step(win, web, windowRoot(win), 0 as int32); }, 800);
 	runLoop();
+	console.log(`chromeMacos: the loop returned during [${stepName}]`);
 	return failures === 0 ? 0 : 1;
 }
 
