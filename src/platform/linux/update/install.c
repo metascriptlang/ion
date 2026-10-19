@@ -80,8 +80,9 @@ int ionUpdateReplaceApp(const char *srcAppPath, const char *destAppPath) {
 	return 0;
 }
 
-// The relaunched app would find this process still owning the single-instance
-// bus name and hand off to it, so the helper waits for this pid to exit first.
+// An app that called requestSingleInstance would, relaunched, find this process still
+// owning the single-instance bus name and hand off to it, so the helper waits for
+// this pid to exit first.
 int ionUpdateRelaunchAndExit(const char *destAppPath) {
 	if (!destAppPath || !*destAppPath) return -1;
 	char script[128];

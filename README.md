@@ -183,6 +183,7 @@ An Ion app is multi-instance by default: a second launch (or a deep link) starts
 
 ```ts
 import { requestSingleInstance, createWindow, runLoop } from "@metascript/ion"
+import { exit } from "std/process"
 
 if (!requestSingleInstance()) exit(0)   // second launch: URL forwarded, first window raised
 createWindow("main", defaultOptions("MyApp", 1280 as int32, 800 as int32))
