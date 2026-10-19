@@ -1,6 +1,6 @@
 # ion — Custom URI Scheme Handler
 
-> **Status (2026-05-18):** macOS done + verified end-to-end via `examples/protocolDemo.ms` (origin `demo://localhost` confirmed) + `examples/helloWebview.ms` migrated and smoke-tested as bundled `.app`. **Windows done same day** — verified in Parallels VM: `ion://localhost/hello.html` loads, `WebResourceRequested` fires, `auto-probe: ipc alive` + `MS command addNumbers(100, 23)` logged. Linux still pending (Linux runtime foundation hasn't started).
+> **Status:** per platform in [`TODO.md`](./TODO.md) ("Custom URI scheme"). Until 2026-10-19 no platform installed `asset://` on its webview; the static schemes (`ion://`, `demo://`) were the only ones measured before then.
 
 ## TL;DR
 
