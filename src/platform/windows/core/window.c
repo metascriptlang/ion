@@ -226,8 +226,6 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             if (wParam != ION_MODAL_TIMER) return DefWindowProcW(hwnd, msg, wParam, lParam);
             ionModalPump();
             return 0;
-        case WM_ERASEBKGND:
-            return 1;
         case WM_MOVE:
             ionWebView2ParentMoved(w->id);
             if (!IsIconic(hwnd)) ion_wevt_push(w->id, ION_EVT_MOVED);
@@ -262,7 +260,7 @@ static int ensureWindowClass(void) {
     wc.lpfnWndProc   = ionWndProc;
     wc.hInstance     = s_hInstance;
     wc.hCursor       = LoadCursorW(NULL, IDC_ARROW);
-    wc.hbrBackground = NULL;
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.lpszClassName = kIonClassName;
 
     if (RegisterClassExW(&wc) == 0) return 0;
