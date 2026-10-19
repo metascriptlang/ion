@@ -160,7 +160,7 @@ const result = await window.ion.call("greet", { name: "Sơn" });
 
 | Module | Exports |
 |---|---|
-| `windowManager` | `createWindow`, `windowRoot`, `windowDevice`, `commit`, `focusContent`, `setImeRect`, `setCursor`, frame policy |
+| `windowManager` | `requestSingleInstance`, `createWindow`, `windowRoot`, `windowDevice`, `commit`, `focusContent`, `setImeRect`, `setCursor`, frame policy |
 | `webview` | `createWebview`, `webviewNode`, `setWebviewBounds`, `forwardPointer`, `focusWebview`, `navigate`, `evalJs`, `emit`, `emitTo`, `emitAll` |
 | `input` | `onPointer`, `onKey`, `onText`, `onImePreedit`, `onFocus`, `onResize`, `onFrame` |
 | `ipc` | `listen`, `messageWebviewId`, `runLoop` (and `Handler` type) |
@@ -176,6 +176,20 @@ const result = await window.ion.call("greet", { name: "Sơn" });
 | `mods` | `ModCmd`, `ModShift`, `ModAlt`, `ModCtrl` |
 
 All re-exported from the package root — `import { ... } from "@metascript/ion"` works for everything. Sub-module deep-imports are not stable.
+
+## Single instance
+
+An Ion app is multi-instance by default: a second launch (or a deep link) starts a new process, which sees its URL as its cold-start `deeplink`. An app that wants one instance asks for it before the first window, as Electron's `requestSingleInstanceLock` does:
+
+```ts
+import { requestSingleInstance, createWindow, runLoop } from "@metascript/ion"
+
+if (!requestSingleInstance()) exit(0)   // second launch: URL forwarded, first window raised
+createWindow("main", defaultOptions("MyApp", 1280 as int32, 800 as int32))
+runLoop()
+```
+
+`false` means an earlier process holds the lock; its `listen` handler already received the forwarded `deeplink`, and Ion does not exit, the app decides. Calling it after the first window throws. macOS always answers `true`, LaunchServices keeps one instance per bundle.
 
 ## Custom URI schemes
 
