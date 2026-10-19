@@ -65,6 +65,10 @@ void latReport(int phase) {
     for (int i = 0; i < n; i++) s[i] = s_samples[phase][i];
     qsort(s, n, sizeof(double), cmp);
     printf("%s: n=%d latency ms min=%.2f p50=%.2f p90=%.2f max=%.2f | refresh period %.3f ms\n", name, n, s[0], s[n / 2], s[(n * 9) / 10], s[n - 1], refreshPeriodMs());
+    if (phase == 0) {
+        double period = refreshPeriodMs();
+        printf("frameLatency %s: idle 250 ms p50 %.2f ms, limit 3 frame periods = %.2f ms\n", period > 0 && s[n / 2] <= 3 * period ? "PASS" : "FAIL", s[n / 2], 3 * period);
+    }
     fflush(stdout);
     free(s);
 }
