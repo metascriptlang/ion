@@ -22,7 +22,7 @@ export {
 export { onWake, WakeHandler } from "./wake";
 export { command, Command } from "./command";
 export {
-	createWindow, closeWindow, getWindow, windowCount, defaultOptions,
+	createWindow, closeWindow, getWindow, windowCount, requestSingleInstance, defaultOptions,
 	show, hide, focus, minimize, maximize,
 	setTitle, setSize, setPosition, pixelWidth, pixelHeight,
 	setAlwaysOnTop, setDecorations, setWindowContentProtected,

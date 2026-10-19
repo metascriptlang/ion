@@ -26,6 +26,10 @@
 // Lifecycle.
 int  ionInit(void);
 void ionQuit(void);
+// 1: this process holds the app's single-instance lock (or the platform gives one
+// instance anyway); 0: an earlier process holds it, our cold-start URL was forwarded
+// and its window raised. Same answer on every call; opt-in, never taken by ionInit.
+int  ionRequestSingleInstance(void);
 
 // ---- Windows and their content -------------------------------------------
 //

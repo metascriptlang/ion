@@ -4,9 +4,10 @@
 //   1. **Cold-start deep link** — if argv contains a `scheme://...` URL
 //      (registered via .desktop MimeType=x-scheme-handler/...), stash it in
 //      s_coldStartUrl. window.c replays as "deeplink" IPC after window opens.
-//   2. **Single-instance** — own a session-bus name (basename of /proc/self/exe).
+//   2. **Single-instance (opt-in)** — own a session-bus name (basename of /proc/self/exe).
 //      Secondary launches detect the name is taken, forward their URL via a
-//      DBus method call on the primary, then exit. Mirrors Win's named-mutex
+//      DBus method call on the primary; ionRequestSingleInstance returns 0 and the
+//      app decides whether to exit. Mirrors Win's named-mutex
 //      + WM_COPYDATA pattern; Mac gets this free via NSAppleEventManager.
 //   3. **GTK init** — required before any widget creation.
 //
@@ -133,8 +134,8 @@ static const GDBusInterfaceVTable kInterfaceVtable = {
     handleMethodCall, NULL, NULL, { 0 }
 };
 
-// Try to acquire single-instance bus name. Returns 1 if we became primary
-// (continue init), 0 if we were secondary (caller should exit). On bus
+// Try to acquire single-instance bus name. Returns 1 if we became primary,
+// 0 if we were secondary (URL forwarded, primary raised). On bus
 // errors (no session bus, headless / SSH session) we fall through as
 // "primary" so the app still runs — multi-instance is degraded UX, not
 // a fatal condition.
@@ -186,7 +187,7 @@ static int tryAcquireSingleInstance(void) {
     }
 
     // Secondary path: forward our cold-start URL (if any) to the primary,
-    // then activate (raise its window), then exit. Both calls are sync;
+    // then activate (raise its window). Both calls are sync;
     // primary returns immediately so we don't block long.
     if (s_coldStartUrl[0] != '\0') {
         g_dbus_connection_call_sync(conn,
@@ -220,12 +221,6 @@ int ionInit(void) {
     buildBusIdentity();
     captureColdStartUrl();
 
-    if (!tryAcquireSingleInstance()) {
-        // Secondary instance — URL forwarded, exit cleanly. exit() flushes
-        // stdio + runs atexit handlers; sufficient for transient launch.
-        exit(0);
-    }
-
     // gtk_init_check returns FALSE if X11/Wayland display unavailable
     // (headless / SSH without X forwarding). Caller can react via return 0.
     if (!gtk_init_check()) return 0;
@@ -234,6 +229,14 @@ int ionInit(void) {
     g_signal_connect(settings, "notify::gtk-interface-color-scheme", G_CALLBACK(onColorSchemeChanged), NULL);
     s_initialized = 1;
     return 1;
+}
+
+int ionRequestSingleInstance(void) {
+    static int s_answer = -1;
+    if (s_answer >= 0) return s_answer;
+    if (!ionInit()) return 0;
+    s_answer = tryAcquireSingleInstance();
+    return s_answer;
 }
 
 void ionQuit(void) {

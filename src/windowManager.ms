@@ -8,7 +8,7 @@
 //   if (main === null) return 1;
 
 import {
-    ionInit, ionCreateWindow, ionCloseWindow, ionWindowCount, ionFindWindow,
+    ionInit, ionRequestSingleInstance, ionCreateWindow, ionCloseWindow, ionWindowCount, ionFindWindow,
     ionShowWindow, ionHideWindow, ionFocusWindow,
     ionMinimizeWindow, ionMaximizeWindow,
     ionSetWindowTitle, ionSetWindowSize, ionSetWindowPosition,
@@ -88,7 +88,18 @@ function flagsFromOptions(o: WindowOptions): int32 {
 
 // ---- Lifecycle ------------------------------------------------------------
 
+let _windowOpened = false;
+
+// Opt-in single instance, before the first window. True: this process holds the
+// lock. False: an earlier process holds it, our cold-start URL was forwarded to
+// it and its window raised; the app decides whether to exit.
+export function requestSingleInstance(): boolean {
+    if (_windowOpened) throw new Error("requestSingleInstance must be called before the first createWindow");
+    return ionRequestSingleInstance() !== (0 as int32);
+}
+
 export function createWindow(label: string, options: WindowOptions): Window | null {
+    _windowOpened = true;
     if (ionInit() === (0 as int32)) return null as unknown as Window | null;
     const id = ionCreateWindow(label, options.title,
                                options.width, options.height,

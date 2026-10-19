@@ -1,9 +1,9 @@
 // Ion Windows — process lifecycle: ionInit / ionQuit + deep link bootstrap.
 //
 // ionInit handles three things native-side before MS user code resumes:
-//   1. **Single-instance** — named mutex per .exe path. Secondary launches
-//      forward their argv URL to the primary window via WM_COPYDATA, then
-//      ExitProcess. Mac gets this automatically via LSGetApplicationForURL.
+//   1. **Single-instance (opt-in, ionRequestSingleInstance)** — named mutex per
+//      .exe path. A secondary forwards its argv URL to the primary window via
+//      WM_COPYDATA and raises it; the app decides whether to exit.
 //   2. **Cold-start deep link** — if argv contains a `scheme://...` URL
 //      (registered scheme launched the app), stash it in s_coldStartUrl.
 //      Replayed as a "deeplink" IPC after the window is created
@@ -67,9 +67,9 @@ static int buildMutexName(wchar_t *out, size_t outCap) {
     return 1;
 }
 
-// Forward s_coldStartUrl to the already-running primary, then exit. Called
+// Forward s_coldStartUrl to the already-running primary and raise it. Called
 // only when our mutex acquisition saw ERROR_ALREADY_EXISTS.
-static void forwardToPrimaryAndExit(void) {
+static void forwardToPrimary(void) {
     HWND primary = FindWindowW(kMainWindowClass, NULL);
     if (primary != NULL) {
         if (s_coldStartUrl[0] != '\0') {
@@ -84,7 +84,6 @@ static void forwardToPrimaryAndExit(void) {
         ShowWindow(primary, SW_SHOWNORMAL);
         SetForegroundWindow(primary);
     }
-    ExitProcess(0);
 }
 
 static int s_oleInitialized = 0;
@@ -101,18 +100,26 @@ int ionInit(void) {
 
     captureColdStartUrl();
 
-    // Single-instance gate. Mutex stays alive for the process lifetime;
-    // OS reclaims on ExitProcess. We never close it explicitly because
-    // ionQuit can run mid-shutdown when releasing is more risk than help.
+    return s_hInstance != NULL ? 1 : 0;
+}
+
+// The mutex stays alive for the process lifetime; the OS reclaims it on exit.
+// We never close it explicitly because ionQuit can run mid-shutdown when
+// releasing is more risk than help.
+int ionRequestSingleInstance(void) {
+    static int s_answer = -1;
+    if (s_answer >= 0) return s_answer;
+    if (!ionInit()) return 0;
+    s_answer = 1;
     wchar_t mutexName[MAX_PATH];
     if (buildMutexName(mutexName, MAX_PATH)) {
         HANDLE m = CreateMutexW(NULL, FALSE, mutexName);
         if (m != NULL && GetLastError() == ERROR_ALREADY_EXISTS) {
-            forwardToPrimaryAndExit();  // does not return
+            forwardToPrimary();
+            s_answer = 0;
         }
     }
-
-    return s_hInstance != NULL ? 1 : 0;
+    return s_answer;
 }
 
 void ionQuit(void) {

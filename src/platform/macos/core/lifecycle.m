@@ -14,6 +14,11 @@ int ionInit(void) {
     return ok;
 }
 
+// LaunchServices starts one instance of a bundle and delivers later URLs to it.
+int ionRequestSingleInstance(void) {
+    return 1;
+}
+
 void ionQuit(void) {
     SDL_Quit();
 }
