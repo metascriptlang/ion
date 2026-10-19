@@ -87,8 +87,15 @@ public:
     HRESULT STDMETHODCALLTYPE put_TreatAsSecure(BOOL value) override { (void)value; return S_OK; }
 
     HRESULT STDMETHODCALLTYPE GetAllowedOrigins(UINT32 *count, LPWSTR **origins) override {
-        if (count) *count = 0;
-        if (origins) *origins = nullptr;
+        if (!count || !origins) return E_POINTER;
+        *count = 0;
+        *origins = (LPWSTR *)CoTaskMemAlloc(sizeof(LPWSTR));
+        if (!*origins) return E_OUTOFMEMORY;
+        (*origins)[0] = (LPWSTR)CoTaskMemAlloc(2 * sizeof(wchar_t));
+        if (!(*origins)[0]) { CoTaskMemFree(*origins); *origins = nullptr; return E_OUTOFMEMORY; }
+        (*origins)[0][0] = L'*';
+        (*origins)[0][1] = 0;
+        *count = 1;
         return S_OK;
     }
     HRESULT STDMETHODCALLTYPE SetAllowedOrigins(UINT32 count, LPCWSTR *origins) override {
