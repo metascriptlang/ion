@@ -41,6 +41,7 @@ export { setContentProtected } from "./security";
 export { setSecret, getSecret, deleteSecret } from "./keychain";
 export { registerStaticProtocol, registerAssetScope } from "./protocol";
 export { installTray, installTrayImage, uninstallTray } from "./tray";
+export { setAppMenu, MenuItem, MenuItemKind, MenuRole, Submenu } from "./menu";
 export { notify } from "./notify";
 export {
 	registerHotkey, registerHotkeyKey,

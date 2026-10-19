@@ -373,6 +373,37 @@ void ionInstallTray(const char *title);
 void ionInstallTrayImage(const char *pngPath);
 void ionUninstallTray(void);
 
+// ---- App menu bar (macos/chrome/menu.m; common/noMenu.c on Windows and Linux) ----
+// ionMenuBegin, then ionMenuAddSubmenu before each menu's items, then ionMenuCommit.
+#define ION_MENU_UNSUPPORTED  (-1)
+#define ION_MENU_UNKNOWN_KEY  (-2)
+#define ION_MENU_UNKNOWN_ROLE (-3)
+
+// Mirror MenuRole in menu.ms.
+#define ION_MENU_ROLE_ABOUT        0
+#define ION_MENU_ROLE_HIDE         1
+#define ION_MENU_ROLE_HIDE_OTHERS  2
+#define ION_MENU_ROLE_SHOW_ALL     3
+#define ION_MENU_ROLE_QUIT         4
+#define ION_MENU_ROLE_CLOSE_WINDOW 5
+#define ION_MENU_ROLE_MINIMIZE     6
+#define ION_MENU_ROLE_ZOOM         7
+#define ION_MENU_ROLE_FULLSCREEN   8
+#define ION_MENU_ROLE_UNDO         9
+#define ION_MENU_ROLE_REDO         10
+#define ION_MENU_ROLE_CUT          11
+#define ION_MENU_ROLE_COPY         12
+#define ION_MENU_ROLE_PASTE        13
+#define ION_MENU_ROLE_SELECT_ALL   14
+#define ION_MENU_ROLE_RELOAD       15
+
+int ionMenuBegin(void);
+int ionMenuAddSubmenu(const char *title);
+int ionMenuAddItem(const char *itemId, const char *title, const char *key, int modifiers);
+int ionMenuAddRole(int role);
+int ionMenuAddSeparator(void);
+int ionMenuCommit(void);
+
 // Post an OS notification. `id` identifies it for the click callback.
 // First call requests permission; subsequent calls reuse the granted state.
 // Click → queues "notification.click" with payload = id.
@@ -501,6 +532,7 @@ int      ionUpdateRelaunchAndExit(const char *destAppPath);
 //   ---------------------  ---------------  -------------------------------
 //   "ping"                 any              JS code calling window.__ion__.invoke
 //   "tray.click"           ""               OS tray icon clicked
+//   "menu.click"           <item-id>        app menu item clicked or its key pressed (macOS)
 //   "notification.click"   <notif-id>       OS notification clicked
 //   "hotkey"               <hotkey-id>      global hotkey hit
 //   "deeplink"             <url>            URL-scheme handler invoked
