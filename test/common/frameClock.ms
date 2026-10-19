@@ -12,6 +12,7 @@ extern function ion_frame_window_close(win: int32): void;
 extern function ion_frame_window_state(win: int32, active: int32, visible: int32): void;
 extern function ion_frame_wanted(): int32;
 extern function ion_frame_emit(timeMs: float64): int32;
+extern function ion_frame_pacing_window(): int32;
 extern function ionWindowSetFramePolicy(win: int32, policy: int32): void;
 extern function ionWindowSetFrameWhenInactive(win: int32, enabled: int32): void;
 extern function ionWindowRequestFrame(win: int32): void;
@@ -122,4 +123,16 @@ test "setters on a closed window are ignored and a reopened id starts fresh" {
 	ion_frame_window_close(5 as int32);
 	ion_frame_window_open(5 as int32);
 	assert ion_frame_wanted() === 0 as int32;
+}
+
+test "the pacing window is the last requester while due, else the first due window" {
+	reset();
+	ion_frame_window_open(0 as int32);
+	ion_frame_window_open(1 as int32);
+	assert ion_frame_pacing_window() === -1 as int32;
+	ionWindowSetFramePolicy(0 as int32, Continuous);
+	ionWindowRequestFrame(1 as int32);
+	assert ion_frame_pacing_window() === 1 as int32;
+	assert ion_frame_emit(1.0) === 2 as int32;
+	assert ion_frame_pacing_window() === 0 as int32;
 }
