@@ -259,9 +259,9 @@ a session (WebView2 process spawn + COM init; a splash screen is the answer),
 and the GUI subsystem detaching `stdout`/`stderr` from the launching terminal
 (`app.exe > log.txt 2>&1` while debugging).
 
-Window class background (2026-10-20): the class has no brush and `WM_ERASEBKGND` returns 1, so
-GDI never fills the window. `examples/nativeContent.ms` still shows 808 of 1760 sampled pixels at
-(255,255,255) with the old and the new class: that white is the DWM redirection surface, not the
+Window class background (2026-10-20): a null class brush with `WM_ERASEBKGND` returning 1 changed
+nothing, so the class keeps `COLOR_WINDOW+1`. `examples/nativeContent.ms` shows 808 of 1760 sampled
+pixels at (255,255,255) with either class: that white is the DWM redirection surface, not the
 brush. `WS_EX_NOREDIRECTIONBITMAP` removed it (`helloWebview` and `nativeContent` still painted) but
 made every pixel no layer covers transparent, so Ion leaves it out; an app that needs an opaque
 background paints one. Resize strips are not measured.
