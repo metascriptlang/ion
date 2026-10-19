@@ -9,13 +9,19 @@
 //                               one visible window and the clock thread for that long; one line
 //                               per call that took under 1 ms or over 3 periods
 //
+//   vsyncGuard.exe --idle       40 trials per mode of sleep 250 ms then three timed clock calls, for
+//                               the plain wait, the wait with DCompositionBoostCompositorClock(TRUE)
+//                               per trial, with it on for the whole run, and IDXGIOutput::WaitForVBlank;
+//                               then the same with no sleep as the control
+//
 // With `guard` the loop treats a call that took under 1 ms as early and sleeps one refresh
 // period (gpui's vsync.rs mechanism), so the two interval distributions can be compared.
 //
-// Build: zig cc -O1 examples/vsyncGuard.c -o vsyncGuard.exe -luser32 -ldwmapi
+// Build: zig cc -O1 examples/vsyncGuard.c -o vsyncGuard.exe -luser32 -ldwmapi -ldxgi -ldxguid
 
 #include <windows.h>
 #include <dwmapi.h>
+#include <dxgi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -136,10 +142,112 @@ static void pump(DWORD totalMs) {
     }
 }
 
+typedef HRESULT (WINAPI *BoostFn)(BOOL enable);
+
+#define TRIALS 40
+#define MODES 4
+static const char *const kModeName[MODES] = {"plain", "boost", "boostAll", "vblank"};
+static BoostFn s_boost;
+static IDXGIOutput *s_output;
+static HWND s_idleWin;
+static double s_idleCall[2][MODES][3][TRIALS];
+static LONG s_idleRet[2][MODES];
+static LONG s_boostRet[2][MODES];
+static LONG s_boostOffRet[2][MODES];
+static int s_idleGapMs;
+
+static LONG oneWait(int mode) {
+    if (mode == 3) return (LONG)s_output->lpVtbl->WaitForVBlank(s_output);
+    return (LONG)s_wait(0, NULL, INFINITE);
+}
+
+static DWORD WINAPI idleThread(void *arg) {
+    int control = (int)(INT_PTR)arg;
+    for (int mode = 0; mode < MODES; mode++) {
+        if (mode == 2) s_boostRet[control][mode] = (LONG)s_boost(TRUE);
+        for (int t = 0; t < TRIALS; t++) {
+            if (s_idleGapMs > 0 && !control) Sleep(s_idleGapMs);
+            if (mode == 1) s_boostRet[control][mode] = (LONG)s_boost(TRUE);
+            for (int c = 0; c < 3; c++) {
+                LARGE_INTEGER t0, t1;
+                QueryPerformanceCounter(&t0);
+                s_idleRet[control][mode] = oneWait(mode);
+                QueryPerformanceCounter(&t1);
+                s_idleCall[control][mode][c][t] = ms(t1.QuadPart - t0.QuadPart);
+            }
+            if (mode == 1) s_boostOffRet[control][mode] = (LONG)s_boost(FALSE);
+        }
+        if (mode == 2) s_boostOffRet[control][mode] = (LONG)s_boost(FALSE);
+        Sleep(500);
+    }
+    return 0;
+}
+
+static IDXGIOutput *outputOfWindow(HWND w) {
+    HMONITOR mon = MonitorFromWindow(w, MONITOR_DEFAULTTONEAREST);
+    IDXGIFactory1 *f = NULL;
+    if (FAILED(CreateDXGIFactory1(&IID_IDXGIFactory1, (void **)&f))) return NULL;
+    IDXGIOutput *found = NULL;
+    IDXGIAdapter1 *a;
+    for (UINT i = 0; !found && f->lpVtbl->EnumAdapters1(f, i, &a) == S_OK; i++) {
+        IDXGIOutput *o;
+        for (UINT j = 0; !found && a->lpVtbl->EnumOutputs(a, j, &o) == S_OK; j++) {
+            DXGI_OUTPUT_DESC d;
+            if (SUCCEEDED(o->lpVtbl->GetDesc(o, &d)) && d.Monitor == mon) found = o;
+            else o->lpVtbl->Release(o);
+        }
+        a->lpVtbl->Release(a);
+    }
+    f->lpVtbl->Release(f);
+    return found;
+}
+
+static int cmpd(const void *a, const void *b) { return cmp(a, b); }
+
+static void idleRow(const char *label, double *v) {
+    double s[TRIALS];
+    memcpy(s, v, sizeof s);
+    qsort(s, TRIALS, sizeof(double), cmpd);
+    printf("  %-22s min=%7.2f p50=%7.2f p90=%7.2f max=%8.2f\n", label, s[0], s[TRIALS / 2], s[(TRIALS * 9) / 10], s[TRIALS - 1]);
+}
+
+static void idleReport(void) {
+    for (int control = 0; control < 2; control++) {
+        printf("%s (period %.3f ms, %d trials per mode)\n", control ? "control: back-to-back, no idle" : "afterIdle: sleep 250 ms before each trial", s_periodMs, TRIALS);
+        for (int mode = 0; mode < MODES; mode++) {
+            printf(" %s  last wait ret=0x%lx  boost(TRUE) ret=0x%lx  boost(FALSE) ret=0x%lx\n", kModeName[mode], (unsigned long)s_idleRet[control][mode],
+                   (unsigned long)s_boostRet[control][mode], (unsigned long)s_boostOffRet[control][mode]);
+            idleRow("call 1 (first) ms", s_idleCall[control][mode][0]);
+            idleRow("call 2 ms", s_idleCall[control][mode][1]);
+            idleRow("call 3 ms", s_idleCall[control][mode][2]);
+        }
+    }
+}
+
+static int runIdle(HWND win) {
+    HMODULE dcomp = GetModuleHandleW(L"dcomp.dll");
+    s_boost = dcomp ? (BoostFn)(void *)GetProcAddress(dcomp, "DCompositionBoostCompositorClock") : NULL;
+    if (!s_boost) { printf("DCompositionBoostCompositorClock not found\n"); return 1; }
+    s_output = outputOfWindow(win);
+    if (!s_output) { printf("no DXGI output for the window's monitor\n"); return 1; }
+    s_idleGapMs = 250;
+    pump(500);
+    for (int control = 1; control >= 0; control--) {
+        HANDLE th = CreateThread(NULL, 0, idleThread, (void *)(INT_PTR)control, 0, NULL);
+        SetThreadPriority(th, THREAD_PRIORITY_TIME_CRITICAL);
+        while (WaitForSingleObject(th, 20) == WAIT_TIMEOUT) pump(1);
+        CloseHandle(th);
+    }
+    idleReport();
+    return 0;
+}
+
 int main(int argc, char **argv) {
     double longSeconds = 0;
+    int idleCmp = 0;
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "guard") == 0) s_guard = 1;
+        if (strcmp(argv[i], "--idle") == 0) idleCmp = 1;
+        else if (strcmp(argv[i], "guard") == 0) s_guard = 1;
         else if (strcmp(argv[i], "--long") == 0 && i + 1 < argc) { longSeconds = atof(argv[++i]); s_long = longSeconds > 0; }
         else if (strcmp(argv[i], "plain") != 0) { printf("usage: vsyncGuard [plain|guard] [--long <seconds>]\n"); return 2; }
     }
@@ -165,6 +273,12 @@ int main(int argc, char **argv) {
     RegisterClassW(&wc);
     HWND win = CreateWindowExW(0, L"vsyncGuard", L"vsyncGuard probe", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 200, 200, 400, 300, NULL, NULL, inst, NULL);
     HWND cover = NULL;
+    if (idleCmp) {
+        QueryPerformanceFrequency(&s_freq);
+        int rc = runIdle(win);
+        DestroyWindow(win);
+        return rc;
+    }
 
     LARGE_INTEGER start;
     QueryPerformanceCounter(&start);
