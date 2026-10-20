@@ -93,7 +93,7 @@ def inspect(variant):
     exports = run("nm-" + variant, [ndk_bin / "llvm-nm", "-D", "--defined-only", path])
     for symbol in ("MsMain", "Java_dev_metascript_app_NativeApp_start", "Java_dev_metascript_app_NativeApp_resize",
                    "Java_dev_metascript_app_NativeApp_pause", "Java_dev_metascript_app_NativeApp_resume",
-                   "Java_dev_metascript_app_NativeApp_destroy"):
+                   "Java_dev_metascript_app_NativeApp_destroy", "Java_dev_metascript_app_NativeApp_newIntent"):
         assert re.search(rf"\b{symbol}$", exports, re.M), f"{variant} misses {symbol}"
     segments = run("readelf-" + variant, [ndk_bin / "llvm-readelf", "-lW", path])
     loads = [line.split()[-1] for line in segments.splitlines() if line.split()[:1] == ["LOAD"]]
@@ -218,6 +218,23 @@ try:
     run("relaunch", [adb, "shell", "am", "start", "-W", "-n", activity])
     settle(lambda seen: seen[-1] == "resume value=17")
     assert pid() == process, "lifecycle crossed processes"
+    run("logcat-clear", [adb, "logcat", "-c"])
+    run("live-intent", [adb, "shell", "am", "start", "-W", "-n", activity, "-d", "ionfixture://live"])
+    live = settle(lambda seen: "newIntent data=ionfixture://live value=17" in seen and seen[-1] == "resume value=17")
+    assert "start value=17" not in live and pid() == process, f"a new intent recreated the activity: {live}"
+    run("home-before-kill", [adb, "shell", "input", "keyevent", "KEYCODE_HOME"])
+    settle(lambda seen: seen[-1] == "pause value=17")
+    deadline = time.monotonic() + 15
+    while subprocess.run([str(adb), "shell", "pidof", package], capture_output=True).returncode == 0:
+        run("kill", [adb, "shell", "am", "kill", package])
+        if time.monotonic() > deadline:
+            raise RuntimeError(f"am kill left the process; logs={results}")
+        time.sleep(0.5)
+    run("logcat-clear", [adb, "logcat", "-c"])
+    run("cold-intent", [adb, "shell", "am", "start", "-W", "-n", activity, "-d", "ionfixture://cold"])
+    cold = settle(lambda seen: "newIntent data=ionfixture://cold value=17" in seen and "resume value=17" in seen)
+    (results / f"{sequence:02d}-cold-intent.txt").write_text("\n".join(cold))
+    run("logcat-clear", [adb, "logcat", "-c"])
     task = re.search(r"taskId=(\d+): " + re.escape(activity), run("stacks", [adb, "shell", "am", "stack", "list"]))
     run("remove-task", [adb, "shell", "am", "stack", "remove", task.group(1)])
     lifecycle = settle(lambda seen: seen[-1] == "destroy value=17")

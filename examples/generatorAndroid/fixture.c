@@ -76,6 +76,15 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_destroy(JNIEnv *env, jc
 	report("destroy");
 }
 
+JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_newIntent(JNIEnv *env, jclass cls, jobject intent) {
+	(void)cls;
+	jstring data = (*env)->CallObjectMethod(env, intent,
+		(*env)->GetMethodID(env, (*env)->GetObjectClass(env, intent), "getDataString", "()Ljava/lang/String;"));
+	const char *text = data ? (*env)->GetStringUTFChars(env, data, NULL) : NULL;
+	__android_log_print(ANDROID_LOG_INFO, "IonFixture", "newIntent data=%s value=%d", text ? text : "", fixtureValue);
+	if (text) (*env)->ReleaseStringUTFChars(env, data, text);
+}
+
 JNIEXPORT void JNICALL Java_dev_ion_fixture_Tap_tapped(JNIEnv *env, jclass cls, jint tag) {
 	(void)env;
 	(void)cls;

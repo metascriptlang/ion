@@ -120,14 +120,16 @@ if (first.ok && second.ok) {
 	const manifest = file(files, "app/src/main/AndroidManifest.xml");
 	check(manifest.includes("android:name=\"dev.metascript.app.MainActivity\""), "manifest names the bootstrap activity");
 	check(manifest.includes("android:configChanges=\""), "size changes reach the running activity");
+	check(manifest.includes("android:launchMode=\"singleTask\""), "a new intent reaches the running activity");
 	check(file(files, "app/src/main/res/values/strings.xml").includes("<string name=\"app_name\">Mobile</string>"), "label");
 	const native = file(files, "app/src/main/java/dev/metascript/app/NativeApp.java");
 	check(native.includes("package dev.metascript.app;") && native.includes("System.loadLibrary(\"metascript\")"), "JNI class loads the stable library");
-	for (const method of ["start(FrameLayout root)", "resize(int width, int height)", "pause()", "resume()", "destroy()"]) {
+	for (const method of ["start(FrameLayout root)", "resize(int width, int height)", "pause()", "resume()", "destroy()", "newIntent(Intent intent)"]) {
 		check(native.includes("static native void " + method + ";"), "JNI method " + method);
 	}
 	const activity = file(files, "app/src/main/java/dev/metascript/app/MainActivity.java");
 	check(activity.includes("new FrameLayout(this)") && activity.includes("NativeApp.start(root)"), "activity creates the root");
+	check(activity.includes("NativeApp.newIntent(intent);"), "activity forwards a new intent");
 	check(file(files, "app/proguard-rules.pro").includes("-keep class dev.metascript.app.NativeApp"), "R8 keeps the JNI class");
 }
 
