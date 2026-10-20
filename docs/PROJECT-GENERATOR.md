@@ -342,8 +342,11 @@ byte for byte. Why the shape is what it is:
   `MainActivity` creates the root `FrameLayout` and forwards start, measured
   resize, pause, resume and destroy on the main thread. The manifest declares
   `configChanges` for size and orientation, so rotation reaches `resize` in the
-  same activity instead of recreating it. The fixture's `fixture.c` shows the
-  native half; Neon owns the real one.
+  same activity instead of recreating it. The activity is `singleTask` and
+  forwards `onNewIntent` as `newIntent(Intent)`, as Tauri's template does, so
+  a notification tap or a link reaches the running app, and the app the system
+  recreates after killing its process; `getIntent()` stays the launch intent.
+  The fixture's `fixture.c` shows the native half; Neon owns the real one.
 - **Release signing from the environment.** `ION_ANDROID_STORE_FILE`,
   `ION_ANDROID_STORE_PASSWORD`, `ION_ANDROID_KEY_ALIAS` and
   `ION_ANDROID_KEY_PASSWORD`, or the matching `-Pion.android.*` properties.
