@@ -1,4 +1,5 @@
-import { Graph, Target, Platform, platformName } from "./description";
+import { Graph, Target, Platform, Slot, slotName, platformName } from "./description";
+import { join } from "std/fs/path";
 
 export function shellQuote(value: string): string {
 	return "'" + value.replaceAll("'", "'\"'\"'") + "'";
@@ -62,6 +63,53 @@ function iosScript(entry: string, compiler: string): string {
 		"-isysroot \\\"$SDKROOT\\\"\" \"--output=$output\" \"$@\"\n";
 }
 
+function copySubfolder(slot: Slot): int32 {
+	return match (slot) {
+		Slot.Executables => 6,
+		Slot.Libraries => 10,
+		Slot.Resources => 7,
+	};
+}
+
+function destinationDirectory(destination: string): string {
+	const slash = destination.lastIndexOf("/");
+	return slash < 0 ? "" : destination.slice(0, slash);
+}
+
+struct CopyPhases {
+	objects: string;
+	phases: string;
+	references: string;
+}
+
+function copyPhases(graph: Graph, target: Target, root: string, index: int32): CopyPhases {
+	let result: CopyPhases = { objects: "", phases: "", references: "" };
+	let groups: Vec<string> = [];
+	let ordinal: int32 = 0;
+	for (const placed of graph.files) {
+		if (placed.target != target.name) continue;
+		const key = slotName(placed.slot) + "|" + destinationDirectory(placed.destination);
+		if (groups.includes(key)) continue;
+		let members = "";
+		for (const member of graph.files) {
+			if (member.target != target.name) continue;
+			if (slotName(member.slot) + "|" + destinationDirectory(member.destination) != key) continue;
+			const buildFileId = id(300000 + index * 1000 + ordinal);
+			const referenceId = id(400000 + index * 1000 + ordinal);
+			members += buildFileId + ",";
+			result.references += referenceId + ",";
+			result.objects += `${buildFileId} = { isa = PBXBuildFile; fileRef = ${referenceId}; };\n`;
+			result.objects += `${referenceId} = { isa = PBXFileReference; lastKnownFileType = file; path = ${quote(join(root, member.source))}; sourceTree = "<absolute>"; };\n`;
+			ordinal += 1;
+		}
+		const phaseId = id(500000 + index * 1000 + groups.length);
+		result.phases += phaseId + ",";
+		result.objects += `${phaseId} = { isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ${quote(destinationDirectory(placed.destination))}; dstSubfolderSpec = ${copySubfolder(placed.slot)}; files = (${members}); runOnlyForDeploymentPostprocessing = 0; };\n`;
+		groups.push(key);
+	}
+	return result;
+}
+
 export function xcodeProject(graph: Graph, root: string, compiler: string): Result<string, string> {
 	for (const target of graph.targets) {
 		if (target.platform == Platform.Android || target.platform == Platform.Windows) {
@@ -96,13 +144,16 @@ export function xcodeProject(graph: Graph, root: string, compiler: string): Resu
 				objects += `${dependencyId} = { isa = PBXTargetDependency; target = ${id(100 + ti * 100)}; targetProxy = ${proxyId}; };\n`;
 			}
 		}
+		const copies = copyPhases(graph, target, root, i);
+		objects += copies.objects;
+		sources += copies.references;
 		const entry = root + "/" + target.entry;
 		const script = target.platform == Platform.Ios ? iosScript(entry, compiler) :
 			"set -eu\ncd " + shellQuote(root) +
 			"\nmkdir -p \"$TARGET_BUILD_DIR/" + target.name + ".app/Contents/MacOS\"\n" +
 			shellQuote(compiler) + " build " + shellQuote(target.entry) +
 			" --cc=clang --output=\"$TARGET_BUILD_DIR/$EXECUTABLE_PATH\"\n";
-		objects += `${targetId} = { isa = PBXNativeTarget; name = ${quote(target.name)}; productName = ${quote(target.name)}; productType = "com.apple.product-type.application"; productReference = ${id(base + 1)}; buildConfigurationList = ${id(base + 2)}; buildPhases = (${id(base + 5)},); buildRules = (); dependencies = (${dependencies}); };\n`;
+		objects += `${targetId} = { isa = PBXNativeTarget; name = ${quote(target.name)}; productName = ${quote(target.name)}; productType = "com.apple.product-type.application"; productReference = ${id(base + 1)}; buildConfigurationList = ${id(base + 2)}; buildPhases = (${id(base + 5)},${copies.phases}); buildRules = (); dependencies = (${dependencies}); };\n`;
 		objects += `${id(base + 1)} = { isa = PBXFileReference; explicitFileType = wrapper.application; path = ${quote(target.name + ".app")}; sourceTree = BUILT_PRODUCTS_DIR; };\n`;
 		objects += `${id(base + 2)} = { isa = XCConfigurationList; buildConfigurations = (${id(base + 3)},${id(base + 4)},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; };\n`;
 		objects += `${id(base + 3)} = { isa = XCBuildConfiguration; name = Debug; buildSettings = { ${buildSettings(target)} }; };\n`;

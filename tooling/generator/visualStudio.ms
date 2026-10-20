@@ -1,4 +1,5 @@
-import { Graph, Target, Platform, platformName } from "./description";
+import { Graph, Target, PlacedFile, Platform, Arch, Slot, platformName, archName } from "./description";
+import { join } from "std/fs/path";
 import { GeneratedFile } from "./gradle";
 
 const cppProjectType = "8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942";
@@ -50,14 +51,6 @@ function cmdSafe(label: string, path: string): Result<string, string> {
 		return Result.err(label + " cannot be used in a cmd build script: " + path);
 	}
 	return Result.ok(windowsPath(path));
-}
-
-function validAsset(asset: string): boolean {
-	if (asset == "" || asset.startsWith("/") || asset.startsWith("\\") || asset.includes(":")) return false;
-	for (const segment of asset.replaceAll("\\", "/").split("/")) {
-		if (segment == "" || segment == "." || segment == "..") return false;
-	}
-	return true;
 }
 
 function solution(graph: Graph): string {
@@ -203,9 +196,46 @@ function manifest(target: Target): string {
 	]);
 }
 
-function buildScript(target: Target, root: string, compiler: string, ionRoot: string): Result<string, string> {
+function slotDirectory(slot: Slot): string {
+	return match (slot) {
+		Slot.Executables => "%out%",
+		Slot.Libraries => "%out%",
+		Slot.Resources => "%out%resources\\",
+	};
+}
+
+function finalPath(placed: PlacedFile): string {
+	return slotDirectory(placed.slot) + windowsPath(placed.destination);
+}
+
+function describePlaced(placed: PlacedFile): string {
+	return placed.owner + " places '" + placed.source + "' at '" + finalPath(placed) + "'";
+}
+
+function checkCollisions(target: Target, files: Vec<PlacedFile>): Result<void, string> {
+	const executable = "%out%" + target.name + ".exe";
+	for (let i = 0; i < files.length; i += 1) {
+		if (files[i].target != target.name) continue;
+		const path = finalPath(files[i]).toLowerCase();
+		if (path == executable.toLowerCase()) {
+			return Result.err(
+				"file conflict for '" + target.name + "': " + files[i].owner + " places '" +
+				files[i].source + "' over the executable '" + target.name + ".exe'",
+			);
+		}
+		for (let j = 0; j < i; j += 1) {
+			if (files[j].target != target.name) continue;
+			if (finalPath(files[j]).toLowerCase() != path || files[j].source == files[i].source) continue;
+			return Result.err(
+				"file conflict for '" + target.name + "': " + describePlaced(files[j]) + ", " + describePlaced(files[i]),
+			);
+		}
+	}
+	return Result.ok(null);
+}
+
+function buildScript(target: Target, files: Vec<PlacedFile>, root: string, compiler: string): Result<string, string> {
 	const msc = try cmdSafe("compiler path", compiler);
-	const loader = try cmdSafe("Ion checkout", ionRoot + "/vendor/webview2/runtime/x64/WebView2Loader.dll");
 	const entry = try cmdSafe("entry", root + "/" + target.entry);
 	const exe = "\"%out%" + target.name + ".exe\"";
 	let out: string[] = [
@@ -223,24 +253,29 @@ function buildScript(target: Target, root: string, compiler: string, ionRoot: st
 		"pushd \"%work%msc\"",
 		"\"" + msc + "\" build \"" + entry + "\" %mode% \"--link=%~dp0obj\\" + target.name + ".res\" \"--output=%out%" + target.name + ".exe\" || goto fail",
 		"popd",
-		"copy /y \"" + loader + "\" \"%out%\" >nul || goto fail",
-		"if exist \"%out%resources\" rmdir /s /q \"%out%resources\"",
 	];
-	for (const asset of target.assets) {
-		const source = try cmdSafe("asset", root + "/" + asset);
-		const destination = windowsPath(asset);
-		const slash = destination.lastIndexOf("\\");
-		const directory = slash < 0 ? "%out%resources" : "%out%resources\\" + destination.slice(0, slash);
-		out = out.concat([
-			"if not exist \"" + directory + "\" mkdir \"" + directory + "\"",
-			"copy /y \"" + source + "\" \"%out%resources\\" + destination + "\" >nul || goto fail",
-		]);
+	for (const placed of files) {
+		if (placed.target != target.name) continue;
+		const source = try cmdSafe("file", join(root, placed.source));
+		const destination = try cmdSafe("file", placed.destination);
+		out.push("call :place \"" + source + "\" \"" + slotDirectory(placed.slot) + destination + "\" || goto fail");
 	}
-	out = out.concat(["exit /b 0", ":fail", "del /q " + exe + " 2>nul", "exit /b 1"]);
+	out = out.concat([
+		"exit /b 0",
+		":fail",
+		"del /q " + exe + " 2>nul",
+		"exit /b 1",
+		":place",
+		"fc /b \"%~1\" \"%~2\" >nul 2>&1 && exit /b 0",
+		"for %%d in (\"%~2\") do if not exist \"%%~dpd\" mkdir \"%%~dpd\"",
+		"copy /y \"%~1\" \"%~2.tmp\" >nul || exit /b 1",
+		"move /y \"%~2.tmp\" \"%~2\" >nul || exit /b 1",
+		"exit /b 0",
+	]);
 	return Result.ok(crlf(out));
 }
 
-export function visualStudioProject(graph: Graph, root: string, compiler: string, ionRoot: string): Result<Vec<GeneratedFile>, string> {
+export function visualStudioProject(graph: Graph, root: string, compiler: string): Result<Vec<GeneratedFile>, string> {
 	for (const target of graph.targets) {
 		if (target.platform != Platform.Windows) {
 			return Result.err("Visual Studio project cannot contain the " + platformName(target.platform) + " target '" + target.name + "'");
@@ -249,8 +284,8 @@ export function visualStudioProject(graph: Graph, root: string, compiler: string
 			return Result.err("Windows target '" + target.name + "' sets deploymentTarget '" + target.deploymentTarget + "'; Windows targets have none");
 		}
 		if (!target.entry.endsWith(".ms")) return Result.err("Windows target '" + target.name + "' entry is not a .ms module: " + target.entry);
-		for (const asset of target.assets) {
-			if (!validAsset(asset)) return Result.err("asset of '" + target.name + "' must be a relative path inside the source directory: " + asset);
+		if (target.arch != Arch.X64) {
+			return Result.err("Windows target '" + target.name + "' is " + archName(target.arch) + "; the solution has only x64");
 		}
 	}
 	let files: Vec<GeneratedFile> = [{ path: graph.name + ".sln", content: solution(graph) }];
@@ -259,7 +294,8 @@ export function visualStudioProject(graph: Graph, root: string, compiler: string
 		files.push({ path: directory + target.name + ".vcxproj", content: vcxproj(target, root) });
 		files.push({ path: directory + target.name + ".rc", content: resource(target) });
 		files.push({ path: directory + target.name + ".manifest", content: manifest(target) });
-		const script = try buildScript(target, root, compiler, ionRoot);
+		try checkCollisions(target, graph.files);
+		const script = try buildScript(target, graph.files, root, compiler);
 		files.push({ path: directory + "build.cmd", content: script });
 	}
 	return Result.ok(files);

@@ -9,6 +9,43 @@ export function platformName(platform: Platform): string {
 	};
 }
 
+export enum Arch { X64, Arm64 }
+
+export function archName(arch: Arch): string {
+	return match (arch) {
+		Arch.X64 => "x64",
+		Arch.Arm64 => "arm64",
+	};
+}
+
+export enum Slot { Executables, Libraries, Resources }
+
+export function slotName(slot: Slot): string {
+	return match (slot) {
+		Slot.Executables => "Executables",
+		Slot.Libraries => "Libraries",
+		Slot.Resources => "Resources",
+	};
+}
+
+export struct Slice {
+	platform: Platform;
+	arch: Arch;
+	files: Vec<string>;
+}
+
+export struct Artifact {
+	name: string;
+	license: string;
+	slices: Vec<Slice>;
+}
+
+export struct Placement {
+	artifact: Artifact;
+	slot: Slot;
+	directory: string;
+}
+
 export struct AndroidSettings {
 	minSdk: int32;
 	compileSdk: int32;
@@ -25,11 +62,13 @@ const androidDefaults: AndroidSettings = {
 export struct Target {
 	name: string;
 	platform: Platform;
+	arch: Arch;
 	deploymentTarget: string;
 	entry: string;
 	bundleId: string;
 	dependencies: Vec<string>;
 	assets: Vec<string>;
+	files: Vec<Placement>;
 	android: AndroidSettings;
 }
 
@@ -38,9 +77,15 @@ export struct BundleId {
 	value: string;
 }
 
+export struct FileContribution {
+	target: string;
+	placement: Placement;
+}
+
 export struct Plugin {
 	name: string;
 	contribute: (targets: Span<Target>) => Vec<BundleId>;
+	files: (targets: Span<Target>) => Vec<FileContribution>;
 }
 
 export struct Project {
@@ -55,36 +100,45 @@ export struct BundleIdentity {
 	value: string;
 }
 
+export struct PlacedFile {
+	owner: string;
+	target: string;
+	slot: Slot;
+	source: string;
+	destination: string;
+}
+
 export struct Graph {
 	name: string;
 	targets: Vec<Target>;
 	identities: Vec<BundleIdentity>;
+	files: Vec<PlacedFile>;
 }
 
 export function app(this typeof Target, name: string, entry: string): Target {
 	return {
-		name, entry, platform: Platform.Macos, deploymentTarget: "13.0",
-		bundleId: "", dependencies: [], assets: [], android: androidDefaults,
+		name, entry, platform: Platform.Macos, arch: Arch.Arm64, deploymentTarget: "13.0",
+		bundleId: "", dependencies: [], assets: [], files: [], android: androidDefaults,
 	};
 }
 
 export function iosApp(this typeof Target, name: string, entry: string): Target {
 	return {
-		name, entry, platform: Platform.Ios, deploymentTarget: "15.0",
-		bundleId: "", dependencies: [], assets: [], android: androidDefaults,
+		name, entry, platform: Platform.Ios, arch: Arch.Arm64, deploymentTarget: "15.0",
+		bundleId: "", dependencies: [], assets: [], files: [], android: androidDefaults,
 	};
 }
 
 export function androidApp(this typeof Target, name: string, entry: string): Target {
 	return {
-		name, entry, platform: Platform.Android, deploymentTarget: "",
-		bundleId: "", dependencies: [], assets: [], android: androidDefaults,
+		name, entry, platform: Platform.Android, arch: Arch.Arm64, deploymentTarget: "",
+		bundleId: "", dependencies: [], assets: [], files: [], android: androidDefaults,
 	};
 }
 
 export function windowsApp(this typeof Target, name: string, entry: string): Target {
 	return {
-		name, entry, platform: Platform.Windows, deploymentTarget: "",
-		bundleId: "", dependencies: [], assets: [], android: androidDefaults,
+		name, entry, platform: Platform.Windows, arch: Arch.X64, deploymentTarget: "",
+		bundleId: "", dependencies: [], assets: [], files: [], android: androidDefaults,
 	};
 }

@@ -1,4 +1,17 @@
-import { Project, Graph, Target, BundleIdentity, Platform } from "./description";
+import {
+	Project,
+	Graph,
+	Target,
+	BundleIdentity,
+	Platform,
+	Placement,
+	PlacedFile,
+	Slot,
+	platformName,
+	archName,
+	slotName,
+} from "./description";
+import { basename } from "std/fs/path";
 
 function targetIndex(targets: Span<Target>, name: string): int32 {
 	for (let i = 0; i < targets.length; i += 1) {
@@ -32,6 +45,14 @@ function validDeploymentTarget(value: string): boolean {
 
 function quoted(value: string): string {
 	return "'" + value + "'";
+}
+
+function validRelativePath(path: string): boolean {
+	if (path == "" || path.startsWith("/") || path.startsWith("\\") || path.includes(":")) return false;
+	for (const segment of path.replaceAll("\\", "/").split("/")) {
+		if (segment == "" || segment == "." || segment == "..") return false;
+	}
+	return true;
 }
 
 function claim(identity: BundleIdentity): string {
@@ -76,10 +97,61 @@ function record(ref graph: Graph, identity: BundleIdentity): Result<void, string
 	return Result.ok(null);
 }
 
+function describe(placed: PlacedFile): string {
+	return placed.owner + " places " + quoted(placed.source) + " at " + slotName(placed.slot) + " " +
+		quoted(placed.destination);
+}
+
+function recordFile(ref graph: Graph, placed: PlacedFile): Result<void, string> {
+	for (const previous of graph.files) {
+		if (previous.target != placed.target || previous.slot != placed.slot) continue;
+		if (previous.destination != placed.destination) continue;
+		if (previous.source == placed.source) return Result.ok(null);
+		return Result.err(
+			"file conflict for " + quoted(placed.target) + ": " + describe(previous) + ", " + describe(placed),
+		);
+	}
+	graph.files.push(placed);
+	return Result.ok(null);
+}
+
+function refuseAndroid(owner: string, name: string, target: Target): Result<void, string> {
+	if (target.platform != Platform.Android) return Result.ok(null);
+	return Result.err(
+		"files are not placed for Android targets yet; " + owner + " places " + quoted(name) +
+		" into " + quoted(target.name),
+	);
+}
+
+function place(ref graph: Graph, owner: string, target: Target, placement: Placement): Result<void, string> {
+	const artifact = placement.artifact;
+	const by = owner + " into " + quoted(target.name);
+	try refuseAndroid(owner, artifact.name, target);
+	if (placement.directory != "" && !validRelativePath(placement.directory)) {
+		return Result.err(
+			"directory " + quoted(placement.directory) + " of " + quoted(artifact.name) +
+			" must be a relative path inside the slot, placed by " + by,
+		);
+	}
+	for (const slice of artifact.slices) {
+		if (slice.platform != target.platform || slice.arch != target.arch) continue;
+		for (const source of slice.files) {
+			const name = basename(source);
+			const destination = placement.directory == "" ? name : placement.directory + "/" + name;
+			try recordFile(graph, { owner, target: target.name, slot: placement.slot, source, destination });
+		}
+		return Result.ok(null);
+	}
+	return Result.err(
+		"artifact " + quoted(artifact.name) + " has no slice for " + platformName(target.platform) + " " +
+		archName(target.arch) + ", placed by " + by,
+	);
+}
+
 export function resolve(this project: Project): Result<Graph, string> {
 	if (!validName(project.name)) return Result.err("invalid project name: " + quoted(project.name));
 	if (project.targets.length == 0) return Result.err("project " + quoted(project.name) + " has no targets");
-	let graph: Graph = { name: project.name, targets: project.targets, identities: [] };
+	let graph: Graph = { name: project.name, targets: project.targets, identities: [], files: [] };
 	for (let i = 0; i < graph.targets.length; i += 1) {
 		const target = graph.targets[i];
 		if (!validName(target.name)) return Result.err("invalid target name: " + quoted(target.name));
@@ -90,9 +162,6 @@ export function resolve(this project: Project): Result<Graph, string> {
 				"invalid deployment target for " + quoted(target.name) + ": " +
 				quoted(target.deploymentTarget) + " (expected major.minor or major.minor.patch)",
 			);
-		}
-		if (target.assets.length > 0 && target.platform != Platform.Windows) {
-			return Result.err("assets are copied only for Windows targets; " + quoted(target.name) + " declares " + quoted(target.assets[0]));
 		}
 		if (targetIndex(graph.targets, target.name) != i) return Result.err("the target " + quoted(target.name) + " is declared multiple times");
 		for (const dependency of target.dependencies) {
@@ -114,6 +183,18 @@ export function resolve(this project: Project): Result<Graph, string> {
 		}
 		if (before == ready.length) return Result.err("circular dependency between targets: " + cyclePath(graph.targets, ready));
 	}
+	for (const target of graph.targets) {
+		for (const placement of target.files) try place(graph, "manifest", target, placement);
+	}
+	for (const target of graph.targets) {
+		for (const asset of target.assets) {
+			try refuseAndroid("manifest", asset, target);
+			if (!validRelativePath(asset)) {
+				return Result.err("asset of " + quoted(target.name) + " must be a relative path inside the source directory: " + asset);
+			}
+			try recordFile(graph, { owner: "manifest", target: target.name, slot: Slot.Resources, source: asset, destination: asset });
+		}
+	}
 	for (const target of project.targets) {
 		if (target.bundleId != "") try record(graph, { owner: "manifest", target: target.name, value: target.bundleId });
 	}
@@ -124,6 +205,12 @@ export function resolve(this project: Project): Result<Graph, string> {
 			if (targetIndex(graph.targets, id.target) < 0) return Result.err(owner + " contributes to missing target " + quoted(id.target));
 			if (id.value == "") return Result.err(owner + " contributes an empty bundle identity to " + quoted(id.target));
 			try record(graph, { owner, target: id.target, value: id.value });
+		}
+		let filesInput: Vec<Target> = graph.targets;
+		for (const contribution of plugin.files(filesInput)) {
+			const index = targetIndex(graph.targets, contribution.target);
+			if (index < 0) return Result.err(owner + " contributes to missing target " + quoted(contribution.target));
+			try place(graph, owner, graph.targets[index], contribution.placement);
 		}
 	}
 	for (const target of graph.targets) {
