@@ -325,8 +325,7 @@ int ionPollEvent(void) {
         DWORD timeout = INFINITE;
         if (s_mscTimed) {
             ULONGLONG now = GetTickCount64();
-            if (s_mscDeadline <= now) return 5;
-            timeout = (DWORD)(s_mscDeadline - now);
+            timeout = s_mscDeadline <= now ? 0 : (DWORD)(s_mscDeadline - now);
         }
         DWORD r = MsgWaitForMultipleObjectsEx(count, handles, timeout, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
         if (r == WAIT_FAILED) {
