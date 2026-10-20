@@ -94,17 +94,48 @@ shutil.rmtree(fixture_project, ignore_errors=True)
 entry = fixture_app / "main.ms"
 entry.write_text('console.log(greet("ion"));\n', encoding="utf-8")
 description = (repo / "tooling/generator/description").as_posix()
+plugins = (repo / "tooling/generator/plugins").as_posix()
+shutil.copytree(repo / "tooling/generator/tests/fixtures/vendor", fixture_app / "vendor")
 (fixture_app / "project.ms").write_text(
-    f'import {{ Project, Target }} from "{description}";\n'
+    f'import {{ Project, Target, Artifact, Platform, Arch, Slot }} from "{description}";\n'
+    f'import {{ webview }} from "{plugins}";\n'
+    'function artifact(file: string): Artifact {\n'
+    '\treturn {\n'
+    '\t\tname: file,\n'
+    '\t\tlicense: "none",\n'
+    '\t\tslices: [\n'
+    '\t\t\t{ platform: Platform.Windows, arch: Arch.X64, files: ["vendor/x64/" + file] },\n'
+    '\t\t\t{ platform: Platform.Windows, arch: Arch.Arm64, files: ["vendor/arm64/" + file] },\n'
+    '\t\t],\n'
+    '\t};\n'
+    '}\n'
     'export const project: Project = {\n'
     '\tname: "Fixture",\n'
-    '\ttargets: [{ ...Target.windowsApp("Fixture", "main.ms"), bundleId: "dev.ion.Fixture" }],\n'
-    '\tplugins: [],\n'
+    '\ttargets: [{\n'
+    '\t\t...Target.windowsApp("Fixture", "main.ms"),\n'
+    '\t\tbundleId: "dev.ion.Fixture",\n'
+    '\t\tfiles: [\n'
+    '\t\t\t{ artifact: artifact("fake.dll"), slot: Slot.Libraries, directory: "" },\n'
+    '\t\t\t{ artifact: artifact("fakeHost.exe"), slot: Slot.Executables, directory: "" },\n'
+    '\t\t],\n'
+    '\t}],\n'
+    '\tplugins: [webview()],\n'
     '};\n', encoding="utf-8")
 run("generate-fixture", [*generator, str(fixture_app / "project.ms"), str(fixture_project)])
 fixture_sln = fixture_project / "Fixture.sln"
 fixture_exe = fixture_project / "bin/Fixture/Debug/Fixture.exe"
 build("build-fixture", fixture_sln, "Debug")
+fixture_product = fixture_project / "bin/Fixture/Debug"
+placed_names = ["fake.dll", "fakeHost.exe", "WebView2Loader.dll"]
+for name in placed_names:
+    assert (fixture_product / name).is_file(), f"fixture product lacks {name}"
+for name in ["fake.dll", "fakeHost.exe"]:
+    assert (fixture_product / name).read_bytes() == (fixture_app / "vendor/x64" / name).read_bytes(), \
+        f"{name} is not the x64 slice"
+placed = {name: (fixture_product / name).stat().st_mtime_ns for name in placed_names}
+build("build-fixture-again", fixture_sln, "Debug")
+assert placed == {name: (fixture_product / name).stat().st_mtime_ns for name in placed_names}, \
+    "a second build rewrote placed files"
 greeting = run("run-fixture", [str(fixture_exe)])
 assert "hello ion" in greeting, f"the entry did not see its build.ms globalImports:\n{greeting}"
 assert not (fixture_app / "out").exists(), "msc wrote its out/ into the app source tree"
@@ -126,13 +157,17 @@ entry.write_bytes(original)
 build("build-recovered", fixture_sln, "Debug")
 assert fixture_exe.is_file(), "the fixed source did not rebuild"
 
-(project / "bin/IonHello/Debug/resources/stale.txt").write_text("stale")
+hello_product = project / "bin/IonHello/Debug"
+hello_names = ["WebView2Loader.dll", "resources/hello.html"]
+hello_placed = {name: (hello_product / name).stat().st_mtime_ns for name in hello_names}
 build("build-again", solution, "Debug")
-assert not (project / "bin/IonHello/Debug/resources/stale.txt").exists(), "a removed asset survived the build"
+assert hello_placed == {name: (hello_product / name).stat().st_mtime_ns for name in hello_names}, \
+    "a second build rewrote the loader or an asset"
 
 assert git_status() == source_before, "the build wrote into the source tree:\n" + git_status()
 print("PASS: Windows generation determinism, MSBuild Debug and Release with a dependency, product layout, "
       "launch from another directory with IPC, app build.ms globalImports in effect, changed .rc relinks, "
-      "failed build leaves no executable, recovery, stale asset removal, "
+      "failed build leaves no executable, recovery, x64 slice placed beside the exe and no arm64 one, "
+      "no placed file rewritten by a second build, "
       "source tree untouched")
 print(f"windows logs={results}")
