@@ -34,7 +34,60 @@ The API deliberately uses normal language features:
 - static extensions for `Target.app`, `Target.iosApp` and `Target.androidApp`;
 - spread for local variants;
 - `Result<T, string>` for validation and emission errors;
-- a named struct holding a closure for plugins.
+- a named struct holding closures for plugins.
+
+### Files: `files`, `Artifact`, `Slot`, `webview()`
+
+A target places files into its product through `files`. An `Artifact` is a named
+set of files with one `Slice` per (platform, `Arch`); a `Placement` puts an
+artifact into a `Slot` of the product, optionally under a subdirectory. Resolve
+picks the slice for the target's platform and arch, so one manifest line serves
+every target:
+
+```ms
+import { Project, Target, Artifact, Platform, Arch, Slot } from "../../tooling/generator/description";
+import { bundlePrefix, webview } from "../../tooling/generator/plugins";
+
+function vendored(file: string): Artifact {
+	return {
+		name: file,
+		license: "MIT",
+		slices: [
+			{ platform: Platform.Windows, arch: Arch.X64, files: ["vendor/x64/" + file] },
+			{ platform: Platform.Windows, arch: Arch.Arm64, files: ["vendor/arm64/" + file] },
+		],
+	};
+}
+
+export const project: Project = {
+	name: "Haro",
+	targets: [{
+		...Target.windowsApp("Haro", "main.ms"),
+		files: [
+			{ artifact: vendored("conpty.dll"), slot: Slot.Libraries, directory: "" },
+			{ artifact: vendored("openConsole.exe"), slot: Slot.Executables, directory: "" },
+		],
+	}],
+	plugins: [bundlePrefix("dev.haro"), webview()],
+};
+```
+
+- Slots are `Executables`, `Libraries` and `Resources`; each emitter maps a slot to a
+  directory of its platform. `directory` is a relative path inside the slot (`""` is the
+  slot root), and a file keeps only its basename: `directory + "/" + basename`.
+- A slice file is a path relative to the manifest's directory, or absolute; a plugin
+  uses an absolute path for files inside Ion. A missing file stops `generate`.
+- `assets` is the same mechanism: each entry is a `Resources` placement that keeps its
+  relative path, for every platform but Android.
+- `Target.arch` defaults to `X64` for `windowsApp` and `Arm64` for the others.
+- `webview()` places `WebView2Loader.dll` (`vendor/webview2`, x64 only) into Libraries
+  of every Windows target. A Windows arm64 target that uses it fails at resolve with the
+  missing-slice error, because Ion vendors only x64.
+- Resolve stops at the first of: no slice for the target's (platform, arch); a
+  placement for an Android target (not supported yet); two different sources written to
+  one (target, slot, destination), whoever the owners; a plugin placing into a missing
+  target; an invalid `directory`. The same source to the same destination is recorded
+  once.
 
 Macros, decorators and a generator-specific keyword are not part of the
 surface. Runnable manifests are `examples/generator/project.ms` (macOS),
@@ -65,9 +118,11 @@ are created. `evaluator.ms` is the orchestration entry point behind
 invokes `msc run --target=raiser` for the manifest, resolver, plugins and
 emitter.
 
-A plugin is a `Plugin { name, contribute }` value. `contribute` receives an
+A plugin is a `Plugin { name, contribute, files }` value. `contribute` receives an
 owned snapshot of the target list and returns `BundleId { target, value }`
-contributions:
+contributions; `files` receives its own snapshot and returns
+`FileContribution { target, placement }` values (a plugin with nothing to place returns
+`[]`):
 
 ```ms
 export function bundlePrefix(prefix: string): Plugin {
@@ -78,6 +133,7 @@ export function bundlePrefix(prefix: string): Plugin {
 			for (const target of targets) ids.push({ target: target.name, value: prefix + "." + target.name });
 			return ids;
 		},
+		files: (targets: Span<Target>): Vec<FileContribution> => [],
 	};
 }
 ```
@@ -327,10 +383,10 @@ C:/work/ion-hello/bin/IonHello/Debug/IonHello.exe
 ```
 
 Open `IonHello.sln` in Visual Studio to build, run and debug the same way.
-`Target.windowsApp` in `description.ms` owns the defaults; `assets` lists files
-under the source directory that the build copies into `resources/` beside the
-executable, keeping their relative paths, which is the directory
-`ionResourcePath()` serves `ion://localhost/` from. `visualStudio.ms` renders the
+`Target.windowsApp` in `description.ms` owns the defaults. Every placed file,
+`assets` included, reaches the product through the slot table below.
+`resources/` beside the executable is the directory `ionResourcePath()` serves
+`ion://localhost/` from. `visualStudio.ms` renders the
 solution and, per target, a `Makefile` vcxproj, `build.cmd`, an `.rc` and an
 application manifest. Why the shape is what it is:
 
@@ -347,9 +403,27 @@ application manifest. Why the shape is what it is:
 - **msc owns the executable and its failure.** `build.cmd` runs msc from the
   configuration's intermediate directory, so the source tree receives nothing;
   any failed step deletes the executable, so Visual Studio never launches a stale
-  one. The loader and `resources/` are replaced on every build, so a removed
-  asset leaves the product.
-- **x64 only**, because Ion vendors only the x64 `WebView2Loader.dll`; toolset
+  one.
+- **Slots map to directories, and a file is never rewritten when identical.**
+
+  | Slot | Directory |
+  |---|---|
+  | Executables | `%out%` (beside the exe) |
+  | Libraries | `%out%` (the DLL search path is the exe directory) |
+  | Resources | `%out%resources\` |
+
+  Each placed file becomes `call :place "<source>" "<destination>" || goto fail`. The
+  `:place` subroutine skips a destination that `fc /b` finds identical, otherwise makes
+  its directory, copies to `<destination>.tmp` and moves that over the destination. An
+  identical file keeps its mtime and does not fail while a running app holds the DLL.
+  Executables and Libraries share `%out%`, so the emitter compares final paths
+  case-insensitively and refuses two sources at one path or any file over `<target>.exe`.
+- **`build.cmd` deletes nothing it did not write.** The earlier
+  `rmdir /s /q resources` removed what msc writes there, and `generate` refuses an
+  existing output directory, so a `bin/` never outlives a change to the manifest and
+  nothing goes stale; a file dropped from the manifest is gone after regeneration.
+- **The solution is x64 only**, so the emitter refuses a Windows target whose `arch`
+  is not `X64`; Ion vendors only the x64 `WebView2Loader.dll`. Toolset
   `v143`, the Build Tools 2022 one. A Windows target has no deployment target and
   refuses one.
 - **Project GUIDs derive from the target name**, so the output is byte-identical
@@ -575,8 +649,12 @@ a consumer gate, not a substitute for compiler verification.
 - PBX object identifiers are derived from target and dependency positions.
   Output is byte-identical for the same manifest, but reordering targets
   renumbers objects.
-- Plugins contribute bundle identifiers only. Settings, files and new targets
-  are not contribution kinds yet.
+- Plugins contribute bundle identifiers and file placements. Settings and new
+  targets are not contribution kinds yet. Android placements are not supported
+  (resolve refuses them). Build steps and foreign builds come in stage 2. On
+  macOS and iOS each slot becomes a `PBXCopyFilesBuildPhase` (Executables spec 6,
+  Libraries spec 10, Resources spec 7), emitted text only: `tests/resolve.ms`
+  checks it, and no Xcode build has run it.
 - A Windows graph holds only Windows targets, x64 only. No icon resource is
   emitted yet (the manifest has no icon field), the version is fixed at
   `1.0.0.0` as on iOS, and nothing is signed or packaged; the installer is
