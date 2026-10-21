@@ -244,7 +244,16 @@ static int emitDueFrames(void) {
     return ionMacFrameTakeTick(&timeMs) && ion_frame_emit(timeMs) > 0 && ion_input_next();
 }
 
+void *objc_autoreleasePoolPush(void);
+void objc_autoreleasePoolPop(void *pool);
+
+// One pool spans a whole runLoop turn, this poll and the dispatch after it, as -[NSApplication run]
+// drains one per event cycle; an @autoreleasepool around this call alone misses what handlers autorelease.
+static void *s_turnPool;
+
 int ionPollEvent(void) {
+    if (s_turnPool) objc_autoreleasePoolPop(s_turnPool);
+    s_turnPool = objc_autoreleasePoolPush();
     if (s_last_wevt_type == ION_EVT_DESTROYED) {
         ionMacReleaseDestroyed(s_last_wevt_id);
         s_last_wevt_type = 0;
