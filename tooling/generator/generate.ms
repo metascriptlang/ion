@@ -1,6 +1,6 @@
 import { Project, Graph, Platform } from "./description";
 import { resolve } from "./resolve";
-import { xcodeProject } from "./xcode";
+import { xcodeProject, iosEntry, iosEntryFile } from "./xcode";
 import { gradleProject, GeneratedFile, wrapperFiles } from "./gradle";
 import { visualStudioProject } from "./visualStudio";
 import { exists, isFile, ensureDir, writeFile, readFile, chmod, realpath, removeAll } from "std/fs";
@@ -23,7 +23,9 @@ function render(graph: Graph, sourceRoot: string, compiler: string, tools: strin
 	if (has(graph, Platform.Windows)) return visualStudioProject(graph, sourceRoot, compiler);
 	if (!has(graph, Platform.Android)) {
 		const pbx = try xcodeProject(graph, sourceRoot, compiler);
-		return Result.ok([{ path: graph.name + ".xcodeproj/project.pbxproj", content: pbx }]);
+		let files: Vec<GeneratedFile> = [{ path: graph.name + ".xcodeproj/project.pbxproj", content: pbx }];
+		if (has(graph, Platform.Ios)) files.push({ path: iosEntryFile, content: iosEntry() });
+		return Result.ok(files);
 	}
 	let files = try gradleProject(graph, sourceRoot, compiler);
 	for (const path of wrapperFiles) {

@@ -30,10 +30,23 @@ function buildSettings(target: Target): string {
 		Platform.Android => "",
 		Platform.Windows => "",
 	};
-	return platform + "CODE_SIGNING_ALLOWED = NO; ENABLE_USER_SCRIPT_SANDBOXING = NO; " +
+	const signing = target.developmentTeam == "" ? "CODE_SIGNING_ALLOWED = NO; " :
+		"CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = " + quote(target.developmentTeam) + "; ";
+	return platform + signing + "ENABLE_USER_SCRIPT_SANDBOXING = NO; " +
 		"GENERATE_INFOPLIST_FILE = YES; PRODUCT_NAME = " + quote(target.name) + "; " +
 		"PRODUCT_BUNDLE_IDENTIFIER = " + quote(target.bundleId) + "; " +
 		"INFOPLIST_KEY_CFBundleDisplayName = " + quote(target.name) + ";";
+}
+
+export const iosEntryFile = "IonMain.m";
+
+export function iosEntry(): string {
+	return "#import <Foundation/Foundation.h>\n\n" +
+		"extern void MsMain(void);\nextern int cmdCount;\nextern char **cmdLine;\nextern char **gEnv;\nextern int msProgramResult;\n\n" +
+		"int main(int argc, char **argv, char **env) {\n" +
+		"\tcmdCount = argc;\n\tcmdLine = argv;\n\tgEnv = env;\n" +
+		"\t@autoreleasepool {\n\t\tMsMain();\n\t}\n" +
+		"\treturn msProgramResult;\n}\n";
 }
 
 function iosScript(entry: string, compiler: string): string {
@@ -57,7 +70,9 @@ function iosScript(entry: string, compiler: string): string {
 		"esac\n" +
 		"build=\"$TARGET_TEMP_DIR/msc/$CONFIGURATION/$PLATFORM_NAME/$ARCHS\"\n" +
 		"mkdir -p \"$build\" \"$(dirname \"$output\")\"\ncd \"$build\"\n" +
-		"\"$compiler\" build \"$entry\" --os=ios --cpu=\"$ARCHS\" " +
+		"\"$(xcrun --find clang)\" -c -fobjc-arc -target $ARCHS-apple-ios$IPHONEOS_DEPLOYMENT_TARGET$suffix " +
+		"-isysroot \"$SDKROOT\" \"$PROJECT_DIR/" + iosEntryFile + "\" -o \"$build/IonMain.o\"\n" +
+		"\"$compiler\" build \"$entry\" --os=ios --cpu=\"$ARCHS\" \"--link=$build/IonMain.o\" " +
 		"--cc=\"$(xcrun --find clang)\" " +
 		"\"--passC=-target $ARCHS-apple-ios$IPHONEOS_DEPLOYMENT_TARGET$suffix " +
 		"-isysroot \\\"$SDKROOT\\\"\" \"--output=$output\" \"$@\"\n";
