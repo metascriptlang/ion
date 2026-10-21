@@ -171,7 +171,7 @@ const result = await window.ion.call("greet", { name: "Sơn" });
 | `protocol` | `registerStaticProtocol`, `registerAssetScope` |
 | `tray` | `installTray`, `installTrayImage`, `uninstallTray` |
 | `menu` | `setAppMenu` with `Submenu` and `MenuItem.action` / `.standard` / `.separator`; an action item delivers `"menu.click"` with its id to `listen` (macOS only) |
-| `font` | `findSystemFont(codepoint, { presentation, weight, italic, family })` returns `{ path, index }` of an installed font file that draws the codepoint, or `null` (macOS only) |
+| `font` | `findSystemFonts(codepoint, { presentation, weight, italic, family })` returns `{ path, index }` of every installed font file that draws the codepoint, best first, or `[]` (macOS only) |
 | `notify` | `notify` |
 | `hotkey` | `registerHotkey`, `registerHotkeyKey`, `unregisterHotkey`, `keyCodeFromName` |
 | `mods` | `ModCmd`, `ModShift`, `ModAlt`, `ModCtrl` |
