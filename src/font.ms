@@ -3,7 +3,8 @@
 //   const face = findSystemFont(0x23F5, { presentation: Presentation.Text, weight: 400, italic: false, family: "Menlo" });
 //   // { path: "/System/Library/Fonts/Supplemental/STIXTwoMath.otf", index: 0 }, or null
 //
-// macOS asks CoreText (CTFontCreateForString); Windows and Linux find none yet (TODO.md).
+// The file has TrueType or CFF outlines, so a reader other than the OS can draw it. macOS asks CoreText
+// (CTFontCreateForString); Windows and Linux find none yet (TODO.md).
 when (macos) {
 	@compile("./platform/macos/core/font.m", "-fobjc-arc");
 	@passL("-framework CoreText");
