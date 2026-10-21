@@ -59,6 +59,22 @@ const androidDefaults: AndroidSettings = {
 	minSdk: 23, compileSdk: 36, targetSdk: 36, ndkVersion: "28.0.13004108", abi: "arm64-v8a", javaVersion: 17,
 };
 
+export enum InfoPlistKind { Boolean, String }
+
+export struct InfoPlistEntry {
+	key: string;
+	kind: InfoPlistKind;
+	value: string;
+}
+
+export function plistBoolean(key: string, value: boolean): InfoPlistEntry {
+	return { key, kind: InfoPlistKind.Boolean, value: value ? "true" : "false" };
+}
+
+export function plistString(key: string, value: string): InfoPlistEntry {
+	return { key, kind: InfoPlistKind.String, value };
+}
+
 export struct Target {
 	name: string;
 	platform: Platform;
@@ -70,6 +86,7 @@ export struct Target {
 	assets: Vec<string>;
 	files: Vec<Placement>;
 	developmentTeam: string;
+	infoPlist: Vec<InfoPlistEntry>;
 	android: AndroidSettings;
 }
 
@@ -119,27 +136,27 @@ export struct Graph {
 export function app(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Macos, arch: Arch.Arm64, deploymentTarget: "13.0",
-		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], android: androidDefaults,
 	};
 }
 
 export function iosApp(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Ios, arch: Arch.Arm64, deploymentTarget: "15.0",
-		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], android: androidDefaults,
 	};
 }
 
 export function androidApp(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Android, arch: Arch.Arm64, deploymentTarget: "",
-		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], android: androidDefaults,
 	};
 }
 
 export function windowsApp(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Windows, arch: Arch.X64, deploymentTarget: "",
-		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], android: androidDefaults,
 	};
 }

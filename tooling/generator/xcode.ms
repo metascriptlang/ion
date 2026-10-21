@@ -1,4 +1,5 @@
-import { Graph, Target, Platform, Slot, slotName, platformName } from "./description";
+import { Graph, Target, Platform, Slot, slotName, platformName, InfoPlistKind } from "./description";
+import { GeneratedFile } from "./gradle";
 import { join } from "std/fs/path";
 
 export function shellQuote(value: string): string {
@@ -32,10 +33,44 @@ function buildSettings(target: Target): string {
 	};
 	const signing = target.developmentTeam == "" ? "CODE_SIGNING_ALLOWED = NO; " :
 		"CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = " + quote(target.developmentTeam) + "; ";
-	return platform + signing + "ENABLE_USER_SCRIPT_SANDBOXING = NO; " +
+	const infoPlist = target.infoPlist.length == 0 ? "" : "INFOPLIST_FILE = " + quote(infoPlistFile(target)) + "; ";
+	return platform + signing + infoPlist + "ENABLE_USER_SCRIPT_SANDBOXING = NO; " +
 		"GENERATE_INFOPLIST_FILE = YES; PRODUCT_NAME = " + quote(target.name) + "; " +
 		"PRODUCT_BUNDLE_IDENTIFIER = " + quote(target.bundleId) + "; " +
 		"INFOPLIST_KEY_CFBundleDisplayName = " + quote(target.name) + ";";
+}
+
+function infoPlistFile(target: Target): string {
+	return target.name + "-Info.plist";
+}
+
+function xmlText(value: string): string {
+	return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+// Xcode merges INFOPLIST_FILE with the keys GENERATE_INFOPLIST_FILE writes; INFOPLIST_KEY_* covers a fixed set only.
+export function infoPlists(graph: Graph): Result<Vec<GeneratedFile>, string> {
+	let files: Vec<GeneratedFile> = [];
+	for (const target of graph.targets) {
+		if (target.infoPlist.length == 0) continue;
+		let body = "";
+		let keys: Vec<string> = [];
+		for (const entry of target.infoPlist) {
+			if (entry.key == "" || keys.includes(entry.key)) {
+				return Result.err("target '" + target.name + "' sets Info.plist key '" + entry.key + "' " + (entry.key == "" ? "with no name" : "twice"));
+			}
+			keys.push(entry.key);
+			const value = entry.kind == InfoPlistKind.Boolean ? "<" + entry.value + "/>" : "<string>" + xmlText(entry.value) + "</string>";
+			body += "\t<key>" + xmlText(entry.key) + "</key>\n\t" + value + "\n";
+		}
+		files.push({
+			path: infoPlistFile(target),
+			content: "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+				"<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n" +
+				"<plist version=\"1.0\">\n<dict>\n" + body + "</dict>\n</plist>\n",
+		});
+	}
+	return Result.ok(files);
 }
 
 export const iosEntryFile = "IonMain.m";

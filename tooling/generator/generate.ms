@@ -1,6 +1,6 @@
 import { Project, Graph, Platform } from "./description";
 import { resolve } from "./resolve";
-import { xcodeProject, iosEntry, iosEntryFile } from "./xcode";
+import { xcodeProject, iosEntry, iosEntryFile, infoPlists } from "./xcode";
 import { gradleProject, GeneratedFile, wrapperFiles } from "./gradle";
 import { visualStudioProject } from "./visualStudio";
 import { exists, isFile, ensureDir, writeFile, readFile, chmod, realpath, removeAll } from "std/fs";
@@ -47,6 +47,7 @@ export function render(graph: Graph, sourceRoot: string, compiler: string, tools
 		const pbx = try xcodeProject(apple, sourceRoot, compiler);
 		files.push({ path: graph.name + ".xcodeproj/project.pbxproj", content: pbx });
 		if (has(apple, Platform.Ios)) files.push({ path: iosEntryFile, content: iosEntry() });
+		for (const plist of try infoPlists(apple)) files.push(plist);
 	}
 	const android = platformGraph(graph, true);
 	if (android.targets.length == 0) return Result.ok(files);
