@@ -42,7 +42,7 @@ export { setSecret, getSecret, deleteSecret } from "./keychain";
 export { registerStaticProtocol, registerAssetScope } from "./protocol";
 export { installTray, installTrayImage, uninstallTray } from "./tray";
 export { setAppMenu, MenuItem, MenuItemKind, MenuRole, Submenu } from "./menu";
-export { findSystemFont, FontRequest, Presentation, SystemFont } from "./font";
+export { findSystemFonts, FontRequest, Presentation, SystemFont } from "./font";
 export { notify } from "./notify";
 export {
 	registerHotkey, registerHotkeyKey,

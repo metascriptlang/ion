@@ -434,12 +434,14 @@ void ionUnregisterHotkey(int id);
 
 // ---- System font lookup (macos/core/font.m; common/noFont.c on Windows and Linux) ----
 //
-// The path of an installed font file with a glyph for `codepoint`, found from
-// `family` ("" = the system UI font) in text or emoji presentation, or "" when
-// no installed font draws it. ionSystemFontIndex is the face's index inside a
-// collection file (.ttc) of the last found path, 0 for a single-face file.
-msString ionFindSystemFont(int codepoint, int emoji, int weight, int italic, const char *family);
-int      ionSystemFontIndex(void);
+// Installed font files with a glyph for `codepoint`, best first: the emoji face for
+// emoji presentation, CoreText's answer from `family` ("" = the system UI font),
+// then every face covering it ranked by style. ionFindSystemFonts returns the count
+// and keeps the list; ionSystemFontPath/ionSystemFontIndex read entry `i`, the index
+// being the face inside a collection file (.ttc), 0 for a single-face file.
+int      ionFindSystemFonts(int codepoint, int emoji, int weight, int italic, const char *family);
+msString ionSystemFontPath(int i);
+int      ionSystemFontIndex(int i);
 
 // ---- Audio (common/audio.c, miniaudio on every platform) -------------------
 //

@@ -2,9 +2,11 @@
 
 #include "../bridge.h"
 
-msString ionFindSystemFont(int codepoint, int emoji, int weight, int italic, const char *family) {
+int ionFindSystemFonts(int codepoint, int emoji, int weight, int italic, const char *family) {
 	(void)codepoint; (void)emoji; (void)weight; (void)italic; (void)family;
-	return MS_EMPTY_STRING;
+	return 0;
 }
 
-int ionSystemFontIndex(void) { return 0; }
+msString ionSystemFontPath(int i) { (void)i; return MS_EMPTY_STRING; }
+
+int ionSystemFontIndex(int i) { (void)i; return 0; }
