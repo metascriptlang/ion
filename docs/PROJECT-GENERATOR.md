@@ -217,6 +217,23 @@ xcrun simctl launch booted dev.ion.IonIos
 Use an already booted iOS simulator for the last two commands. For an unsigned
 device build, select `-sdk iphoneos` and omit the signing overrides.
 
+The generator owns the program entry, as Tauri's iOS template ships its
+`main.mm`: it writes `IonMain.m` beside the project, whose `main` stores the
+arguments and environment and runs `MsMain` in an autorelease pool, and the
+build phase compiles it with the target's clang flags and links it through
+`--link`. An app that defines its own `main` fails to link with a duplicate
+symbol; its UIKit start-up (`UIApplicationMain`) runs from `MsMain`, as the
+fixture's `host.m` does. `Target.assets` land under the bundle with their
+relative path, and `resourcePath()` from `src/window.ms` returns the flat
+`.app` directory on iOS, so an app reads `join(resourcePath(), "assets/x.ttf")`;
+the working directory of an iOS app is `/`, and Ion does not change it.
+
+A target with `developmentTeam` signs with `CODE_SIGN_STYLE = Automatic` and
+that `DEVELOPMENT_TEAM`, as Tuist's `automaticCodeSigning(devTeam:)` does; build
+for a device with `-sdk iphoneos -allowProvisioningUpdates`, and override the
+team for one build with `DEVELOPMENT_TEAM=<id>` on the `xcodebuild` line.
+Without a team the target keeps `CODE_SIGNING_ALLOWED = NO`.
+
 The compiler owns the entire executable: generated C, runtime, package native
 directives, compile, link and incremental cache. Xcode owns the application
 bundle, generated Info.plist, signing and launch. The PBX project deliberately
@@ -638,9 +655,12 @@ a consumer gate, not a substitute for compiler verification.
   and subprocess operations; there is no capability sandbox.
 - Evaluation starts a fresh Raiser process for each generation. There is no
   persistent evaluator, hot reload or manifest cache.
-- Products are unsigned by default. Simulator ad-hoc signing is exercised by
-  enabling Xcode signing; physical-device signing/run, archive/export,
-  universal binaries and App Store distribution are not verified or promised.
+- Products are unsigned unless the target names a `developmentTeam`. Simulator
+  ad-hoc signing is exercised by enabling Xcode signing; with `ION_IOS_TEAM`
+  set, `tests/ios.py` builds and team-signs the fixture for `iphoneos`
+  (measured 2026-10-22, team-signed, asset in the bundle). Installing and running
+  on a device, archive/export, universal binaries and App Store distribution
+  are not verified or promised.
 - No Neon counter, iOS Ion window/webview API or reusable UIKit host is supplied
   by this generator milestone. Simulator x86_64 is accepted by the script but
   has not been exercised; the development gate uses arm64.
