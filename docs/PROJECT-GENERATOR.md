@@ -78,7 +78,9 @@ export const project: Project = {
 - A slice file is a path relative to the manifest's directory, or absolute; a plugin
   uses an absolute path for files inside Ion. A missing file stops `generate`.
 - `assets` is the same mechanism: each entry is a `Resources` placement that keeps its
-  relative path, for every platform but Android.
+  relative path, for every platform but Android. An entry that names a directory is
+  an Xcode folder reference, as Tuist's `.folderReference(path:)` is: the build copies
+  the tree as it is at build time, so files added later need no new `generate`.
 - `Target.arch` defaults to `X64` for `windowsApp` and `Arm64` for the others.
 - `webview()` places `WebView2Loader.dll` (`vendor/webview2`, x64 only) into Libraries
   of every Windows target. A Windows arm64 target that uses it fails at resolve with the
@@ -233,6 +235,14 @@ that `DEVELOPMENT_TEAM`, as Tuist's `automaticCodeSigning(devTeam:)` does; build
 for a device with `-sdk iphoneos -allowProvisioningUpdates`, and override the
 team for one build with `DEVELOPMENT_TEAM=<id>` on the `xcodebuild` line.
 Without a team the target keeps `CODE_SIGNING_ALLOWED = NO`.
+
+`Target.infoPlist` adds keys Xcode's `INFOPLIST_KEY_*` settings do not cover
+(`UIFileSharingEnabled` is one: an `INFOPLIST_KEY_UIFileSharingEnabled` override
+is dropped): `infoPlist: [plistBoolean("UIFileSharingEnabled", true)]`, or
+`plistString(key, value)`. They go to `<target>-Info.plist` beside the project,
+named by `INFOPLIST_FILE`, which Xcode merges with the keys it generates.
+Tuist's `.extendingDefault(with:)` takes the same key list but writes its own
+defaults into that file too. A key set twice is refused.
 
 The compiler owns the entire executable: generated C, runtime, package native
 directives, compile, link and incremental cache. Xcode owns the application
