@@ -1,6 +1,7 @@
 import { Graph, Target, Platform, Slot, slotName, platformName, InfoPlistKind } from "./description";
 import { GeneratedFile } from "./gradle";
 import { join } from "std/fs/path";
+import { isDir } from "std/fs";
 
 export function shellQuote(value: string): string {
 	return "'" + value.replaceAll("'", "'\"'\"'") + "'";
@@ -149,7 +150,8 @@ function copyPhases(graph: Graph, target: Target, root: string, index: int32): C
 			members += buildFileId + ",";
 			result.references += referenceId + ",";
 			result.objects += `${buildFileId} = { isa = PBXBuildFile; fileRef = ${referenceId}; };\n`;
-			result.objects += `${referenceId} = { isa = PBXFileReference; lastKnownFileType = file; path = ${quote(join(root, member.source))}; sourceTree = "<absolute>"; };\n`;
+			const fileType = isDir(join(root, member.source)) ? "folder" : "file";
+			result.objects += `${referenceId} = { isa = PBXFileReference; lastKnownFileType = ${fileType}; path = ${quote(join(root, member.source))}; sourceTree = "<absolute>"; };\n`;
 			ordinal += 1;
 		}
 		const phaseId = id(500000 + index * 1000 + groups.length);

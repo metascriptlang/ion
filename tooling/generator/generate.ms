@@ -1,9 +1,9 @@
-import { Project, Graph, Platform } from "./description";
+import { Project, Graph, Platform, Slot } from "./description";
 import { resolve } from "./resolve";
 import { xcodeProject, iosEntry, iosEntryFile, infoPlists } from "./xcode";
 import { gradleProject, GeneratedFile, wrapperFiles } from "./gradle";
 import { visualStudioProject } from "./visualStudio";
-import { exists, isFile, ensureDir, writeFile, readFile, chmod, realpath, removeAll } from "std/fs";
+import { exists, isFile, isDir, ensureDir, writeFile, readFile, chmod, realpath, removeAll } from "std/fs";
 import { dirname, basename, join } from "std/fs/path";
 
 function makeDirectories(path: string): Result<void, string> {
@@ -83,7 +83,8 @@ export function generate(project: Project, root: string, output: string, compile
 		if (!isFile(sourceRoot + "/" + target.entry)) return Result.err("entry does not exist: " + target.entry);
 	}
 	for (const placed of graph.files) {
-		if (!isFile(join(sourceRoot, placed.source))) {
+		const source = join(sourceRoot, placed.source);
+		if (!isFile(source) && !(placed.slot == Slot.Resources && isDir(source))) {
 			return Result.err("file does not exist: " + placed.source + ", placed by " + placed.owner + " into " + placed.target);
 		}
 	}
