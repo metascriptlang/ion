@@ -19,15 +19,38 @@ function has(graph: Graph, platform: Platform): boolean {
 	return false;
 }
 
-function render(graph: Graph, sourceRoot: string, compiler: string, tools: string): Result<Vec<GeneratedFile>, string> {
-	if (has(graph, Platform.Windows)) return visualStudioProject(graph, sourceRoot, compiler);
-	if (!has(graph, Platform.Android)) {
-		const pbx = try xcodeProject(graph, sourceRoot, compiler);
-		let files: Vec<GeneratedFile> = [{ path: graph.name + ".xcodeproj/project.pbxproj", content: pbx }];
-		if (has(graph, Platform.Ios)) files.push({ path: iosEntryFile, content: iosEntry() });
-		return Result.ok(files);
+function platformGraph(graph: Graph, android: boolean): Graph {
+	let result: Graph = { name: graph.name, targets: [], identities: [], files: [] };
+	for (const target of graph.targets) {
+		if ((target.platform == Platform.Android) == android) result.targets.push(target);
 	}
-	let files = try gradleProject(graph, sourceRoot, compiler);
+	const kept = (name: string): boolean => {
+		for (const target of result.targets) {
+			if (target.name == name) return true;
+		}
+		return false;
+	};
+	for (const identity of graph.identities) {
+		if (kept(identity.target)) result.identities.push(identity);
+	}
+	for (const placed of graph.files) {
+		if (kept(placed.target)) result.files.push(placed);
+	}
+	return result;
+}
+
+export function render(graph: Graph, sourceRoot: string, compiler: string, tools: string): Result<Vec<GeneratedFile>, string> {
+	if (has(graph, Platform.Windows)) return visualStudioProject(graph, sourceRoot, compiler);
+	let files: Vec<GeneratedFile> = [];
+	const apple = platformGraph(graph, false);
+	if (apple.targets.length > 0) {
+		const pbx = try xcodeProject(apple, sourceRoot, compiler);
+		files.push({ path: graph.name + ".xcodeproj/project.pbxproj", content: pbx });
+		if (has(apple, Platform.Ios)) files.push({ path: iosEntryFile, content: iosEntry() });
+	}
+	const android = platformGraph(graph, true);
+	if (android.targets.length == 0) return Result.ok(files);
+	for (const file of try gradleProject(android, sourceRoot, compiler)) files.push(file);
 	for (const path of wrapperFiles) {
 		const vendored = readFile(tools + "/android/wrapper/" + basename(path));
 		if (!vendored.ok) return Result.err("cannot read vendored Gradle wrapper file: " + path);
