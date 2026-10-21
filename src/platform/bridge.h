@@ -432,6 +432,15 @@ void ionNotify(const char *title, const char *body, const char *id);
 int  ionRegisterHotkey(int modifiers, int keyCode, int id);
 void ionUnregisterHotkey(int id);
 
+// ---- System font lookup (macos/core/font.m; common/noFont.c on Windows and Linux) ----
+//
+// The path of an installed font file with a glyph for `codepoint`, found from
+// `family` ("" = the system UI font) in text or emoji presentation, or "" when
+// no installed font draws it. ionSystemFontIndex is the face's index inside a
+// collection file (.ttc) of the last found path, 0 for a single-face file.
+msString ionFindSystemFont(int codepoint, int emoji, int weight, int italic, const char *family);
+int      ionSystemFontIndex(void);
+
 // ---- Audio (common/audio.c, miniaudio on every platform) -------------------
 //
 // Ids are >= 0. A negative return is an error: a miniaudio result code or an
