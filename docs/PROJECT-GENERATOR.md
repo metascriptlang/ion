@@ -314,8 +314,11 @@ separate from successful project generation.
 `generate.ms` adds the wrapper files from `tooling/generator/android/wrapper/`
 byte for byte. Why the shape is what it is:
 
-- **One target, Android only.** An Android graph with a second target, a
-  dependency, or a macOS/iOS target is refused by name. The minimum API lives
+- **One Android target.** The Android part of a graph holds one target with
+  no dependency; a second Android target is refused by name. A graph that also
+  holds Apple targets writes the Xcode project and the Gradle project side by
+  side in one output directory (`generate.ms` `render`), so one `project.ms`
+  describes an iOS and an Android build. The minimum API lives
   only in `android.minSdk`; an Android target that sets `deploymentTarget` is
   refused rather than reconciled.
 - **Pinned toolchain.** Gradle 9.3.1 with its distribution SHA-256 and AGP
@@ -647,8 +650,7 @@ a consumer gate, not a substitute for compiler verification.
 ## Current boundary
 
 - macOS and iOS application targets are supported, but a single graph cannot
-  mix their SDKs. Generate separate projects for mixed-platform applications.
-  An Android graph holds one Android application target.
+  mix their SDKs. A graph may add one Android application target to either.
 - Android builds only `arm64-v8a`. The native task accepts macOS and Linux
   hosts and refuses others; only macOS has been run. Play upload is not
   verified.
