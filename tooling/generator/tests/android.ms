@@ -1,4 +1,4 @@
-import { Project, Target, Platform } from "../description";
+import { Project, Target, Platform, plistBoolean, plistString } from "../description";
 import { bundlePrefix } from "../plugins";
 import { resolve } from "../resolve";
 import { gradleProject, GeneratedFile, nativeLibrary } from "../gradle";
@@ -174,6 +174,33 @@ function mixedProject(): void {
 		check(paths.includes(expected), "the mixed project writes " + expected);
 	}
 	check(!file(rendered.value, "Mobile.xcodeproj/project.pbxproj").includes("Android"), "the Xcode project leaves the Android target out");
+	check(!paths.includes("Tablet-Info.plist"), "a target without Info.plist keys writes no plist");
 }
+
+function infoPlistKeys(): void {
+	const tablet: Target = { ...Target.iosApp("Tablet", "main.ms"), infoPlist: [plistBoolean("UIFileSharingEnabled", true), plistString("NSCameraUsageDescription", "Scan <codes> & more")] };
+	const graph = resolve({ name: "Mobile", targets: [tablet], plugins: [bundlePrefix("dev.ion")] });
+	if (!graph.ok) {
+		check(false, "a target with Info.plist keys resolves: " + graph.error);
+		return;
+	}
+	const rendered = renderProjects(graph.value, "/source", "/msc", "tooling/generator");
+	if (!rendered.ok) {
+		check(false, "a target with Info.plist keys renders: " + rendered.error);
+		return;
+	}
+	const plist = file(rendered.value, "Tablet-Info.plist");
+	check(plist.includes("<key>UIFileSharingEnabled</key>\n\t<true/>"), "a boolean key is written as <true/>");
+	check(plist.includes("<string>Scan &lt;codes&gt; &amp; more</string>"), "a string value is escaped");
+	check(file(rendered.value, "Mobile.xcodeproj/project.pbxproj").includes("INFOPLIST_FILE = \"Tablet-Info.plist\"; "), "the target names its plist");
+	const twice = resolve({ name: "Mobile", targets: [{ ...tablet, infoPlist: [plistBoolean("A", true), plistBoolean("A", false)] }], plugins: [bundlePrefix("dev.ion")] });
+	if (!twice.ok) {
+		check(false, "a duplicate key resolves: " + twice.error);
+		return;
+	}
+	const refused = renderProjects(twice.value, "/source", "/msc", "tooling/generator");
+	check(!refused.ok && refused.error == "target 'Tablet' sets Info.plist key 'A' twice", "a key set twice is refused");
+}
+infoPlistKeys();
 mixedProject();
 console.log("android: " + passed.toString() + " assertions passed");

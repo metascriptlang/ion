@@ -45,7 +45,10 @@ phases = [obj for obj in objects.values() if obj["isa"] == "PBXShellScriptBuildP
 assert len(phases) == 1
 assert not any(obj["isa"] == "PBXSourcesBuildPhase" for obj in objects.values())
 resources = [obj for obj in objects.values() if obj["isa"] == "PBXCopyFilesBuildPhase"]
-assert [(obj["dstSubfolderSpec"], obj["dstPath"]) for obj in resources] == [("7", "assets")], resources
+assert [(obj["dstSubfolderSpec"], obj["dstPath"]) for obj in resources] == [("7", "assets"), ("7", "")], resources
+assert sorted(obj.get("lastKnownFileType") for obj in objects.values() if obj["isa"] == "PBXFileReference" and obj.get("lastKnownFileType") in ("file", "folder")) == ["file", "folder"]
+for relative in ("IonIos-Info.plist",):
+    assert (results / "first" / relative).read_bytes() == (results / "second" / relative).read_bytes()
 script = results / "buildNative.sh"
 script.write_text(phases[0]["shellScript"])
 products = results / "products with spaces"
@@ -68,6 +71,9 @@ def metadata(configuration, sdk, platform):
     with (app / "Info.plist").open("rb") as stream:
         info = plistlib.load(stream)
     assert info["CFBundleIdentifier"] == "dev.ion.IonIos"
+    assert info["UIFileSharingEnabled"] is True and info["LSSupportsOpeningDocumentsInPlace"] is True
+    assert info["CFBundleDisplayName"] == "IonIos"
+    assert (app / "bundle/nested/inner.txt").read_text() == "nested asset\n"
     assert info["MinimumOSVersion"] == "15.0"
     assert info["UIDeviceFamily"] == [1, 2]
     assert "UILaunchScreen" in info
@@ -101,7 +107,7 @@ shutil.copytree(source, team_source)
 team_manifest = team_source / "project.ms"
 team = os.environ.get("ION_IOS_TEAM", "TEAMID0000")
 team_manifest.write_text(team_manifest.read_text().replace(
-    'assets: ["assets/marker.txt"] }', f'assets: ["assets/marker.txt"], developmentTeam: "{team}" }}'))
+    'assets: ["assets/marker.txt", "bundle"],', f'assets: ["assets/marker.txt", "bundle"], developmentTeam: "{team}",'))
 run("generate-team", [*generator, team_manifest, results / "team"])
 team_pbx = (results / "team/IonIos.xcodeproj/project.pbxproj").read_text()
 assert f'CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = "{team}";' in team_pbx
