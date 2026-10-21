@@ -2,7 +2,12 @@
 
 import { ionResourcePath } from "./platform/bridge.h";
 
-// Returns the .app bundle's Contents/Resources/ absolute path, or "" when
+when (ios) {
+	@compile("./platform/ios/core/resource.m", "-fobjc-arc");
+	@passL("-framework Foundation");
+}
+
+// Returns the .app bundle's Contents/Resources/ absolute path (the flat .app itself on iOS), or "" when
 // running unbundled (dev binary). Use to construct file:// URLs for HTML/JS
 // shipped inside the bundle:
 //
