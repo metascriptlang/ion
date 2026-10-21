@@ -20,6 +20,13 @@ when (macos) {
 		assert face !== null && face.path.endsWith(".ttc") && face.index > (0 as int32);
 	}
 
+	test "a CJK codepoint skips a face whose outlines only CoreText reads" {
+		for (const weight of [400, 700]) {
+			const face = findSystemFont(0x4F60 as int32, { ...text, weight: weight as int32 });
+			assert face !== null && !face.path.endsWith("/PingFangUI.ttc");
+		}
+	}
+
 	test "an emoji presentation is found in Apple Color Emoji" {
 		const face = findSystemFont(0x23FA as int32, { ...text, presentation: Presentation.Emoji });
 		assert face !== null && face.path.endsWith("/Apple Color Emoji.ttc");
