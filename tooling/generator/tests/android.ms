@@ -3,6 +3,7 @@ import { bundlePrefix } from "../plugins";
 import { resolve } from "../resolve";
 import { gradleProject, GeneratedFile, nativeLibrary } from "../gradle";
 import { xcodeProject } from "../xcode";
+import { render as renderProjects } from "../generate";
 import { exit } from "std/process";
 
 let passed = 0;
@@ -156,4 +157,23 @@ for (const id of ["Mobile", "dev.1ion.Mobile", "dev..Mobile", "dev.ion-x.Mobile"
 		"Android target 'Mobile' has invalid applicationId '" + id + "'",
 	);
 }
+function mixedProject(): void {
+	const graph = resolve({ name: "Mobile", targets: [app, Target.iosApp("Tablet", "main.ms")], plugins: [bundlePrefix("dev.ion")] });
+	if (!graph.ok) {
+		check(false, "one project describes an Android and an iOS target: " + graph.error);
+		return;
+	}
+	const rendered = renderProjects(graph.value, "/source", "/msc", "tooling/generator");
+	if (!rendered.ok) {
+		check(false, "an Android and an iOS target render together: " + rendered.error);
+		return;
+	}
+	let paths: Vec<string> = [];
+	for (const generated of rendered.value) paths.push(generated.path);
+	for (const expected of ["Mobile.xcodeproj/project.pbxproj", "IonMain.m", "app/src/main/AndroidManifest.xml", "gradlew"]) {
+		check(paths.includes(expected), "the mixed project writes " + expected);
+	}
+	check(!file(rendered.value, "Mobile.xcodeproj/project.pbxproj").includes("Android"), "the Xcode project leaves the Android target out");
+}
+mixedProject();
 console.log("android: " + passed.toString() + " assertions passed");
