@@ -14,6 +14,8 @@ source = results / "source with spaces"
 shutil.copytree(repo / "examples/generatorIos", source)
 manifest = source / "project.ms"
 manifest.write_text(manifest.read_text().replace("../../tooling/generator/", str(repo / "tooling/generator") + "/"))
+entry = source / "main.ms"
+entry.write_text(entry.read_text().replace('"../../src/window"', '"' + str(repo / "src/window") + '"'))
 sequence = 0
 
 
@@ -35,13 +37,15 @@ for name in ("first", "second"):
     run("generate-" + name, [*generator, manifest, results / name])
 project = results / "first/IonIos.xcodeproj"
 pbx = project / "project.pbxproj"
-for relative in ("graph.json", "IonIos.xcodeproj/project.pbxproj"):
+for relative in ("graph.json", "IonIos.xcodeproj/project.pbxproj", "IonMain.m"):
     assert (results / "first" / relative).read_bytes() == (results / "second" / relative).read_bytes()
 run("plutil", ["plutil", "-lint", pbx])
 objects = json.loads(run("pbx-json", ["plutil", "-convert", "json", "-o", "-", pbx]))["objects"]
 phases = [obj for obj in objects.values() if obj["isa"] == "PBXShellScriptBuildPhase"]
 assert len(phases) == 1
-assert not any(obj["isa"] in ("PBXSourcesBuildPhase", "PBXBuildFile") for obj in objects.values())
+assert not any(obj["isa"] == "PBXSourcesBuildPhase" for obj in objects.values())
+resources = [obj for obj in objects.values() if obj["isa"] == "PBXCopyFilesBuildPhase"]
+assert [(obj["dstSubfolderSpec"], obj["dstPath"]) for obj in resources] == [("7", "assets")], resources
 script = results / "buildNative.sh"
 script.write_text(phases[0]["shellScript"])
 products = results / "products with spaces"
@@ -92,6 +96,25 @@ run("verify-signature", ["codesign", "--verify", "--strict", "--verbose=2", bund
 signature = run("display-signature", ["codesign", "-dv", bundle()])
 assert "Signature=adhoc" in signature
 
+team_source = results / "team source"
+shutil.copytree(source, team_source)
+team_manifest = team_source / "project.ms"
+team = os.environ.get("ION_IOS_TEAM", "TEAMID0000")
+team_manifest.write_text(team_manifest.read_text().replace(
+    'assets: ["assets/marker.txt"] }', f'assets: ["assets/marker.txt"], developmentTeam: "{team}" }}'))
+run("generate-team", [*generator, team_manifest, results / "team"])
+team_pbx = (results / "team/IonIos.xcodeproj/project.pbxproj").read_text()
+assert f'CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = "{team}";' in team_pbx
+assert "CODE_SIGNING_ALLOWED = NO" not in team_pbx and "CODE_SIGNING_ALLOWED = NO" in pbx.read_text()
+if "ION_IOS_TEAM" in os.environ:
+    team_products = results / "team products"
+    run("device-team", ["xcodebuild", "-project", results / "team/IonIos.xcodeproj", "-target", "IonIos",
+                        "-jobs", "1", "-configuration", "Debug", "-sdk", "iphoneos", "-allowProvisioningUpdates",
+                        f"SYMROOT={team_products}", f"OBJROOT={results / 'team objects'}", "build"])
+    device_app = team_products / "Debug-iphoneos/IonIos.app"
+    assert f"TeamIdentifier={team}" in run("device-team-signature", ["codesign", "-dv", device_app])
+    assert (device_app / "assets/marker.txt").read_text() == "ion asset\n"
+
 available = json.loads(run("simulators", ["xcrun", "simctl", "list", "devices", "available", "--json"]))
 candidates = [(runtime, device) for runtime, devices in available["devices"].items()
               if ".iOS-" in runtime for device in devices]
@@ -117,7 +140,7 @@ try:
             time.sleep(0.1)
         actual = marker.read_text()
         (results / f"{sequence:02d}-launched-value.txt").write_text(actual)
-        assert actual == f"Ion iOS generator\nNative value: {expected}", (
+        assert actual == f"Ion iOS generator\nNative value: {expected}\nAsset: found", (
             f"expected native value {expected}, got {actual!r}; logs={results}")
 
     launch(17)

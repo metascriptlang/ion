@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 static int32_t fixtureValue;
+static int32_t fixtureAsset;
 
 @interface IonFixtureDelegate : UIResponder <UIApplicationDelegate>
 @property(nonatomic, strong) UIWindow *window;
@@ -14,8 +15,8 @@ static int32_t fixtureValue;
 	UIViewController *controller = [UIViewController new];
 	controller.view.backgroundColor = UIColor.systemBackgroundColor;
 	UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(24, 160, 340, 100)];
-	label.numberOfLines = 2;
-	label.text = [NSString stringWithFormat:@"Ion iOS generator\nNative value: %d", fixtureValue];
+	label.numberOfLines = 3;
+	label.text = [NSString stringWithFormat:@"Ion iOS generator\nNative value: %d\nAsset: %s", fixtureValue, fixtureAsset ? "found" : "missing"];
 	label.textColor = UIColor.labelColor;
 	label.font = [UIFont systemFontOfSize:24];
 	[controller.view addSubview:label];
@@ -34,21 +35,11 @@ static int32_t fixtureValue;
 }
 @end
 
+void ionFixtureAsset(int32_t found) {
+	fixtureAsset = found;
+}
+
 void ionFixtureRun(int32_t value) {
 	fixtureValue = value + ION_FIXTURE_VALUE + 0;
 	UIApplicationMain(0, nil, nil, NSStringFromClass(IonFixtureDelegate.class));
-}
-
-extern void MsMain(void);
-extern int cmdCount;
-extern char **cmdLine;
-extern char **gEnv;
-extern int msProgramResult;
-
-int main(int argc, char **argv, char **env) {
-	cmdCount = argc;
-	cmdLine = argv;
-	gEnv = env;
-	@autoreleasepool { MsMain(); }
-	return msProgramResult;
 }
