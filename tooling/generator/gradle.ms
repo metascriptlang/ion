@@ -1,4 +1,5 @@
-import { Graph, Target, Platform, platformName } from "./description";
+import { Graph, Target, Platform, PlacedFile, platformName } from "./description";
+import { join } from "std/fs/path";
 
 export struct GeneratedFile {
 	path: string;
@@ -9,6 +10,25 @@ export const nativeLibrary = "metascript";
 export const wrapperFiles: Vec<string> = ["gradlew", "gradlew.bat", "gradle/wrapper/gradle-wrapper.jar"];
 
 const bootstrapPackage = "dev.metascript.app";
+const assetsSourceFile = "ionAssets.c";
+
+// Defines the AAssetManager Ion's src/platform/android/core/resource.c reads; MainActivity hands it over before start.
+function assetsSource(): string {
+	return lines([
+		"#include <jni.h>",
+		"#include <android/asset_manager_jni.h>",
+		"",
+		"AAssetManager *ionAndroidAssets;",
+		"static jobject assetsReference;",
+		"",
+		"JNIEXPORT void JNICALL Java_" + bootstrapPackage.replaceAll(".", "_") + "_NativeApp_assets(JNIEnv *env, jclass cls, jobject assets) {",
+		"\t(void)cls;",
+		"\tif (assetsReference) (*env)->DeleteGlobalRef(env, assetsReference);",
+		"\tassetsReference = (*env)->NewGlobalRef(env, assets);",
+		"\tionAndroidAssets = AAssetManager_fromJava(env, assetsReference);",
+		"}",
+	]);
+}
 const bootstrapPath = "app/src/main/java/dev/metascript/app/";
 
 function groovy(value: string): string {
@@ -156,8 +176,13 @@ function rootGradle(target: Target): string {
 	]);
 }
 
-function appGradle(target: Target, root: string, compiler: string): string {
+function appGradle(target: Target, files: Vec<PlacedFile>, root: string, compiler: string): string {
 	const settings = target.android;
+	let entries: Vec<string> = [];
+	for (const placed of files) {
+		if (placed.target == target.name) entries.push(groovy(placed.destination) + ": " + groovy(join(root, placed.source)));
+	}
+	const placements = entries.length == 0 ? ":" : entries.join(", ");
 	const java = "JavaVersion.VERSION_" + settings.javaVersion.toString();
 	return lines([
 		"import com.android.build.api.artifact.SingleArtifact",
@@ -176,6 +201,7 @@ function appGradle(target: Target, root: string, compiler: string): string {
 		"\t@Input abstract Property<String> getEntry()",
 		"\t@Input abstract Property<Integer> getMinSdk()",
 		"\t@Input abstract Property<Boolean> getRelease()",
+		"\t@InputFile abstract RegularFileProperty getAssetsSource()",
 		"\t@Internal abstract DirectoryProperty getNdkDirectory()",
 		"\t@Internal abstract DirectoryProperty getWorkDirectory()",
 		"\t@OutputDirectory abstract DirectoryProperty getOutputDirectory()",
@@ -204,8 +230,11 @@ function appGradle(target: Target, root: string, compiler: string): string {
 		"\t\tif (!abi.mkdirs() || !(work.isDirectory() || work.mkdirs())) throw new GradleException(\"MetaScript: cannot create ${abi} and ${work}\")",
 		"\t\tFile clang = ndkTool(ndkDirectory.get().asFile, \"aarch64-linux-android${minSdk.get()}-clang\".toString())",
 		"\t\tif (!clang.isFile()) throw new GradleException(\"MetaScript: NDK clang wrapper does not exist: ${clang}\")",
+		"\t\tFile assetsObject = new File(work, 'ionAssets.o')",
+		"\t\texecOperations.exec { commandLine(clang.path, '-c', '-fPIC', assetsSource.get().asFile.path, '-o', assetsObject.path) }",
 		"\t\tList<String> command = [compiler.get(), 'build', entry.get(), '--os=android', '--cpu=arm64', '--app=lib',",
-		"\t\t\t\"--cc=${clang}\".toString(), \"--output=${new File(abi, 'lib" + nativeLibrary + ".so')}\".toString(), '--no-color']",
+		"\t\t\t\"--cc=${clang}\".toString(), \"--output=${new File(abi, 'lib" + nativeLibrary + ".so')}\".toString(), '--no-color',",
+		"\t\t\t\"--link=${assetsObject}\".toString(), '--passL=-landroid']",
 		"\t\tif (release.get()) command += ['--release', '--strip']",
 		"\t\ttry {",
 		"\t\t\texecOperations.exec {",
@@ -283,6 +312,26 @@ function appGradle(target: Target, root: string, compiler: string): string {
 		"\t}",
 		"}",
 		"",
+		"abstract class IonAssets extends DefaultTask {",
+		"\t@Input abstract MapProperty<String, String> getPlacements()",
+		"\t@OutputDirectory abstract DirectoryProperty getOutputDirectory()",
+		"\t@Inject abstract FileSystemOperations getFiles()",
+		"",
+		"\t@TaskAction",
+		"\tvoid copy() {",
+		"\t\tFile output = outputDirectory.get().asFile",
+		"\t\toutput.deleteDir()",
+		"\t\tplacements.get().each { destination, source ->",
+		"\t\t\tFile from = new File(source)",
+		"\t\t\tFile to = new File(output, destination)",
+		"\t\t\tif (!from.exists()) throw new GradleException(\"MetaScript: asset does not exist: ${from}\")",
+		"\t\t\tfiles.copy { it.from(from); it.into(from.isDirectory() ? to : to.parentFile) }",
+		"\t\t}",
+		"\t}",
+		"}",
+		"",
+		"def ionAssetPlacements = [" + placements + "]",
+		"",
 		"def signingInputs = [",
 		"\tstoreFile: ['ion.android.storeFile', 'ION_ANDROID_STORE_FILE'],",
 		"\tstorePassword: ['ion.android.storePassword', 'ION_ANDROID_STORE_PASSWORD'],",
@@ -353,6 +402,7 @@ function appGradle(target: Target, root: string, compiler: string): string {
 		"\t\t\tentry = mscEntry",
 		"\t\t\tminSdk = mscMinSdk",
 		"\t\t\trelease = variant.buildType == 'release'",
+		"\t\t\tassetsSource = layout.projectDirectory.file('" + assetsSourceFile + "')",
 		"\t\t\tndkDirectory = androidComponents.sdkComponents.ndkDirectory",
 		"\t\t\tworkDirectory = layout.buildDirectory.dir(\"metascript/${variant.name}\")",
 		"\t\t\tpackagedOutputs.from(layout.buildDirectory.dir(\"outputs/apk/${variant.name}\"), layout.buildDirectory.dir(\"outputs/bundle/${variant.name}\"))",
@@ -360,6 +410,12 @@ function appGradle(target: Target, root: string, compiler: string): string {
 		"\t\t\tif (variant.buildType == 'release') dependsOn('verifyReleaseSigning')",
 		"\t\t}",
 		"\t\tvariant.sources.jniLibs.addGeneratedSourceDirectory(library) { it.outputDirectory }",
+		"\t\tdef assets = tasks.register(\"copyIonAssets${variant.name.capitalize()}\", IonAssets) {",
+		"\t\t\tplacements = ionAssetPlacements",
+		"\t\t\toutputDirectory = layout.buildDirectory.dir(\"ionAssets/${variant.name}\")",
+		"\t\t\toutputs.upToDateWhen { false }",
+		"\t\t}",
+		"\t\tvariant.sources.assets.addGeneratedSourceDirectory(assets) { it.outputDirectory }",
 		"\t\tif (variant.buildType == 'release') {",
 		"\t\t\tdef nativeClasses = tasks.register(\"verifyNativeClasses${variant.name.capitalize()}\", NativeClassCheck) {",
 		"\t\t\t\tmapping = variant.artifacts.get(SingleArtifact.OBFUSCATION_MAPPING_FILE.INSTANCE)",
@@ -411,6 +467,7 @@ function mainActivity(): string {
 		"\t@Override",
 		"\tprotected void onCreate(Bundle state) {",
 		"\t\tsuper.onCreate(state);",
+		"\t\tNativeApp.assets(getAssets());",
 		"\t\tFrameLayout root = new FrameLayout(this);",
 		"\t\tsetContentView(root);",
 		"\t\tNativeApp.start(root);",
@@ -453,6 +510,7 @@ function nativeApp(): string {
 		"package " + bootstrapPackage + ";",
 		"",
 		"import android.content.Intent;",
+		"import android.content.res.AssetManager;",
 		"import android.widget.FrameLayout;",
 		"",
 		"public final class NativeApp {",
@@ -466,6 +524,7 @@ function nativeApp(): string {
 		"\tstatic native void resume();",
 		"\tstatic native void destroy();",
 		"\tstatic native void newIntent(Intent intent);",
+		"\tstatic native void assets(AssetManager assets);",
 		"",
 		"\tprivate NativeApp() {}",
 		"}",
@@ -503,7 +562,8 @@ export function gradleProject(graph: Graph, root: string, compiler: string): Res
 				"zipStorePath=wrapper/dists",
 			]),
 		},
-		{ path: "app/build.gradle", content: appGradle(target, root, compiler) },
+		{ path: "app/build.gradle", content: appGradle(target, graph.files, root, compiler) },
+		{ path: "app/" + assetsSourceFile, content: assetsSource() },
 		{ path: "app/proguard-rules.pro", content: lines(["-keep class " + bootstrapPackage + ".NativeApp { native <methods>; }"]) },
 		{ path: "app/src/main/AndroidManifest.xml", content: manifest() },
 		{

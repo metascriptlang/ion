@@ -118,7 +118,7 @@ function recordFile(ref graph: Graph, placed: PlacedFile): Result<void, string> 
 function refuseAndroid(owner: string, name: string, target: Target): Result<void, string> {
 	if (target.platform != Platform.Android) return Result.ok(null);
 	return Result.err(
-		"files are not placed for Android targets yet; " + owner + " places " + quoted(name) +
+		"artifact files are not placed for Android targets yet; " + owner + " places " + quoted(name) +
 		" into " + quoted(target.name),
 	);
 }
@@ -188,7 +188,6 @@ export function resolve(this project: Project): Result<Graph, string> {
 	}
 	for (const target of graph.targets) {
 		for (const asset of target.assets) {
-			try refuseAndroid("manifest", asset, target);
 			if (!validRelativePath(asset)) {
 				return Result.err("asset of " + quoted(target.name) + " must be a relative path inside the source directory: " + asset);
 			}
