@@ -149,6 +149,7 @@ try:
         time.sleep(2)
     while emulator:
         run("close-dialogs", [adb, "shell", "am", "broadcast", "-a", "android.intent.action.CLOSE_SYSTEM_DIALOGS"])
+        run("home", [adb, "shell", "input", "keyevent", "KEYCODE_HOME"])
         focus = run("focus", [adb, "shell", "dumpsys", "window"])
         if re.search(r"mCurrentFocus=.*[Ll]auncher", focus):
             break
