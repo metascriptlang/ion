@@ -97,8 +97,16 @@ signing and unsigned device builds are verified. Android arm64 (measured
 2026-09-23): a Gradle project builds Debug and signed Release APK/AAB and runs
 the JNI lifecycle fixture on the Android 36 emulator and a physical Seeker phone. A package's Java
 reaches that project as an Android library module it declares with `androidLibrary`
-(`src/android.ms`; measured 2026-09-25 on the emulator). Neither ports Ion's
-runtime APIs or integrates Neon. See
+(`src/android.ms`; measured 2026-09-25 on the emulator). `Target.assets` reach the
+APK's assets, files and directories, and `readResource` reads them through the
+`AAssetManager` the generated `MainActivity` hands to the generated `ionAssets.c`
+before `MsMain` (measured 2026-10-22 on the Seeker, msc v0.3.4 `ae54a85be`: a probe of
+`examples/generatorAndroid` without `androidLibrary` read `assets/marker.txt` and
+`bundle/nested/inner.txt` and got `no asset` for a missing one; the emulator lane
+itself is parked on the compiler card
+`2026-10-22-androidlibrary-macro-crashes-the-comptime-vm-across-register-classes`, and
+the shared emulator's system server kept restarting that day). Apart from
+`readResource` and `resourcePath`, neither ports Ion's runtime APIs or integrates Neon. See
 [PROJECT-GENERATOR.md](docs/PROJECT-GENERATOR.md#verification) for the measured
 tree, command and remaining boundaries.
 

@@ -164,7 +164,7 @@ const result = await window.ion.call("greet", { name: "Sơn" });
 | `webview` | `createWebview`, `webviewNode`, `setWebviewBounds`, `forwardPointer`, `focusWebview`, `navigate`, `evalJs`, `emit`, `emitTo`, `emitAll` |
 | `input` | `onPointer`, `onKey`, `onText`, `onImePreedit`, `onFocus`, `onResize`, `onFrame` |
 | `ipc` | `listen`, `messageWebviewId`, `runLoop` (and `Handler` type) |
-| `window` | `resourcePath`, `resourceUrl` |
+| `window` | `resourcePath`, `resourceUrl`, `readResource` (the bytes of a bundled file; the one way to read an asset on Android) |
 | `command` | `command` (and `Command` type) |
 | `dialog` | `openFile` |
 | `security` | `setContentProtected` |

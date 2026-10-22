@@ -78,7 +78,14 @@ export const project: Project = {
 - A slice file is a path relative to the manifest's directory, or absolute; a plugin
   uses an absolute path for files inside Ion. A missing file stops `generate`.
 - `assets` is the same mechanism: each entry is a `Resources` placement that keeps its
-  relative path, for every platform but Android. An entry that names a directory is
+  relative path. On Android the build copies each entry into the APK's assets (a
+  generated `copyIonAssets<Variant>` task registered as the variant's assets), and an
+  app reads one with `readResource(path)` from `src/window.ms`, because an APK asset
+  is no file: `resourcePath()` there is `/android_asset`. `MainActivity` hands
+  `getAssets()` to the generated `app/ionAssets.c` before `NativeApp.start`, and the
+  native task links that file with `--link`, as the iOS build links `IonMain.m`; Tauri
+  reads its Android resources through `AssetManager` the same way rather than
+  extracting them. On Apple platforms an entry that names a directory is
   an Xcode folder reference, as Tuist's `.folderReference(path:)` is: the build copies
   the tree as it is at build time, so files added later need no new `generate`.
 - `Target.arch` defaults to `X64` for `windowsApp` and `Arm64` for the others.
