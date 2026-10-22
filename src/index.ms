@@ -6,7 +6,7 @@
 // live in ipc.ms — the canonical bridge consumer — so re-export-only
 // modules like this one don't drop them.
 
-export { resourcePath, resourceUrl } from "./window";
+export { resourcePath, resourceUrl, readResource } from "./window";
 export { listen, messageWebviewId, runLoop, Handler } from "./ipc";
 export {
 	createWebview, releaseWebview, getWebview, webviewById, webviewWindowId, webviewNode,

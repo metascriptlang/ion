@@ -1,10 +1,17 @@
 // Bundle metadata.
 
-import { ionResourcePath } from "./platform/bridge.h";
+import { ionResourcePath, ionReadAsset, ionAssetStatus } from "./platform/bridge.h";
+import { readFile } from "std/fs";
+import { join } from "std/fs/path";
 
 when (ios) {
 	@compile("./platform/ios/core/resource.m", "-fobjc-arc");
 	@passL("-framework Foundation");
+}
+
+when (android) {
+	@compile("./platform/android/core/resource.c");
+	@passL("-landroid");
 }
 
 // Returns the .app bundle's Contents/Resources/ absolute path (the flat .app itself on iOS), or "" when
@@ -17,6 +24,28 @@ when (ios) {
 //     : "http://localhost:8081";        // dev server fallback
 export function resourcePath(): string {
 	return ionResourcePath();
+}
+
+// The bytes of a file shipped with the app (`Target.assets`), by its path inside the bundle:
+//
+//   const font = readResource("assets/JetBrainsMonoNL-Regular.ttf");
+//
+// On Android the file stays inside the APK, so `resourcePath()` ("/android_asset") is no path to
+// open; read through this instead.
+export function readResource(path: string): Result<uint8[], string> {
+	when (android) {
+		const bytes = ionReadAsset(path);
+		const status = ionAssetStatus();
+		if (status < 0) return Result.err("no Android AssetManager: build the app through ion generate");
+		if (status == 0) return Result.err("no asset " + path);
+		return Result.ok(bytes.asBytes().slice(0));
+	} else {
+		const root = resourcePath();
+		if (root === "") return Result.err("no resource directory: the app runs unbundled");
+		const read = readFile(join(root, path));
+		if (!read.ok) return Result.err("cannot read resource " + path + ": " + read.error.message);
+		return Result.ok(read.value.asBytes().slice(0));
+	}
 }
 
 // Build a `file://` URL pointing at `<resourcePath>/<file>`, with the right

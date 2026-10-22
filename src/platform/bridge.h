@@ -322,6 +322,11 @@ msString ionFileOpen(void);
 // to the binary).
 msString ionResourcePath(void);
 
+// Android only (android/core/resource.c): the bytes of `path` inside the APK's assets.
+// ionAssetStatus reports the last read: 1 read, 0 no such asset, -1 no AssetManager attached.
+msString ionReadAsset(const char *path);
+int      ionAssetStatus(void);
+
 // Toggle content protection on the main window. When on, screen-capture
 // frameworks (screenshots, screen recordings, screen sharing) cannot read
 // the window's pixels. Useful for windows showing sensitive content.
