@@ -1,6 +1,4 @@
-import { resourcePath } from "../../src/window";
-import { readFile } from "std/fs";
-import { join } from "std/fs/path";
+import { readResource } from "../../src/window";
 
 @include("./fixture.h");
 @compile("./host.m", "-fobjc-arc");
@@ -10,6 +8,8 @@ import { join } from "std/fs/path";
 extern function ionFixtureRun(value: int32): void;
 extern function ionFixtureAsset(found: int32): void;
 
-const asset = readFile(join(resourcePath(), "assets/marker.txt"));
-ionFixtureAsset(asset.ok && asset.value == "ion asset\n" ? 1 as int32 : 0 as int32);
+const asset = readResource("assets/marker.txt");
+const nested = readResource("bundle/nested/inner.txt");
+const found = asset.ok && asset.value.asString() == "ion asset\n" && nested.ok && nested.value.asString() == "nested asset\n";
+ionFixtureAsset(found ? 1 as int32 : 0 as int32);
 ionFixtureRun(0);

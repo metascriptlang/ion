@@ -67,6 +67,7 @@ if (first.ok && second.ok) {
 		"gradle.properties",
 		"gradle/wrapper/gradle-wrapper.properties",
 		"app/build.gradle",
+		"app/ionAssets.c",
 		"app/proguard-rules.pro",
 		"app/src/main/AndroidManifest.xml",
 		"app/src/main/res/values/strings.xml",
@@ -116,7 +117,7 @@ if (first.ok && second.ok) {
 	check(build.includes("R8 removed ${owner}, but ${implemented}"), "a removed JNI class fails the build");
 	check(build.includes("tasks.matching { it.name in packaging }.configureEach { dependsOn nativeClasses }"), "packaging waits on the JNI class check");
 	check(build.includes("layout.buildDirectory.dir(\"metascript/${variant.name}\")"), "per-variant msc work directory");
-	check(!build.includes("externalNativeBuild") && !build.includes("CMake") && !build.includes(".c'"), "no native source inventory");
+	check(!build.includes("externalNativeBuild") && !build.includes("CMake") && !build.replaceAll("'ionAssets.c'", "").includes(".c'"), "no native source inventory beyond the generated asset hand-off");
 
 	const manifest = file(files, "app/src/main/AndroidManifest.xml");
 	check(manifest.includes("android:name=\"dev.metascript.app.MainActivity\""), "manifest names the bootstrap activity");
@@ -203,4 +204,23 @@ function infoPlistKeys(): void {
 }
 infoPlistKeys();
 mixedProject();
+function androidAssets(): void {
+	const graph = resolve({ name: "Mobile", targets: [{ ...app, assets: ["assets/font.ttf", "src"] }], plugins: [bundlePrefix("dev.ion")] });
+	if (!graph.ok) {
+		check(false, "an Android target with assets resolves: " + graph.error);
+		return;
+	}
+	const rendered = gradleProject(graph.value, "/source", "/msc");
+	if (!rendered.ok) {
+		check(false, "an Android target with assets renders: " + rendered.error);
+		return;
+	}
+	const gradle = file(rendered.value, "app/build.gradle");
+	check(gradle.includes("def ionAssetPlacements = ['assets/font.ttf': '/source/assets/font.ttf', 'src': '/source/src']"), "the build lists every asset by destination");
+	check(gradle.includes("variant.sources.assets.addGeneratedSourceDirectory(assets)"), "the copied assets are the variant's assets");
+	check(gradle.includes("\"--link=${assetsObject}\".toString(), '--passL=-landroid'"), "the native library links the asset hand-off");
+	check(file(rendered.value, "app/src/main/java/dev/metascript/app/MainActivity.java").includes("NativeApp.assets(getAssets());\n\t\tFrameLayout root"), "the activity hands its AssetManager over before start");
+	check(file(rendered.value, "app/ionAssets.c").includes("Java_dev_metascript_app_NativeApp_assets(JNIEnv *env, jclass cls, jobject assets)"), "the generated C implements the native method");
+}
+androidAssets();
 console.log("android: " + passed.toString() + " assertions passed");

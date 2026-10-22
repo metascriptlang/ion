@@ -8,9 +8,14 @@ extern void MsMain(void);
 static int32_t fixtureValue;
 static int started;
 static jobject label;
+static char assetResult[160];
 
 static void report(const char *event) {
 	__android_log_print(ANDROID_LOG_INFO, "IonFixture", "%s value=%d", event, fixtureValue);
+}
+
+void ionFixtureAsset(const char *result) {
+	snprintf(assetResult, sizeof assetResult, "%s", result);
 }
 
 void ionFixtureRun(int32_t value) {
@@ -39,6 +44,7 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_start(JNIEnv *env, jcla
 	if (label) (*env)->DeleteGlobalRef(env, label);
 	label = (*env)->NewGlobalRef(env, view);
 	report("start");
+	__android_log_print(ANDROID_LOG_INFO, "IonFixture", "asset %s", assetResult);
 	jclass tap = (*env)->FindClass(env, "dev/ion/fixture/Tap");
 	if (tap) {
 		jobject listener = (*env)->NewObject(env, tap, (*env)->GetMethodID(env, tap, "<init>", "(I)V"), 7);

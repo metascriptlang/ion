@@ -164,10 +164,8 @@ if (placedGraph.ok) {
 }
 const macAssets = resolve({ ...project, targets: [{ ...app, assets: ["index.html"] }] });
 check(macAssets.ok, "assets are accepted off Windows");
-expectError(
-	resolve({ ...project, targets: [{ ...Target.androidApp("Mobile", "main.ms"), assets: ["index.html"], bundleId: "dev.ion.Mobile" }] }),
-	"files are not placed for Android targets yet; manifest places 'index.html' into 'Mobile'",
-);
+const androidAssets = resolve({ ...project, targets: [{ ...Target.androidApp("Mobile", "main.ms"), assets: ["index.html"], bundleId: "dev.ion.Mobile" }] });
+check(androidAssets.ok, "assets are accepted on Android");
 expectError(
 	resolve({ ...project, targets: [{ ...app, assets: ["../secret.txt"] }] }),
 	"asset of 'Studio' must be a relative path inside the source directory: ../secret.txt",

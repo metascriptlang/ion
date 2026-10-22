@@ -205,6 +205,7 @@ try:
     first = settle(lambda seen: any(e.startswith("resize ") for e in seen))
     assert first[0] == "start value=17" and "resume value=17" in first
     assert "listener=attached" in first, f"Debug did not attach the library listener: {first}"
+    assert "asset marker=ion asset nested=nested asset missing=no asset assets/none.txt" in first, f"assets: {first}"
     tap(7)
     width, height = map(int, re.search(r"resize (\d+)x(\d+)", " ".join(first)).groups())
     process = pid()

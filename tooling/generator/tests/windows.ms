@@ -205,7 +205,7 @@ resolveError(
 resolveError(
 	{ ...Target.androidApp("Desk", "main.ms"), files: [x64Library] },
 	[],
-	"files are not placed for Android targets yet; manifest places 'conpty' into 'Desk'",
+	"artifact files are not placed for Android targets yet; manifest places 'conpty' into 'Desk'",
 );
 resolveError(
 	manifestPlaces,
