@@ -15,7 +15,7 @@ shutil.copytree(repo / "examples/generatorAndroid", source)
 manifest = source / "project.ms"
 manifest.write_text(manifest.read_text().replace("../../tooling/generator/", str(repo / "tooling/generator") + "/"))
 entry = source / "main.ms"
-entry.write_text(entry.read_text().replace('"../../src/android"', '"' + str(repo / "src/android") + '"'))
+entry.write_text(entry.read_text().replace('"../../src/', '"' + str(repo / "src") + '/'))
 sdk = Path(os.environ.get("ANDROID_HOME") or Path.home() / "Library/Android/sdk")
 ndk_bin = sdk / "ndk/28.0.13004108/toolchains/llvm/prebuilt/darwin-x86_64/bin"
 build_tools = sdk / "build-tools/36.0.0"
@@ -53,17 +53,17 @@ vendored = repo / "tooling/generator/android/wrapper/gradle-wrapper.jar"
 assert (project / "gradle/wrapper/gradle-wrapper.jar").read_bytes() == vendored.read_bytes()
 assert hashlib.sha256(vendored.read_bytes()).hexdigest() == \
     "b3a875ddc1f044746e1b1a55f645584505f4a10438c1afea9f15e92a7c42ec13"
-assert not [p for p in tree(project) if p.endswith((".c", ".h", ".cpp", "CMakeLists.txt", ".mk"))]
+assert [p for p in tree(project) if p.endswith((".c", ".h", ".cpp", "CMakeLists.txt", ".mk"))] == ["app/ionAssets.c"]
 generated = tree(project)
 
 refused = run("overwrite", [*generator, manifest, project], success=False)
 assert "output already exists" in refused
 assert tree(project) == generated
 invalid = source / "invalid.ms"
+target = '...Target.androidApp("IonAndroid", "main.ms"),'
+assert manifest.read_text().count(target) == 1, "the fixture manifest no longer spreads Target.androidApp once"
 invalid.write_text(manifest.read_text().replace(
-    'targets: [Target.androidApp("IonAndroid", "main.ms")]',
-    'targets: [{ ...Target.androidApp("IonAndroid", "main.ms"), android: '
-    '{ ...Target.androidApp("IonAndroid", "main.ms").android, minSdk: 21 } }]'))
+    target, target + ' android: { ...Target.androidApp("IonAndroid", "main.ms").android, minSdk: 21 },'))
 rejected = run("invalid", [*generator, invalid, results / "invalid"], success=False)
 assert "needs minSdk >= 23, got 21" in rejected
 assert not (results / "invalid").exists()
