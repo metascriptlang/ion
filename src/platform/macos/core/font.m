@@ -2,23 +2,68 @@
 #import <Foundation/Foundation.h>
 #include "../../bridge.h"
 
-static NSMutableDictionary<NSString *, NSArray<NSString *> *> *s_faceNames;
+static uint32_t bigEndian(const uint8_t *bytes, NSUInteger at, NSUInteger width) {
+    uint32_t value = 0;
+    for (NSUInteger i = 0; i < width; i++) value = value << 8 | bytes[at + i];
+    return value;
+}
 
-static int faceIndex(NSURL *url, NSString *postScriptName) {
-    if (s_faceNames == nil) s_faceNames = [NSMutableDictionary dictionary];
-    NSArray<NSString *> *names = s_faceNames[url.path];
-    if (names == nil) {
-        NSArray *faces = CFBridgingRelease(CTFontManagerCreateFontDescriptorsFromURL((__bridge CFURLRef)url));
-        NSMutableArray<NSString *> *found = [NSMutableArray array];
-        for (id face in faces) {
-            NSString *name = CFBridgingRelease(CTFontDescriptorCopyAttribute((__bridge CTFontDescriptorRef)face, kCTFontNameAttribute));
-            [found addObject:name ?: @""];
-        }
-        names = found;
-        s_faceNames[url.path] = names;
+static NSString *postScriptName(NSData *name) {
+    const uint8_t *bytes = name.bytes;
+    if (name.length < 6) return nil;
+    NSUInteger count = bigEndian(bytes, 2, 2), strings = bigEndian(bytes, 4, 2);
+    for (NSUInteger i = 0; i < count && 6 + 12 * (i + 1) <= name.length; i++) {
+        NSUInteger record = 6 + 12 * i;
+        uint32_t platform = bigEndian(bytes, record, 2), nameId = bigEndian(bytes, record + 6, 2);
+        NSUInteger length = bigEndian(bytes, record + 8, 2), at = strings + bigEndian(bytes, record + 10, 2);
+        if (nameId != 6 || (platform != 1 && platform != 3) || at + length > name.length) continue;
+        NSData *text = [name subdataWithRange:NSMakeRange(at, length)];
+        return [[NSString alloc] initWithData:text encoding:platform == 3 ? NSUTF16BigEndianStringEncoding : NSMacOSRomanStringEncoding];
     }
-    NSUInteger index = [names indexOfObject:postScriptName];
-    return index == NSNotFound ? 0 : (int)index;
+    return nil;
+}
+
+static NSString *facePostScriptName(NSData *file, NSUInteger face) {
+    const uint8_t *bytes = file.bytes;
+    if (face + 12 > file.length) return nil;
+    NSUInteger tables = bigEndian(bytes, face + 4, 2);
+    for (NSUInteger i = 0; i < tables && face + 12 + 16 * (i + 1) <= file.length; i++) {
+        NSUInteger record = face + 12 + 16 * i;
+        if (bigEndian(bytes, record, 4) != kCTFontTableName) continue;
+        NSUInteger at = bigEndian(bytes, record + 8, 4), length = bigEndian(bytes, record + 12, 4);
+        return at + length <= file.length ? postScriptName([file subdataWithRange:NSMakeRange(at, length)]) : nil;
+    }
+    return nil;
+}
+
+static NSMutableDictionary<NSString *, NSArray *> *s_faceNames;
+
+static NSArray *faceNames(NSURL *url) {
+    if (s_faceNames == nil) s_faceNames = [NSMutableDictionary dictionary];
+    NSArray *names = s_faceNames[url.path];
+    if (names != nil) return names;
+    NSData *file = [NSData dataWithContentsOfURL:url options:NSDataReadingMappedIfSafe error:NULL];
+    const uint8_t *bytes = file.bytes;
+    NSMutableArray *found = [NSMutableArray array];
+    if (file.length >= 12 && bigEndian(bytes, 0, 4) == 'ttcf') {
+        NSUInteger faces = bigEndian(bytes, 8, 4);
+        for (NSUInteger i = 0; i < faces && 12 + 4 * (i + 1) <= file.length; i++) {
+            [found addObject:facePostScriptName(file, bigEndian(bytes, 12 + 4 * i, 4)) ?: [NSNull null]];
+        }
+    } else if (file != nil) {
+        [found addObject:facePostScriptName(file, 0) ?: [NSNull null]];
+    }
+    s_faceNames[url.path] = found;
+    return found;
+}
+
+static int faceIndex(NSURL *url, CTFontRef font) {
+    NSArray *names = faceNames(url);
+    if (names.count == 1) return 0;
+    NSData *table = CFBridgingRelease(CTFontCopyTable(font, kCTFontTableName, kCTFontTableOptionNoOptions));
+    NSString *name = table ? postScriptName(table) : nil;
+    NSUInteger index = name ? [names indexOfObject:name] : NSNotFound;
+    return index == NSNotFound ? -1 : (int)index;
 }
 
 static CTFontRef baseFont(const char *family, int weight, int italic) {
@@ -88,9 +133,10 @@ static NSMutableArray<NSString *> *s_paths;
 static NSMutableArray<NSNumber *> *s_indices;
 
 static void add(CTFontRef font) {
-    NSString *postScriptName = CFBridgingRelease(CTFontCopyPostScriptName(font));
     NSURL *url = CFBridgingRelease(CTFontCopyAttribute(font, kCTFontURLAttribute));
-    NSNumber *index = @(faceIndex(url, postScriptName));
+    int face = faceIndex(url, font);
+    if (face < 0) return;
+    NSNumber *index = @(face);
     for (NSUInteger i = 0; i < s_paths.count; i++) {
         if ([s_paths[i] isEqualToString:url.path] && [s_indices[i] isEqualToNumber:index]) return;
     }
