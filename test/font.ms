@@ -1,4 +1,5 @@
 import { findSystemFonts, Presentation, FontRequest } from "../src/font";
+import { readFile } from "std/fs";
 
 const text: FontRequest = { presentation: Presentation.Text, weight: 400 as int32, italic: false, family: "Menlo" };
 
@@ -32,6 +33,21 @@ when (macos) {
 				}
 			}
 			assert heiti;
+		}
+	}
+
+	function faceCount(path: string): uint32 {
+		const read = readFile(path);
+		if (!read.ok) return 0 as uint32;
+		const bytes = read.value.asBytes();
+		if (bytes.length < 12 || bytes[0] != 0x74 || bytes[1] != 0x74 || bytes[2] != 0x63 || bytes[3] != 0x66) return 1 as uint32;
+		return (bytes[8] as uint32) << 24 | (bytes[9] as uint32) << 16 | (bytes[10] as uint32) << 8 | (bytes[11] as uint32);
+	}
+
+	test "a face of a variable font names its index in the file, not a named instance" {
+		for (const weight of [400, 700]) {
+			const faces = findSystemFonts(0x4F60 as int32, { ...text, weight: weight as int32 });
+			for (const face of faces) assert (face.index as uint32) < faceCount(face.path);
 		}
 	}
 
