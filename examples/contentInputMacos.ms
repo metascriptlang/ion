@@ -5,12 +5,15 @@
 // own click in CSS pixels, keyboard focus moving between the content and the webview, the wheel
 // signs against the page's WheelEvent, the wheel unit (lines from a notch, device pixels from a
 // trackpad), and the Vietnamese Telex input method typing "việt" (enabled for the run and put
-// back; skipped when the app is not frontmost).
+// back; skipped when the app is not frontmost), and Option as Alt on the left with the ABC
+// layout: left Option+Shift+B types "B" with Alt left unconsumed and left Option+E starts no
+// accent, while right Option+E, and left Option+E once the setting is off, compose "é".
 // Run: msc build examples/contentInputMacos.ms && out/debug/contentInputMacos
 
 import {
 	createWindow, defaultOptions, windowRoot, windowDevice, commit, focusContent,
 	createWebview, webviewNode, setWebviewBounds, focusWebview, listen, runLoop, closeWindow,
+	setOptionAsAlt, OptionAsAltLeft, OptionAsAltNeither,
 	onPointer, onKey, onText, onImePreedit, onFocus, onResize, keyName, keyMods,
 	PointerEvent, PointerKind, DeltaMode, KeyEvent, KeyAction, KeyMod, Webview, Window,
 } from "../src/index";
@@ -32,7 +35,7 @@ extern function ipLeave(root: Ptr<void>, mods: int32): void;
 extern function ipSelectInputSource(id: cstring): int32;
 extern function ipRestoreInputSource(): void;
 extern function ipAppActive(root: Ptr<void>): int32;
-extern function ipDeviceKey(root: Ptr<void>, keyCode: int32): void;
+extern function ipDeviceKey(root: Ptr<void>, keyCode: int32, mods: int32): void;
 extern function ipKey(root: Ptr<void>, keyCode: int32, chars: cstring, bare: cstring, mods: int32): void;
 extern function ipMarked(root: Ptr<void>, utf8: cstring, caretUtf16: int32): void;
 extern function ipCommit(root: Ptr<void>, utf8: cstring): void;
@@ -47,6 +50,7 @@ const STEP_MS = 300;
 const SHIFT: int32 = 1 as int32;
 const CTRL: int32 = 2 as int32;
 const ALT: int32 = 4 as int32;
+const ALT_RIGHT: int32 = 256 as int32;
 
 struct Rect {
 	x: int32;
@@ -117,6 +121,8 @@ const TELEX = "com.apple.inputmethod.VietnameseIM.VietnameseSimpleTelex";
 const TELEX_KEYS: int32[] = [0x09 as int32, 0x22 as int32, 0x0E as int32, 0x0E as int32, 0x26 as int32, 0x11 as int32, 0x31 as int32];
 let telex = false;
 let active = false;
+const ABC = "com.apple.keylayout.ABC";
+let abc = false;
 
 function act(win: Window, root: Ptr<void>, i: int32): void {
 	if (i === 0) {
@@ -186,7 +192,28 @@ function act(win: Window, root: Ptr<void>, i: int32): void {
 	} else if (i === 20) {
 		resetStep("Vietnamese Telex: vieejt then space");
 		active = ipAppActive(root) !== (0 as int32);
-		if (telex && active) for (const k of TELEX_KEYS) ipDeviceKey(root, k);
+		if (telex && active) for (const k of TELEX_KEYS) ipDeviceKey(root, k, 0 as int32);
+	} else if (i === 21) {
+		resetStep("select ABC, Option as Alt on the left");
+		abc = ipSelectInputSource(ABC) !== (0 as int32);
+		setOptionAsAlt(win, OptionAsAltLeft);
+		focusContent(win);
+	} else if (i === 22) {
+		resetStep("left Option+Shift+B as Alt");
+		active = ipAppActive(root) !== (0 as int32);
+		ipDeviceKey(root, 0x0B as int32, SHIFT | ALT);
+	} else if (i === 23) {
+		resetStep("left Option+E as Alt");
+		ipDeviceKey(root, 0x0E as int32, ALT);
+	} else if (i === 24) {
+		resetStep("right Option+E then E");
+		ipDeviceKey(root, 0x0E as int32, ALT | ALT_RIGHT);
+		ipDeviceKey(root, 0x0E as int32, 0 as int32);
+	} else if (i === 25) {
+		resetStep("Option as Alt off: left Option+E then E");
+		setOptionAsAlt(win, OptionAsAltNeither);
+		ipDeviceKey(root, 0x0E as int32, ALT);
+		ipDeviceKey(root, 0x0E as int32, 0 as int32);
 	}
 }
 
@@ -254,11 +281,24 @@ function verify(root: Ptr<void>, i: int32): void {
 		}
 		check(`typed '${typed}' == 'việt '`, typed === "việt ");
 		check(`preedit '${preedits}' ends with 'iệt@3 @0'`, preedits.endsWith("iệt@3 @0 "));
+	} else if (i >= 22 && (!abc || !active)) {
+		if (i === 25) ipRestoreInputSource();
+		console.log(`SKIP [${stepName}] ${!abc ? ABC + " cannot be selected" : "the app is not frontmost, so the layout's dead keys do not serve it"}`);
+	} else if (i === 22) {
+		check(`key '${keys}' == 'KeyB:B shift alt consumed-shift'`, keys === "KeyB:B shift alt consumed-shift ");
+		check(`preedit '${preedits}' == ''`, preedits === "");
+	} else if (i === 23) {
+		check(`key '${keys}' == 'KeyE:e alt'`, keys === "KeyE:e alt ");
+		check(`preedit '${preedits}' == ''`, preedits === "");
+	} else if (i === 24 || i === 25) {
+		if (i === 25) ipRestoreInputSource();
+		check(`typed '${typed}' == 'é'`, typed === "é");
+		check(`preedit '${preedits}' starts an accent`, preedits !== "" && !preedits.startsWith("@"));
 	}
 }
 
 function step(win: Window, root: Ptr<void>, i: int32): void {
-	if (i > (20 as int32)) {
+	if (i > (25 as int32)) {
 		console.log(failures === 0 ? "contentInputMacos: all PASS" : `contentInputMacos: ${failures} FAIL`);
 		closeWindow(win);
 		return;
@@ -320,8 +360,10 @@ function main(): int32 {
 		if (e.action === KeyAction.Release) return;
 		if (keyName(e.key).startsWith("Shift") || keyName(e.key).startsWith("Control")) return;
 		const shift = e.mods.has(KeyMod.Shift) ? " shift" : "";
+		const alt = e.mods.has(KeyMod.Alt) ? " alt" : "";
 		const consumed = e.consumedMods.has(KeyMod.Shift) ? " consumed-shift" : "";
-		keys += `${keyName(e.key)}:${e.text}${shift}${consumed} `;
+		const consumedAlt = e.consumedMods.has(KeyMod.Alt) ? " consumed-alt" : "";
+		keys += `${keyName(e.key)}:${e.text}${shift}${alt}${consumed}${consumedAlt} `;
 		typed += e.text;
 	});
 	onText((window: int32, text: string): void => {

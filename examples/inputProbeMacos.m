@@ -167,9 +167,18 @@ int ipSelectInputSource(const char *sourceId) {
 // mouseEventWithType: event back, macOS 26.6); without it the key event has no window.
 static const CGEventField kWindowNumberField = (CGEventField)51;
 
-void ipDeviceKey(void *root, int keyCode) {
+// Device-dependent side bits, as modsFromEvent in contentHost.m reads them.
+static CGEventFlags deviceFlags(int mods) {
+    CGEventFlags f = 0;
+    if (mods & 1) f |= kCGEventFlagMaskShift | 0x0002;
+    if (mods & 4) f |= kCGEventFlagMaskAlternate | ((mods & 256) ? 0x0040 : 0x0020);
+    return f;
+}
+
+void ipDeviceKey(void *root, int keyCode, int mods) {
     for (int i = 0; i < 2; i++) {
         CGEventRef e = CGEventCreateKeyboardEvent(NULL, (CGKeyCode)keyCode, i == 0);
+        CGEventSetFlags(e, deviceFlags(mods));
         CGEventSetIntegerValueField(e, kCGKeyboardEventKeyboardType, LMGetKbdType());
         CGEventSetIntegerValueField(e, kWindowNumberField, win(root).windowNumber);
         post([NSEvent eventWithCGEvent:e]);

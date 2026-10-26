@@ -24,8 +24,9 @@ void ipRestoreInputSource(void);
 // 1 when the app is active and the window key: an input method serves only that app.
 int ipAppActive(void *root);
 // One press and release of a key as the keyboard sends it (a CGEvent), so Text Services and
-// the selected input method see it; the characters come from the selected layout.
-void ipDeviceKey(void *root, int keyCode);
+// the selected input method see it; the characters come from the selected layout. mods are
+// ION_MOD_* bits; ION_MOD_ALT_RIGHT with ION_MOD_ALT is the right Option, else the left.
+void ipDeviceKey(void *root, int keyCode, int mods);
 // One key press and release. `chars` is what the layout produced (UTF-8), `bare` the same key
 // without modifiers; mods are ION_MOD_* bits.
 void ipKey(void *root, int keyCode, const char *chars, const char *bare, int mods);
