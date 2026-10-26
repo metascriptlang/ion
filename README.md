@@ -160,7 +160,7 @@ const result = await window.ion.call("greet", { name: "Sơn" });
 
 | Module | Exports |
 |---|---|
-| `windowManager` | `requestSingleInstance`, `createWindow`, `windowRoot`, `windowDevice`, `commit`, `focusContent`, `setImeRect`, `setCursor`, frame policy |
+| `windowManager` | `requestSingleInstance`, `createWindow`, `windowRoot`, `windowDevice`, `commit`, `focusContent`, `setImeRect`, `setCursor`, `setOptionAsAlt`, frame policy |
 | `webview` | `createWebview`, `webviewNode`, `setWebviewBounds`, `forwardPointer`, `focusWebview`, `navigate`, `evalJs`, `emit`, `emitTo`, `emitAll` |
 | `input` | `onPointer`, `onKey`, `onText`, `onImePreedit`, `onFocus`, `onResize`, `onFrame` |
 | `ipc` | `listen`, `messageWebviewId`, `runLoop` (and `Handler` type) |
