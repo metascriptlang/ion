@@ -44,6 +44,7 @@ NSView    *ionContentHostCreate(IonWindowId winId, NSWindow *nsWindow);
 void       ionContentHostDestroy(NSView *host);
 void       ionContentHostSetCursor(NSView *host, int cursor);
 void       ionContentHostSetImeRect(NSView *host, int x, int y, int w, int h);
+void       ionContentHostSetOptionAsAlt(NSView *host, int sides);
 
 // webview/bootstrap.m
 WKWebView *ionSetupWebview(const char *label, int webviewId, id *navDelegateOut);

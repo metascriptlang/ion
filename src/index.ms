@@ -30,6 +30,7 @@ export {
 	windowRoot, windowDevice, commit, focusContent, setImeRect, setCursor,
 	setFramePolicy, setFrameWhenInactive, requestFrame, FrameOnDemand, FrameContinuous,
 	CursorArrow, CursorHand, CursorIbeam, CursorCross, CursorResizeH, CursorResizeV, Window, WindowOptions,
+	setOptionAsAlt, OptionAsAltNeither, OptionAsAltLeft, OptionAsAltRight, OptionAsAltBoth,
 	WindowEventCloseRequested, WindowEventDestroyed,
 	WindowEventFocused, WindowEventBlurred,
 	WindowEventResized, WindowEventMoved,

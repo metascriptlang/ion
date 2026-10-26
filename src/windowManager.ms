@@ -17,7 +17,7 @@ import {
     ionWindowPixelWidth, ionWindowPixelHeight,
     ionFileOpenWindow,
     ionWindowDevice, ionWindowRoot, ionWindowCommit,
-    ionWindowFocusContent, ionWindowSetImeRect, ionWindowSetCursor,
+    ionWindowFocusContent, ionWindowSetImeRect, ionWindowSetCursor, ionWindowSetOptionAsAlt,
     ionWindowSetFramePolicy, ionWindowSetFrameWhenInactive, ionWindowRequestFrame,
 } from "./platform/bridge.h";
 
@@ -160,12 +160,19 @@ export const CursorCross: int32 = 3 as int32;
 export const CursorResizeH: int32 = 4 as int32;
 export const CursorResizeV: int32 = 5 as int32;
 
+export const OptionAsAltNeither: int32 = 0 as int32;
+export const OptionAsAltLeft: int32 = 1 as int32;
+export const OptionAsAltRight: int32 = 2 as int32;
+export const OptionAsAltBoth: int32 = 3 as int32;
+
 export function windowRoot(win: Window): Ptr<void> { return ionWindowRoot(win.id); }
 export function windowDevice(win: Window): Ptr<void> { return ionWindowDevice(win.id); }
 export function commit(win: Window): void { ionWindowCommit(win.id); }
 export function focusContent(win: Window): void { ionWindowFocusContent(win.id); }
 export function setImeRect(win: Window, x: int32, y: int32, w: int32, h: int32): void { ionWindowSetImeRect(win.id, x, y, w, h); }
 export function setCursor(win: Window, cursor: int32): void { ionWindowSetCursor(win.id, cursor); }
+// macOS only: which Option keys type as Alt (bridge.h ionWindowSetOptionAsAlt).
+export function setOptionAsAlt(win: Window, sides: int32): void { ionWindowSetOptionAsAlt(win.id, sides); }
 export function setFramePolicy(win: Window, policy: int32): void { ionWindowSetFramePolicy(win.id, policy); }
 export function setFrameWhenInactive(win: Window, enabled: boolean): void {
     ionWindowSetFrameWhenInactive(win.id, enabled ? (1 as int32) : (0 as int32));

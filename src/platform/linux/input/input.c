@@ -345,6 +345,10 @@ void ionLinuxDetachInput(IonLinuxWindowState *st) {
     st->im = NULL;
 }
 
+void ionWindowSetOptionAsAlt(IonWindowId id, int sides) {
+    (void)id; (void)sides;
+}
+
 void ionWindowSetImeRect(IonWindowId id, int x, int y, int w, int h) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
     if (!st) return;

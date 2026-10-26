@@ -471,6 +471,10 @@ void ionWindowSetImeRect(IonWindowId id, int x, int y, int width, int height) {
     if (GetFocus() == w->hwnd) imeReposition(w);
 }
 
+void ionWindowSetOptionAsAlt(IonWindowId id, int sides) {
+    (void)id; (void)sides;
+}
+
 void ionWindowSetCursor(IonWindowId id, int cursor) {
     IonWinWindow *w = ionWinWindow(id);
     if (w == NULL) return;

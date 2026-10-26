@@ -184,6 +184,11 @@ void ionWindowSetCursor(IonWindowId winId, int cursor) {
     if (st && st->host) ionContentHostSetCursor(st->host, cursor);
 }
 
+void ionWindowSetOptionAsAlt(IonWindowId winId, int sides) {
+    IonMacWindowState *st = ionMacWindowState(winId);
+    if (st && st->host) ionContentHostSetOptionAsAlt(st->host, sides);
+}
+
 // ---- Window properties ----------------------------------------------------
 
 void ionShowWindow(IonWindowId winId) {

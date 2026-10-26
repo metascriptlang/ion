@@ -243,6 +243,7 @@ static void installPointerMonitor(void) {
 @interface IonContentHost : NSView <NSTextInputClient>
 @property (nonatomic) IonWindowId win;
 @property (nonatomic) int cursorKind;
+@property (nonatomic) int optionAsAlt;
 @property (nonatomic) NSRect imeRectPx;
 @property (nonatomic, copy) NSString *marked;
 @property (nonatomic) NSMutableArray<NSString *> *commits;
@@ -314,16 +315,32 @@ static void installPointerMonitor(void) {
     [self addCursorRect:self.bounds cursor:c];
 }
 
+// Ghostty's translation event (macos/Sources/Ghostty/SurfaceView_AppKit.swift keyDown): an
+// Option that acts as Alt is taken out before the input method and the layout see the key.
+- (NSEvent *)translated:(NSEvent *)event {
+    NSEventModifierFlags flags = event.modifierFlags;
+    if (!(flags & NSEventModifierFlagOption)) return event;
+    int side = (flags & 0x0040) ? ION_OPTION_AS_ALT_RIGHT : ION_OPTION_AS_ALT_LEFT;
+    if (self.optionAsAlt != ION_OPTION_AS_ALT_BOTH && self.optionAsAlt != side) return event;
+    flags &= ~NSEventModifierFlagOption;
+    return [NSEvent keyEventWithType:event.type location:event.locationInWindow modifierFlags:flags
+                           timestamp:event.timestamp windowNumber:event.windowNumber context:nil
+                          characters:[event charactersByApplyingModifiers:flags] ?: @""
+         charactersIgnoringModifiers:event.charactersIgnoringModifiers ?: @""
+                           isARepeat:event.isARepeat keyCode:event.keyCode] ?: event;
+}
+
 - (void)keyDown:(NSEvent *)event {
+    NSEvent *translated = [self translated:event];
     self.commits = [NSMutableArray array];
-    [self interpretKeyEvents:@[event]];
+    [self interpretKeyEvents:@[translated]];
     NSArray<NSString *> *commits = self.commits;
     self.commits = nil;
 
     NSString *typed = nil;
     NSArray<NSString *> *rest = commits;
-    if (commits.count == 1 && isTypedText(event.characters)
-        && [commits[0] isEqualToString:event.characters]) {
+    if (commits.count == 1 && isTypedText(translated.characters)
+        && [commits[0] isEqualToString:translated.characters]) {
         typed = commits[0];
         rest = @[];
     }
@@ -338,7 +355,7 @@ static void installPointerMonitor(void) {
     r.mods = modsFromEvent(event);
     if (typed) {
         if (r.mods & ION_MOD_SHIFT) r.consumedMods |= ION_MOD_SHIFT;
-        if (r.mods & ION_MOD_ALT)   r.consumedMods |= ION_MOD_ALT;
+        if (translated.modifierFlags & NSEventModifierFlagOption) r.consumedMods |= ION_MOD_ALT;
     }
     NSString *bare = [event charactersByApplyingModifiers:0];
     r.unshifted = isTypedText(bare) ? [bare characterAtIndex:0] : 0;
@@ -449,4 +466,8 @@ void ionContentHostSetCursor(NSView *host, int cursor) {
 
 void ionContentHostSetImeRect(NSView *host, int x, int y, int w, int h) {
     ((IonContentHost *)host).imeRectPx = NSMakeRect(x, y, w, h);
+}
+
+void ionContentHostSetOptionAsAlt(NSView *host, int sides) {
+    ((IonContentHost *)host).optionAsAlt = sides;
 }

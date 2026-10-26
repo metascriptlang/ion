@@ -115,6 +115,17 @@ void        ionWindowSetImeRect(IonWindowId id, int x, int y, int w, int h);
 #define ION_CURSOR_RESIZE_V 5
 void        ionWindowSetCursor(IonWindowId id, int cursor);
 
+// Which Option keys act as Alt in the content's key records (macOS; Windows
+// and Linux have no Option key, so this is a no-op there). A key pressed with
+// such an Option skips the input method, so Option+e starts no accent, and its
+// text is what the key gives without Option (Option+Shift+b gives "B"); mods
+// keep Alt and consumedMods leave it out. Default: neither.
+#define ION_OPTION_AS_ALT_NEITHER 0
+#define ION_OPTION_AS_ALT_LEFT    1
+#define ION_OPTION_AS_ALT_RIGHT   2
+#define ION_OPTION_AS_ALT_BOTH    3
+void        ionWindowSetOptionAsAlt(IonWindowId id, int sides);
+
 // Window properties. All silently no-op when id is invalid.
 void        ionShowWindow(IonWindowId id);
 void        ionHideWindow(IonWindowId id);
