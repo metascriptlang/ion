@@ -3,15 +3,16 @@
 // Checks the window records (resize, focus, pointer buttons 1-3, motion, wheel, leave, key,
 // text, preedit), the app's hit-test giving the badge the click over the webview, the webview's
 // own click in CSS pixels, keyboard focus moving between the content and the webview, the wheel
-// signs against the page's WheelEvent, and the Vietnamese Telex input method typing "việt"
-// (enabled for the run and put back; skipped when the app is not frontmost).
+// signs against the page's WheelEvent, the wheel unit (lines from a notch, device pixels from a
+// trackpad), and the Vietnamese Telex input method typing "việt" (enabled for the run and put
+// back; skipped when the app is not frontmost).
 // Run: msc build examples/contentInputMacos.ms && out/debug/contentInputMacos
 
 import {
 	createWindow, defaultOptions, windowRoot, windowDevice, commit, focusContent,
 	createWebview, webviewNode, setWebviewBounds, focusWebview, listen, runLoop, closeWindow,
 	onPointer, onKey, onText, onImePreedit, onFocus, onResize, keyName, keyMods,
-	PointerEvent, PointerKind, KeyEvent, KeyAction, KeyMod, Webview, Window,
+	PointerEvent, PointerKind, DeltaMode, KeyEvent, KeyAction, KeyMod, Webview, Window,
 } from "../src/index";
 import { contentAttach, contentMove, contentPanel } from "./content/content";
 import { exit } from "std/process";
@@ -235,12 +236,12 @@ function verify(root: Ptr<void>, i: int32): void {
 		check(`motion mods '${pointerMods}' are all Ctrl`, pointerMods !== "" && pointerMods.split("ctrl ").join("") === "");
 	} else if (i === 15) {
 		check(`page wheel '${pageWheels}' == '0,1' (WebKit: +deltaY is down)`, pageWheels === "0,1");
-		check(`wheel '${wheels}' == '0,-1' (+y is up)`, wheels === "0,-1 ");
+		check(`wheel '${wheels}' == '0,-1 line' (+y is up)`, wheels === "0,-1 line ");
 	} else if (i === 16) {
 		check(`page wheel '${pageWheels}' == '1,0' (WebKit: +deltaX is right)`, pageWheels === "1,0");
-		check(`wheel '${wheels}' == '1,0' (+x is right)`, wheels === "1,0 ");
+		check(`wheel '${wheels}' == '1,0 line' (+x is right)`, wheels === "1,0 line ");
 	} else if (i === 17) {
-		check(`wheel '${wheels}' is one record down`, wheels.startsWith("0,-") && wheels.split(" ").length === 2);
+		check(`wheel '${wheels}' == '0,${-20.0 * scale} px' (20 points in device pixels)`, wheels === `0,${-20.0 * scale} px `);
 		check(`wheel mods '${pointerMods}' == 'shift'`, pointerMods === "shift ");
 	} else if (i === 18) {
 		check(`leave records ${leaves} == 1`, leaves === 1);
@@ -306,7 +307,7 @@ function main(): int32 {
 		const hit = hitName(e.x, e.y);
 		const sign = (v: float64): string => v > 0.0 ? `+${v}` : `${v}`;
 		if (e.kind === PointerKind.Motion) motions += `${e.x as int32},${e.y as int32} ${sign(e.dx)},${sign(e.dy)} `;
-		if (e.kind === PointerKind.Wheel) wheels += `${e.dx},${e.dy} `;
+		if (e.kind === PointerKind.Wheel) wheels += `${e.dx},${e.dy} ${e.deltaMode === DeltaMode.Line ? "line" : "px"} `;
 		if (e.kind === PointerKind.Leave) leaves += 1;
 		if (e.kind !== PointerKind.Button) pointerMods += `${modNames(e.mods)} `;
 		if (e.kind !== PointerKind.Button || !e.pressed) return;

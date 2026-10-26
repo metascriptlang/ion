@@ -8,9 +8,10 @@
 @include("../../src/platform/common/inputEvents.h");
 @include("../../src/platform/bridge.h");
 
-import { dispatchInput, onPointer, PointerEvent, PointerKind, KeyMod } from "../../src/input";
+import { dispatchInput, onPointer, PointerEvent, PointerKind, DeltaMode, KeyMod } from "../../src/input";
 
 extern function ionTestPushPointer(type: int32, window: int32, x: float64, y: float64, p1: float64, p2: float64, mods: int32): int32;
+extern function ionTestPushWheel(window: int32, dx: float64, dy: float64, unit: int32): int32;
 
 extern function ion_input_push(type: int32, x: float64, y: float64, p1: float64, p2: float64): int32;
 extern function ion_input_next(): int32;
@@ -118,4 +119,32 @@ test "a pointer record pushed without modifiers reads none" {
 	assert !e.mods.has(KeyMod.Shift);
 	assert !e.mods.has(KeyMod.Ctrl);
 	assert !e.mods.has(KeyMod.Alt);
+}
+
+function dispatchWheel(dx: float64, dy: float64, unit: int32): void {
+	drain();
+	_seen.length = 0;
+	ionTestPushWheel(3 as int32, dx, dy, unit);
+	if (ion_input_next() === 1 as int32) dispatchInput(ionInputType());
+}
+
+test "a wheel record in notches reaches PointerEvent as lines" {
+	dispatchWheel(0.0, -1.0, 1 as int32);
+	assert _seen.length === 1;
+	const e = _seen[0];
+	assert e.kind === PointerKind.Wheel && e.deltaMode === DeltaMode.Line;
+	assert e.dx === 0.0 && e.dy === -1.0;
+}
+
+test "a precise wheel record reaches PointerEvent as unscaled pixels" {
+	dispatchWheel(6.0, -40.0, 0 as int32);
+	assert _seen.length === 1;
+	const e = _seen[0];
+	assert e.kind === PointerKind.Wheel && e.deltaMode === DeltaMode.Pixel;
+	assert e.dx === 6.0 && e.dy === -40.0;
+}
+
+test "a motion record's movement is in pixels" {
+	dispatchPointerRecord(2 as int32, 0 as int32);
+	assert _seen.length === 1 && _seen[0].deltaMode === DeltaMode.Pixel;
 }
