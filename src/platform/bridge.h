@@ -264,8 +264,10 @@ int         ionWindowEventType(void);
 //             5 forward), p2 = pressed (1/0)
 //   2 motion  x,y = pointer; p1,p2 = movement since the previous pointer
 //             record, in device pixels
-//   3 wheel   x,y = pointer; p1,p2 = dx,dy in notches (positive = right /
-//             away from the user)
+//   3 wheel   x,y = pointer; p1,p2 = dx,dy (positive = right / away from
+//             the user); key = ION_WHEEL_PIXEL: device pixels from a precise
+//             device (a trackpad), or ION_WHEEL_LINE: notches, fractional on
+//             a high-resolution wheel
 //   4 key     p1 = ION_KEY_RELEASE/PRESS/REPEAT; key = ION_KEY code (W3C
 //             KeyboardEvent.code, name via ionKeyName); scancode = native;
 //             mods / consumedMods = ION_MOD_* bits; unshifted = the codepoint
@@ -278,6 +280,10 @@ int         ionWindowEventType(void);
 //   8 resize  p1,p2 = client width,height in device pixels; x = scale (DPI/96)
 //   9 frame   x = tick time in ms, monotonic
 //  10 leave   the pointer left the client area
+// The W3C WheelEvent.deltaMode values.
+#define ION_WHEEL_PIXEL 0
+#define ION_WHEEL_LINE  1
+
 #define ION_KEY_RELEASE 0
 #define ION_KEY_PRESS   1
 #define ION_KEY_REPEAT  2

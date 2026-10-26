@@ -159,7 +159,7 @@ static int ionButton(guint gdkButton) {
 }
 
 static void pushPointer(IonLinuxWindowState *st, int type, GtkEventController *controller,
-                        double x, double y, double p1, double p2) {
+                        double x, double y, double p1, double p2, int wheelUnit) {
     IonInputRecord r;
     memset(&r, 0, sizeof r);
     r.type = type;
@@ -168,6 +168,7 @@ static void pushPointer(IonLinuxWindowState *st, int type, GtkEventController *c
     r.y = y;
     r.p1 = p1;
     r.p2 = p2;
+    r.key = wheelUnit;
     r.mods = modsFromState(gtk_event_controller_get_current_event_state(controller));
     ion_input_push_record(&r);
 }
@@ -175,7 +176,7 @@ static void pushPointer(IonLinuxWindowState *st, int type, GtkEventController *c
 static void pushLeave(IonLinuxWindowState *st, GtkEventController *controller) {
     if (!st->pointerKnown) return;
     st->pointerKnown = 0;
-    pushPointer(st, ION_INPUT_LEAVE, controller, 0, 0, 0, 0);
+    pushPointer(st, ION_INPUT_LEAVE, controller, 0, 0, 0, 0, 0);
 }
 
 static void onKey(IonLinuxWindowState *st, GdkEvent *ev) {
@@ -220,7 +221,7 @@ static void onPointer(IonLinuxWindowState *st, GtkEventController *controller, G
             int b = ionButton(gdk_button_event_get_button(ev));
             if (!b || !clientPoint(st, ev, &px, &py)) return;
             s_buttonsDown |= 1 << b;
-            pushPointer(st, ION_INPUT_BUTTON, controller, px, py, b, 1);
+            pushPointer(st, ION_INPUT_BUTTON, controller, px, py, b, 1, 0);
             break;
         }
         case GDK_BUTTON_RELEASE: {
@@ -228,7 +229,7 @@ static void onPointer(IonLinuxWindowState *st, GtkEventController *controller, G
             if (!b || !(s_buttonsDown & (1 << b))) return;
             s_buttonsDown &= ~(1 << b);
             clientPoint(st, ev, &px, &py);
-            pushPointer(st, ION_INPUT_BUTTON, controller, px, py, b, 0);
+            pushPointer(st, ION_INPUT_BUTTON, controller, px, py, b, 0, 0);
             break;
         }
         case GDK_MOTION_NOTIFY: {
@@ -242,24 +243,32 @@ static void onPointer(IonLinuxWindowState *st, GtkEventController *controller, G
             st->pointerKnown = 1;
             st->lastX = px;
             st->lastY = py;
-            pushPointer(st, ION_INPUT_MOTION, controller, px, py, dx, dy);
+            pushPointer(st, ION_INPUT_MOTION, controller, px, py, dx, dy, 0);
             break;
         }
         case GDK_SCROLL: {
             double dx = 0, dy = 0;
+            int unit = ION_WHEEL_LINE;
             switch (gdk_scroll_event_get_direction(ev)) {
                 case GDK_SCROLL_UP:     dy = 1; break;
                 case GDK_SCROLL_DOWN:   dy = -1; break;
                 case GDK_SCROLL_LEFT:   dx = -1; break;
                 case GDK_SCROLL_RIGHT:  dx = 1; break;
-                case GDK_SCROLL_SMOOTH:
+                case GDK_SCROLL_SMOOTH: {
                     gdk_scroll_event_get_deltas(ev, &dx, &dy);
                     dy = -dy;
+                    if (gdk_scroll_event_get_unit(ev) == GDK_SCROLL_UNIT_SURFACE) {
+                        double scale = ionLinuxScale(st);
+                        dx *= scale;
+                        dy *= scale;
+                        unit = ION_WHEEL_PIXEL;
+                    }
                     break;
+                }
                 default: return;
             }
             if (!clientPoint(st, ev, &px, &py)) return;
-            pushPointer(st, ION_INPUT_WHEEL, controller, px, py, dx, dy);
+            pushPointer(st, ION_INPUT_WHEEL, controller, px, py, dx, dy, unit);
             break;
         }
         default:

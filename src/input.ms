@@ -31,6 +31,13 @@ export enum PointerKind {
 	Leave,
 }
 
+// The unit of dx,dy, as W3C WheelEvent.deltaMode: Pixel for motion and for a precise wheel
+// device (a trackpad), Line for wheel notches.
+export enum DeltaMode {
+	Pixel,
+	Line,
+}
+
 export struct PointerEvent {
 	window: int32;
 	kind: PointerKind;
@@ -40,6 +47,7 @@ export struct PointerEvent {
 	pressed: boolean;
 	dx: float64;
 	dy: float64;
+	deltaMode: DeltaMode;
 	mods: BitSet<KeyMod>;
 }
 
@@ -127,6 +135,7 @@ function dispatchPointer(window: int32, kind: PointerKind): void {
 		pressed: isButton && ionInputP2() !== 0.0,
 		dx: isButton ? 0.0 : ionInputP1(),
 		dy: isButton ? 0.0 : ionInputP2(),
+		deltaMode: kind === PointerKind.Wheel && ionInputKey() === (1 as int32) ? DeltaMode.Line : DeltaMode.Pixel,
 		mods: keyMods(ionInputMods() as int32),
 	};
 	for (const h of _pointerHandlers) h(e);

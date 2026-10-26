@@ -16,7 +16,7 @@ export {
 } from "./webview";
 export {
 	onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame, keyName, keyMods,
-	PointerEvent, PointerKind, KeyEvent, KeyAction, KeyMod,
+	PointerEvent, PointerKind, DeltaMode, KeyEvent, KeyAction, KeyMod,
 	PointerHandler, KeyHandler, TextHandler, PreeditHandler, FocusHandler, ResizeHandler, FrameHandler,
 } from "./input";
 export { onWake, WakeHandler } from "./wake";
