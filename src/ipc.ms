@@ -136,6 +136,8 @@ when (windows) {
 	// WebView2 SDK headers — vendored under vendor/webview2/include/.
 	// Path is resolved relative to this module's directory (src/).
 	@passC("-I../vendor/webview2/include");
+	// Ion calls the W entry points; the resource-id macros (IDC_ARROW, IDI_*) follow UNICODE.
+	@passC("-DUNICODE -D_UNICODE");
 	// Win32 link libs — Win32 API + COM + bcrypt (consumed by common/randombytes.c).
 	@passL("-luser32");
 	@passL("-lgdi32");
