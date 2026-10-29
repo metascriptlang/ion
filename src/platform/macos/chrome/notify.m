@@ -35,11 +35,26 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 
 static IonNotifDelegate *s_notifDelegate       = nil;
 static BOOL              s_notifAuthRequested  = NO;
+static BOOL              s_notifUnbundledNoted = NO;
+
+static NSString *utf8OrEmpty(const char *s) {
+    return [NSString stringWithUTF8String:s] ?: @"";
+}
 
 void ionNotify(const char *title, const char *body, const char *identifier) {
     if (title == NULL) title = "";
     if (body  == NULL) body  = "";
     if (identifier == NULL || identifier[0] == '\0') identifier = "ion-notif";
+
+    // currentNotificationCenter raises NSInternalInconsistencyException in a process outside an
+    // app bundle, which aborts it.
+    if (NSBundle.mainBundle.bundleIdentifier == nil) {
+        if (!s_notifUnbundledNoted) {
+            s_notifUnbundledNoted = YES;
+            fprintf(stderr, "[ion] notify: the process has no app bundle, so no notification is posted\n");
+        }
+        return;
+    }
 
     UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
     if (s_notifDelegate == nil) {
@@ -54,12 +69,12 @@ void ionNotify(const char *title, const char *body, const char *identifier) {
     }
 
     UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
-    content.title = [NSString stringWithUTF8String:title];
-    content.body  = [NSString stringWithUTF8String:body];
+    content.title = utf8OrEmpty(title);
+    content.body  = utf8OrEmpty(body);
     content.sound = [UNNotificationSound defaultSound];
 
     UNNotificationRequest *req =
-        [UNNotificationRequest requestWithIdentifier:[NSString stringWithUTF8String:identifier]
+        [UNNotificationRequest requestWithIdentifier:utf8OrEmpty(identifier)
                                               content:content
                                               trigger:nil];
     [center addNotificationRequest:req withCompletionHandler:^(NSError *err) { (void)err; }];
