@@ -23,7 +23,8 @@ export function preventExit(): void {
 export function dispatchExitRequested(): boolean {
 	_exitDispatching = true;
 	_exitPrevented = false;
-	for (const h of _exitHandlers) h();
+	const n = _exitHandlers.length;
+	for (let i = 0; i < n; i++) _exitHandlers[i]();
 	_exitDispatching = false;
 	return !_exitPrevented;
 }

@@ -90,6 +90,8 @@ export type FocusHandler = (window: int32, focused: boolean) => void;
 export type ResizeHandler = (window: int32, width: int32, height: int32, scale: float64) => void;
 export type FrameHandler = (window: int32, timeMs: float64) => void;
 
+// Each dispatch runs the handlers registered when it starts, as DOM dispatch clones its
+// listener list: one registered from inside a handler runs from the next event.
 const _pointerHandlers: PointerHandler[] = [];
 const _keyHandlers: KeyHandler[] = [];
 const _textHandlers: TextHandler[] = [];
@@ -138,7 +140,8 @@ function dispatchPointer(window: int32, kind: PointerKind): void {
 		deltaMode: kind === PointerKind.Wheel && ionInputKey() === (1 as int32) ? DeltaMode.Line : DeltaMode.Pixel,
 		mods: keyMods(ionInputMods() as int32),
 	};
-	for (const h of _pointerHandlers) h(e);
+	const n = _pointerHandlers.length;
+	for (let i = 0; i < n; i++) _pointerHandlers[i](e);
 }
 
 function dispatchKey(window: int32): void {
@@ -152,35 +155,41 @@ function dispatchKey(window: int32): void {
 		unshifted: ionInputUnshifted() as int32,
 		text: ionInputText(),
 	};
-	for (const h of _keyHandlers) h(e);
+	const n = _keyHandlers.length;
+	for (let i = 0; i < n; i++) _keyHandlers[i](e);
 }
 
 function dispatchText(window: int32): void {
 	const text = ionInputText();
-	for (const h of _textHandlers) h(window, text);
+	const n = _textHandlers.length;
+	for (let i = 0; i < n; i++) _textHandlers[i](window, text);
 }
 
 function dispatchPreedit(window: int32): void {
 	const text = ionInputText();
 	const cursor = ionInputP1() as int32;
-	for (const h of _preeditHandlers) h(window, text, cursor);
+	const n = _preeditHandlers.length;
+	for (let i = 0; i < n; i++) _preeditHandlers[i](window, text, cursor);
 }
 
 function dispatchFocus(window: int32): void {
 	const focused = ionInputP1() !== 0.0;
-	for (const h of _focusHandlers) h(window, focused);
+	const n = _focusHandlers.length;
+	for (let i = 0; i < n; i++) _focusHandlers[i](window, focused);
 }
 
 function dispatchResize(window: int32): void {
 	const width = ionInputP1() as int32;
 	const height = ionInputP2() as int32;
 	const scale = ionInputX();
-	for (const h of _resizeHandlers) h(window, width, height, scale);
+	const n = _resizeHandlers.length;
+	for (let i = 0; i < n; i++) _resizeHandlers[i](window, width, height, scale);
 }
 
 function dispatchFrame(window: int32): void {
 	const timeMs = ionInputX();
-	for (const h of _frameHandlers) h(window, timeMs);
+	const n = _frameHandlers.length;
+	for (let i = 0; i < n; i++) _frameHandlers[i](window, timeMs);
 }
 
 export function dispatchInput(type: int32): void {

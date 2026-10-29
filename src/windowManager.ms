@@ -222,7 +222,8 @@ export function preventClose(): void {
 export function dispatchWindowEvent(label: string, eventType: int32): void {
     _closeDispatching = eventType === WindowEventCloseRequested;
     _closePrevented = false;
-    for (const h of _windowEventHandlers) h(label, eventType);
+    const n = _windowEventHandlers.length;
+    for (let i = 0; i < n; i++) _windowEventHandlers[i](label, eventType);
     _closeDispatching = false;
     if (eventType === WindowEventCloseRequested && !_closePrevented) {
         const win = getWindow(label);

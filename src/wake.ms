@@ -9,5 +9,6 @@ const _wakeHandlers: WakeHandler[] = [];
 export function onWake(fn: WakeHandler): void { _wakeHandlers.push(fn); }
 
 export function dispatchWake(): void {
-	for (const h of _wakeHandlers) h();
+	const n = _wakeHandlers.length;
+	for (let i = 0; i < n; i++) _wakeHandlers[i]();
 }

@@ -213,7 +213,8 @@ function dispatchRecord(evt: int32): void {
 		if (name === CHANNEL_EMIT) {
 			routeEmit(payload);
 		} else {
-			for (const h of handlers) h(name, payload);
+			const n = handlers.length;
+			for (let i = 0; i < n; i++) handlers[i](name, payload);
 		}
 	} else if (evt === 3) {
 		const id    = ionWindowEventId();
