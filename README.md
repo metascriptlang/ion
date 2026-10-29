@@ -160,7 +160,7 @@ const result = await window.ion.call("greet", { name: "Sơn" });
 
 | Module | Exports |
 |---|---|
-| `windowManager` | `requestSingleInstance`, `createWindow`, `windowRoot`, `windowDevice`, `commit`, `focusContent`, `setImeRect`, `setCursor`, `setOptionAsAlt`, frame policy, `onWindowEvent` with `preventClose` (a close-requested handler keeps the window open) |
+| `windowManager` | `requestSingleInstance`, `createWindow`, `windowRoot`, `windowDevice`, `commit`, `focusContent`, `setImeRect`, `setCursor`, `setOptionAsAlt`, `requestUserAttention`, `beep`, frame policy, `onWindowEvent` with `preventClose` (a close-requested handler keeps the window open) |
 | `exit` | `onExitRequested`, `preventExit`: Cmd+Q, the Quit item or a quit Apple Event asks the handlers before the loop ends (macOS) |
 | `webview` | `createWebview`, `webviewNode`, `setWebviewBounds`, `forwardPointer`, `focusWebview`, `navigate`, `evalJs`, `emit`, `emitTo`, `emitAll` |
 | `input` | `onPointer`, `onKey`, `onText`, `onImePreedit`, `onFocus`, `onResize`, `onFrame` |
