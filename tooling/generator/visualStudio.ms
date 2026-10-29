@@ -251,7 +251,7 @@ function buildScript(target: Target, files: Vec<PlacedFile>, root: string, compi
 		"if not exist \"%out%\" mkdir \"%out%\"",
 		"rc.exe /nologo /fo \"%~dp0obj\\" + target.name + ".res\" \"%~dp0" + target.name + ".rc\" || goto fail",
 		"pushd \"%work%msc\"",
-		"\"" + msc + "\" build \"" + entry + "\" %mode% \"--link=%~dp0obj\\" + target.name + ".res\" \"--output=%out%" + target.name + ".exe\" || goto fail",
+		"\"" + msc + "\" build \"" + entry + "\" --target=c %mode% \"--link=%~dp0obj\\" + target.name + ".res\" \"--output=%out%" + target.name + ".exe\" || goto fail",
 		"popd",
 	];
 	for (const placed of files) {

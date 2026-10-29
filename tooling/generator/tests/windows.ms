@@ -129,7 +129,7 @@ if (first.ok && second.ok) {
 	const script = file(files, "Desk/build.cmd");
 	check(script.includes("rc.exe /nologo /fo \"%~dp0obj\\Desk.res\" \"%~dp0Desk.rc\" || goto fail"), "resource compiled by the Windows SDK");
 	check(script.includes("pushd \"%work%msc\""), "msc works in the intermediate directory, not the source tree");
-	check(script.includes("\"C:\\tools\\msc.exe\" build \"C:\\source with spaces\\app\\main.ms\" %mode% \"--link=%~dp0obj\\Desk.res\" \"--output=%out%Desk.exe\" || goto fail"), "msc builds the app's own entry and links the resource as a tracked input");
+	check(script.includes("\"C:\\tools\\msc.exe\" build \"C:\\source with spaces\\app\\main.ms\" --target=c %mode% \"--link=%~dp0obj\\Desk.res\" \"--output=%out%Desk.exe\" || goto fail"), "msc builds the app's own entry and links the resource as a tracked input");
 	check(!script.includes("--passL") && !project.includes("Desk.ms"), "no entry wrapper");
 	check(script.includes("(set \"mode=--release\")"), "Release passes --release");
 	check(script.includes(":fail\r\ndel /q \"%out%Desk.exe\" 2>nul\r\nexit /b 1"), "a failed step removes the executable");

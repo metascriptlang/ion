@@ -108,7 +108,7 @@ function iosScript(entry: string, compiler: string): string {
 		"mkdir -p \"$build\" \"$(dirname \"$output\")\"\ncd \"$build\"\n" +
 		"\"$(xcrun --find clang)\" -c -fobjc-arc -target $ARCHS-apple-ios$IPHONEOS_DEPLOYMENT_TARGET$suffix " +
 		"-isysroot \"$SDKROOT\" \"$PROJECT_DIR/" + iosEntryFile + "\" -o \"$build/IonMain.o\"\n" +
-		"\"$compiler\" build \"$entry\" --os=ios --cpu=\"$ARCHS\" \"--link=$build/IonMain.o\" " +
+		"\"$compiler\" build \"$entry\" --target=c --os=ios --cpu=\"$ARCHS\" \"--link=$build/IonMain.o\" " +
 		"--cc=\"$(xcrun --find clang)\" " +
 		"\"--passC=-target $ARCHS-apple-ios$IPHONEOS_DEPLOYMENT_TARGET$suffix " +
 		"-isysroot \\\"$SDKROOT\\\"\" \"--output=$output\" \"$@\"\n";
@@ -204,7 +204,7 @@ export function xcodeProject(graph: Graph, root: string, compiler: string): Resu
 			"set -eu\ncd " + shellQuote(root) +
 			"\nmkdir -p \"$TARGET_BUILD_DIR/" + target.name + ".app/Contents/MacOS\"\n" +
 			shellQuote(compiler) + " build " + shellQuote(target.entry) +
-			" --cc=clang --output=\"$TARGET_BUILD_DIR/$EXECUTABLE_PATH\"\n";
+			" --target=c --cc=clang --output=\"$TARGET_BUILD_DIR/$EXECUTABLE_PATH\"\n";
 		objects += `${targetId} = { isa = PBXNativeTarget; name = ${quote(target.name)}; productName = ${quote(target.name)}; productType = "com.apple.product-type.application"; productReference = ${id(base + 1)}; buildConfigurationList = ${id(base + 2)}; buildPhases = (${id(base + 5)},${copies.phases}); buildRules = (); dependencies = (${dependencies}); };\n`;
 		objects += `${id(base + 1)} = { isa = PBXFileReference; explicitFileType = wrapper.application; path = ${quote(target.name + ".app")}; sourceTree = BUILT_PRODUCTS_DIR; };\n`;
 		objects += `${id(base + 2)} = { isa = XCConfigurationList; buildConfigurations = (${id(base + 3)},${id(base + 4)},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; };\n`;
