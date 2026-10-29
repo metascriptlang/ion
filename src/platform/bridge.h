@@ -136,6 +136,15 @@ void        ionSetWindowTitle(IonWindowId id, const char *title);
 void        ionSetWindowSize(IonWindowId id, int width, int height);
 void        ionSetWindowPosition(IonWindowId id, int x, int y);
 void        ionSetWindowAlwaysOnTop(IonWindowId id, int on);
+// tao's request_user_attention: ION_ATTENTION_NONE stops a request (Windows), INFORMATIONAL
+// bounces the dock once / flashes the taskbar button a few times, CRITICAL until the app
+// is active. Nothing while the window is active and not minimized.
+#define ION_ATTENTION_NONE          0
+#define ION_ATTENTION_INFORMATIONAL 1
+#define ION_ATTENTION_CRITICAL      2
+void        ionWindowRequestUserAttention(IonWindowId id, int type);
+// The system alert sound.
+void        ionBeep(void);
 void        ionSetWindowDecorations(IonWindowId id, int on);
 void        ionSetWindowContentProtected(IonWindowId id, int on);
 

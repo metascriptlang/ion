@@ -12,7 +12,7 @@ import {
     ionShowWindow, ionHideWindow, ionFocusWindow,
     ionMinimizeWindow, ionMaximizeWindow,
     ionSetWindowTitle, ionSetWindowSize, ionSetWindowPosition,
-    ionSetWindowAlwaysOnTop, ionSetWindowDecorations,
+    ionSetWindowAlwaysOnTop, ionSetWindowDecorations, ionWindowRequestUserAttention, ionBeep,
     ionSetWindowContentProtected,
     ionWindowPixelWidth, ionWindowPixelHeight,
     ionFileOpenWindow,
@@ -32,6 +32,10 @@ const ION_WIN_CENTERED:      int32 = 32 as int32;
 const ION_WIN_FULLSCREEN:    int32 = 64 as int32;
 
 // ---- Window event types (mirror common/windowEvents.h) --------------------
+
+export const AttentionNone:          int32 = 0 as int32;
+export const AttentionInformational: int32 = 1 as int32;
+export const AttentionCritical:      int32 = 2 as int32;
 
 export const WindowEventCloseRequested: int32 = 1 as int32;
 export const WindowEventDestroyed:      int32 = 2 as int32;
@@ -140,6 +144,8 @@ export function pixelHeight(win: Window): int32 { return ionWindowPixelHeight(wi
 // Moves the window's outer frame top-left (title bar and border included) to x, y in screen pixels, on every platform.
 export function setPosition(win: Window, x: int32, y: int32):        void { ionSetWindowPosition(win.id, x, y); }
 export function setAlwaysOnTop(win: Window, on: boolean):            void { ionSetWindowAlwaysOnTop(win.id, on ? (1 as int32) : (0 as int32)); }
+export function requestUserAttention(win: Window, type: int32): void { ionWindowRequestUserAttention(win.id, type); }
+export function beep(): void { ionBeep(); }
 export function setDecorations(win: Window, on: boolean):            void { ionSetWindowDecorations(win.id, on ? (1 as int32) : (0 as int32)); }
 export function setWindowContentProtected(win: Window, on: boolean): void { ionSetWindowContentProtected(win.id, on ? (1 as int32) : (0 as int32)); }
 

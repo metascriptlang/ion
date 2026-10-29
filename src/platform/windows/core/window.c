@@ -8,6 +8,7 @@
 #include "../../common/windowEvents.h"
 
 #include <dwmapi.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -459,6 +460,20 @@ void ionSetWindowAlwaysOnTop(IonWindowId id, int on) {
     HWND h = ionWinHwnd(id);
     if (h) SetWindowPos(h, on ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+}
+
+// tao windows/window.rs request_user_attention.
+void ionWindowRequestUserAttention(IonWindowId id, int type) {
+    HWND h = ionWinHwnd(id);
+    if (!h || (h == GetActiveWindow() && !IsIconic(h))) return;
+    FLASHWINFO info = { sizeof(info), h, FLASHW_STOP, 0, 0 };
+    if (type == ION_ATTENTION_CRITICAL) { info.dwFlags = FLASHW_ALL | FLASHW_TIMERNOFG; info.uCount = UINT_MAX; }
+    if (type == ION_ATTENTION_INFORMATIONAL) { info.dwFlags = FLASHW_TRAY; info.uCount = 4; }
+    FlashWindowEx(&info);
+}
+
+void ionBeep(void) {
+    MessageBeep(MB_OK);
 }
 
 // Same two frames createWindow picks (caption + frame, or WS_POPUP). The

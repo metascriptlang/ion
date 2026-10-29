@@ -245,6 +245,15 @@ void ionSetWindowAlwaysOnTop(IonWindowId winId, int on) {
     if (st && st->sdlWindow) SDL_SetWindowAlwaysOnTop(st->sdlWindow, on ? true : false);
 }
 
+void ionWindowRequestUserAttention(IonWindowId winId, int type) {
+    if (ionMacWindowState(winId) == NULL || type == ION_ATTENTION_NONE) return;
+    [NSApp requestUserAttention:type == ION_ATTENTION_CRITICAL ? NSCriticalRequest : NSInformationalRequest];
+}
+
+void ionBeep(void) {
+    NSBeep();
+}
+
 void ionSetWindowDecorations(IonWindowId winId, int on) {
     IonMacWindowState *st = ionMacWindowState(winId);
     if (st && st->sdlWindow) SDL_SetWindowBordered(st->sdlWindow, on ? true : false);

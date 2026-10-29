@@ -351,6 +351,15 @@ void ionSetWindowAlwaysOnTop(IonWindowId id, int on) {
     }
 }
 
+void ionWindowRequestUserAttention(IonWindowId id, int type) {
+    if (!ionLinuxWindowState(id) || type == ION_ATTENTION_NONE) return;
+    fprintf(stderr, "[ion] requestUserAttention: GTK 4 has no urgency request (gtk_window_set_urgency_hint was removed)\n");
+}
+
+void ionBeep(void) {
+    gdk_display_beep(gdk_display_get_default());
+}
+
 void ionSetWindowDecorations(IonWindowId id, int on) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
     if (!st) return;
