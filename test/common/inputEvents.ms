@@ -148,3 +148,19 @@ test "a motion record's movement is in pixels" {
 	dispatchPointerRecord(2 as int32, 0 as int32);
 	assert _seen.length === 1 && _seen[0].deltaMode === DeltaMode.Pixel;
 }
+
+// DOM dispatch clones the listener list (and Node's EventEmitter its array): a handler added
+// while an event is being delivered first runs for the next event.
+test "a handler registered during dispatch runs from the next event" {
+	let added = false;
+	let late = 0;
+	onPointer((e: PointerEvent): void => {
+		if (added) return;
+		added = true;
+		onPointer((later: PointerEvent): void => { late += 1; });
+	});
+	dispatchPointerRecord(1 as int32, 0 as int32);
+	assert late === 0;
+	dispatchPointerRecord(1 as int32, 0 as int32);
+	assert late === 1;
+}
