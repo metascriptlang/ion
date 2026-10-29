@@ -11,6 +11,10 @@ int  starveNowMs(void);
 void starveSpinUs(int us);
 // Starts a native thread that calls ionWakeLoop in a tight loop for `ms` milliseconds.
 void starveWakeFlood(int ms);
+// Starts a native thread that calls ionWakeLoop every `periodMs` for `ms` milliseconds.
+void starveWakeEvery(int periodMs, int ms);
+// Milliseconds since the first ionWakeLoop of starveWakeEvery not yet taken, or -1; takes it.
+int  starveTakeWakeAgeMs(void);
 
 #ifdef __cplusplus
 }

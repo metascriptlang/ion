@@ -36,6 +36,58 @@ void starveSpinUs(int us) {
 
 static int s_floodMs;
 
+static int s_periodMs;
+static int s_everyMs;
+static volatile int s_firstWakeMs = -1;
+
+static void wakeEvery(void) {
+    int end = starveNowMs() + s_everyMs;
+    while (starveNowMs() < end) {
+        if (s_firstWakeMs < 0) s_firstWakeMs = starveNowMs();
+        ionWakeLoop();
+#ifdef _WIN32
+        Sleep((DWORD)s_periodMs);
+#else
+        usleep((useconds_t)s_periodMs * 1000);
+#endif
+    }
+}
+
+int starveTakeWakeAgeMs(void) {
+    int first = s_firstWakeMs;
+    if (first < 0) return -1;
+    s_firstWakeMs = -1;
+    return starveNowMs() - first;
+}
+
+#ifdef _WIN32
+static DWORD WINAPI everyThread(void *arg) {
+    (void)arg;
+    wakeEvery();
+    return 0;
+}
+
+void starveWakeEvery(int periodMs, int ms) {
+    s_periodMs = periodMs;
+    s_everyMs = ms;
+    HANDLE thread = CreateThread(NULL, 0, everyThread, NULL, 0, NULL);
+    if (thread != NULL) CloseHandle(thread);
+}
+#else
+static void *everyThread(void *arg) {
+    (void)arg;
+    wakeEvery();
+    return NULL;
+}
+
+void starveWakeEvery(int periodMs, int ms) {
+    s_periodMs = periodMs;
+    s_everyMs = ms;
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, everyThread, NULL) == 0) pthread_detach(thread);
+}
+#endif
+
 #ifdef _WIN32
 static DWORD WINAPI floodThread(void *arg) {
     (void)arg;

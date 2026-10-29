@@ -1,8 +1,11 @@
 // A flood of ionWakeLoop calls, or a setTimeout(f, 0) that re-arms itself, must not
 // stop onFrame. Counts frames per 2 s phase on a continuous frame clock:
 //   A idle baseline, B wake flood from a native thread, C zero-delay timer chain and D the same
-//   chain beside a wake flood, each of C and D once per handler work level in LEVELS_US.
-// FAIL: frames in B or C below half of A, or no wakes / timer runs.
+//   chain beside a wake flood, each of C and D once per handler work level in LEVELS_US, and
+//   E a wake every 50 ms while each frame's work outlasts the display interval, so a frame is
+//   due on every turn (Haro's cursor animating while someone types).
+// FAIL: frames in B or C below half of A, no wakes / timer runs, or a wake in E taken more than
+//   50 ms after it was made.
 // Run with stdout redirected (GUI subsystem): frameStarve.exe > log.txt
 
 import {
@@ -17,6 +20,8 @@ import { exit } from "std/process";
 extern function starveNowMs(): int32;
 extern function starveSpinUs(us: int32): void;
 extern function starveWakeFlood(ms: int32): void;
+extern function starveWakeEvery(periodMs: int32, ms: int32): void;
+extern function starveTakeWakeAgeMs(): int32;
 
 // Per-run handler work of the timer chain, one phase pair per level. 100 us is the first
 // measurement (2026-10-17); 2, 8 and 20 ms cross the GetTickCount64 step (about 15.6 ms), at
@@ -25,6 +30,9 @@ const LEVELS_US: int32[] = [100, 2000, 8000, 20000];
 // Per-run wake handler work: with none, the flood thread rarely keeps the wake signaled at every wait.
 const WAKE_US: int32 = 100 as int32;
 const PHASE_MS: int32 = 2000 as int32;
+// Frame work in E: longer than one interval at 60 Hz, so the next tick is already due.
+const BUSY_FRAME_US: int32 = 20000 as int32;
+const LATE_WAKE_MS: int32 = 50 as int32;
 
 let frames = 0;
 let wakes = 0;
@@ -36,6 +44,8 @@ let chainEnd: int32 = 0 as int32;
 let workUs: int32 = 0 as int32;
 let levelIndex = 0;
 let withWake = false;
+let busyFrames = false;
+let maxWakeAgeMs: int32 = 0 as int32;
 let win: Window | null = null;
 
 function report(name: string, ok: boolean, extra: string): void {
@@ -69,7 +79,7 @@ function endPhase(): void {
 		withWake = false;
 		levelIndex++;
 	} else {
-		finish();
+		phaseE();
 		return;
 	}
 	startPhase();
@@ -83,6 +93,18 @@ function timerChain(): void {
 		return;
 	}
 	setTimeout(timerChain, 0);
+}
+
+function phaseE(): void {
+	busyFrames = true;
+	maxWakeAgeMs = 0 as int32;
+	starveWakeEvery(LATE_WAKE_MS, PHASE_MS);
+	setTimeout((): void => {
+		busyFrames = false;
+		report("E wake beside busy frames", frames > 0 && wakes > 0 && maxWakeAgeMs <= LATE_WAKE_MS,
+			`wakes=${wakes} maxWakeAgeMs=${maxWakeAgeMs}`);
+		finish();
+	}, PHASE_MS + 200);
 }
 
 function phaseB(): void {
@@ -103,9 +125,14 @@ function main(): int32 {
 	commit(created);
 	setFramePolicy(created, FrameContinuous);
 	setFrameWhenInactive(created, true);
-	onFrame((window: int32, timeMs: float64): void => { frames++; });
+	onFrame((window: int32, timeMs: float64): void => {
+		frames++;
+		if (busyFrames) starveSpinUs(BUSY_FRAME_US);
+	});
 	onWake((): void => {
 		wakes++;
+		const age = starveTakeWakeAgeMs();
+		if (age > maxWakeAgeMs) maxWakeAgeMs = age;
 		starveSpinUs(WAKE_US);
 	});
 
