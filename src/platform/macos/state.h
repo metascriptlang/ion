@@ -18,6 +18,7 @@ typedef struct {
     SDL_Window *sdlWindow;
     NSWindow   *nsWindow;
     NSView     *host;      // IonContentHost: the window's input and focus target
+    NSPanel    *panel;     // the IonPanel SDL wraps, for a window created with ION_WIN_PANEL
 } IonMacWindowState;
 
 typedef struct {

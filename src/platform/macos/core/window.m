@@ -13,6 +13,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+// NSPanel without a title bar does not become key unless asked (Ghostty QuickTerminalWindow).
+@interface IonPanel : NSPanel
+@end
+
+@implementation IonPanel
+- (BOOL)canBecomeKeyWindow  { return YES; }
+- (BOOL)canBecomeMainWindow { return YES; }
+@end
+
 static const char kMainLabel[] = "main";
 static int s_hadWindow;
 
@@ -28,6 +37,34 @@ static void teardownWindow(IonMacWindowState *st) {
         SDL_DestroyWindow(st->sdlWindow);
         st->sdlWindow = NULL;
     }
+    // SDL leaves a window it wrapped open (SDL_WINDOW_EXTERNAL).
+    [st->panel close];
+    st->panel = nil;
+}
+
+// Electron's ElectronNSPanel and Ghostty's QuickTerminalWindow: a non-activating panel at the
+// floating level that joins every Space, a fullscreen one too; SDL wraps it.
+static SDL_Window *createPanel(IonMacWindowState *st, const char *title, int width, int height, int flags, Uint32 sdlFlags) {
+    NSWindowStyleMask style = NSWindowStyleMaskNonactivatingPanel;
+    if (flags & ION_WIN_DECORATIONS) style |= NSWindowStyleMaskTitled | NSWindowStyleMaskClosable;
+    if (flags & ION_WIN_RESIZABLE)   style |= NSWindowStyleMaskResizable;
+    IonPanel *panel = [[IonPanel alloc] initWithContentRect:NSMakeRect(0, 0, width, height)
+                                                  styleMask:style
+                                                    backing:NSBackingStoreBuffered
+                                                      defer:NO];
+    panel.floatingPanel = YES;
+    panel.hidesOnDeactivate = NO;
+    panel.releasedWhenClosed = NO;
+    panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary;
+    if (title) panel.title = [NSString stringWithUTF8String:title] ?: @"";
+    [panel center];
+    SDL_PropertiesID props = SDL_CreateProperties();
+    SDL_SetPointerProperty(props, SDL_PROP_WINDOW_CREATE_COCOA_WINDOW_POINTER, (__bridge void *)panel);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, sdlFlags);
+    SDL_Window *window = SDL_CreateWindowWithProperties(props);
+    SDL_DestroyProperties(props);
+    if (window != NULL) st->panel = panel;
+    return window;
 }
 
 static void syncMainGlobals(IonMacWindowState *st) {
@@ -58,10 +95,12 @@ IonWindowId ionCreateWindow(const char *label, const char *title,
     if (!(flags & ION_WIN_DECORATIONS)) sdlFlags |= SDL_WINDOW_BORDERLESS;
     if (!(flags & ION_WIN_VISIBLE))     sdlFlags |= SDL_WINDOW_HIDDEN;
 
-    st->sdlWindow = SDL_CreateWindow(title ? title : "ion",
-                                     width  > 0 ? width  : 1280,
-                                     height > 0 ? height : 720,
-                                     sdlFlags);
+    st->sdlWindow = (flags & ION_WIN_PANEL)
+        ? createPanel(st, title, width > 0 ? width : 1280, height > 0 ? height : 720, flags, sdlFlags)
+        : SDL_CreateWindow(title ? title : "ion",
+                           width  > 0 ? width  : 1280,
+                           height > 0 ? height : 720,
+                           sdlFlags);
     if (st->sdlWindow == NULL) {
         free(st);
         ion_registry_free(winId);
@@ -204,6 +243,11 @@ void ionHideWindow(IonWindowId winId) {
 void ionFocusWindow(IonWindowId winId) {
     IonMacWindowState *st = ionMacWindowState(winId);
     if (!st) return;
+    // A panel takes the keys and leaves the app inactive (Electron NativeWindowMac::Focus).
+    if (st->panel) {
+        [st->panel makeKeyAndOrderFront:nil];
+        return;
+    }
     if (st->sdlWindow) SDL_RaiseWindow(st->sdlWindow);
     if (st->nsWindow)  [st->nsWindow makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];

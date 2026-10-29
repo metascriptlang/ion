@@ -30,6 +30,7 @@ const ION_WIN_TRANSPARENT:   int32 = 8 as int32;
 const ION_WIN_VISIBLE:       int32 = 16 as int32;
 const ION_WIN_CENTERED:      int32 = 32 as int32;
 const ION_WIN_FULLSCREEN:    int32 = 64 as int32;
+const ION_WIN_PANEL:         int32 = 128 as int32;
 
 // ---- Window event types (mirror common/windowEvents.h) --------------------
 
@@ -57,6 +58,9 @@ export interface WindowOptions {
     visible: boolean;
     center: boolean;
     fullscreen: boolean;
+    // macOS: a launcher panel that takes the keys without activating the app and shows on the
+    // active Space, over a fullscreen app too (Electron's type: 'panel'). Elsewhere ignored.
+    panel: boolean;
     x: int32;
     y: int32;
 }
@@ -73,7 +77,7 @@ export function defaultOptions(title: string, width: int32, height: int32): Wind
         title, width, height,
         resizable: true, decorations: true,
         alwaysOnTop: false, transparent: false,
-        visible: true, center: false, fullscreen: false,
+        visible: true, center: false, fullscreen: false, panel: false,
         x: 0 as int32, y: 0 as int32,
     };
 }
@@ -87,6 +91,7 @@ function flagsFromOptions(o: WindowOptions): int32 {
     if (o.visible)     f = (f | ION_WIN_VISIBLE)       as int32;
     if (o.center)      f = (f | ION_WIN_CENTERED)      as int32;
     if (o.fullscreen)  f = (f | ION_WIN_FULLSCREEN)    as int32;
+    if (o.panel)       f = (f | ION_WIN_PANEL)         as int32;
     return f;
 }
 

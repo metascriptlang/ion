@@ -54,6 +54,10 @@ int  ionRequestSingleInstance(void);
 #define ION_WIN_VISIBLE        (1 << 4)
 #define ION_WIN_CENTERED       (1 << 5)
 #define ION_WIN_FULLSCREEN     (1 << 6)
+// A panel (macOS): it takes keyboard focus without activating the app, floats above other
+// windows, and shows on the active Space, over a fullscreen app too, as Electron's
+// type: 'panel' and Ghostty's quick terminal. Windows and Linux create an ordinary window.
+#define ION_WIN_PANEL          (1 << 7)
 #define ION_WIN_DEFAULT        (ION_WIN_RESIZABLE | ION_WIN_DECORATIONS | ION_WIN_VISIBLE)
 
 // Create an empty window. Returns the window id or ION_WINDOW_INVALID if:
