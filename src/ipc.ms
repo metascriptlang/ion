@@ -178,6 +178,7 @@ import { dispatchWindowEvent } from "./windowManager";
 import { routeEmit } from "./webview";
 import { dispatchInput } from "./input";
 import { dispatchWake } from "./wake";
+import { dispatchExitRequested } from "./exit";
 
 // msc's own loop: timers, spawn and actor completions. Ion's loop runs it
 // without blocking each turn; ionLoopArm then tells the pump when to wake for it.
@@ -250,6 +251,8 @@ export function runLoop(): void {
 		const evt = ionPollEvent();
 		if (evt === 1) {
 			running = false;
+		} else if (evt === 7) {
+			running = !dispatchExitRequested();
 		} else {
 			dispatchRecord(evt);
 		}

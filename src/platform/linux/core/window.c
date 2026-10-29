@@ -52,16 +52,10 @@ void ionLinuxSyncFrameState(IonLinuxWindowState *st) {
     ion_frame_window_state(st->id, gtk_window_is_active(GTK_WINDOW(st->window)), visible);
 }
 
-static gboolean destroyLater(gpointer data) {
-    ionCloseWindow((IonWindowId)GPOINTER_TO_INT(data));
-    return G_SOURCE_REMOVE;
-}
-
 static gboolean onCloseRequest(GtkWindow *window, gpointer data) {
     (void)window;
     IonLinuxWindowState *st = (IonLinuxWindowState *)data;
     ion_wevt_push(st->id, ION_EVT_CLOSE_REQUESTED);
-    g_idle_add(destroyLater, GINT_TO_POINTER(st->id));
     return TRUE;
 }
 

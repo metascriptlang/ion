@@ -193,7 +193,28 @@ export function onWindowEvent(handler: WindowEventHandler): void {
     _windowEventHandlers.push(handler);
 }
 
-// Called by ipc.ms runLoop when ionPollEvent returns 3. Internal.
+let _closeDispatching = false;
+let _closePrevented = false;
+
+// Inside an onWindowEvent handler for WindowEventCloseRequested: the window stays open, and the
+// app closes it later with closeWindow (Tauri's CloseRequestApi::prevent_close).
+export function preventClose(): void {
+    if (!_closeDispatching) {
+        console.error("[ion] preventClose: called outside a close-requested handler, so no close is held");
+        return;
+    }
+    _closePrevented = true;
+}
+
+// Called by ipc.ms runLoop when ionPollEvent returns 3. Internal. A close-requested window is
+// closed after the handlers unless one of them called preventClose.
 export function dispatchWindowEvent(label: string, eventType: int32): void {
+    _closeDispatching = eventType === WindowEventCloseRequested;
+    _closePrevented = false;
     for (const h of _windowEventHandlers) h(label, eventType);
+    _closeDispatching = false;
+    if (eventType === WindowEventCloseRequested && !_closePrevented) {
+        const win = getWindow(label);
+        if (win !== null) closeWindow(win);
+    }
 }

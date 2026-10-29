@@ -237,10 +237,8 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             if (ionWebView2HostAutomation(hwnd, &w->uia, wParam, lParam, &handled)) return handled;
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         case WM_CLOSE:
-            // Informational: nothing can veto it. The window is destroyed here;
-            // the loop ends once no window is left.
+            // The app closes the window (ionCloseWindow) unless it prevents the close.
             ion_wevt_push(w->id, ION_EVT_CLOSE_REQUESTED);
-            DestroyWindow(hwnd);
             return 0;
         case WM_DESTROY:
             destroyed(w);

@@ -20,13 +20,14 @@ export {
 	PointerHandler, KeyHandler, TextHandler, PreeditHandler, FocusHandler, ResizeHandler, FrameHandler,
 } from "./input";
 export { onWake, WakeHandler } from "./wake";
+export { onExitRequested, preventExit, ExitRequestedHandler } from "./exit";
 export { command, Command } from "./command";
 export {
 	createWindow, closeWindow, getWindow, windowCount, requestSingleInstance, defaultOptions,
 	show, hide, focus, minimize, maximize,
 	setTitle, setSize, setPosition, pixelWidth, pixelHeight,
 	setAlwaysOnTop, setDecorations, setWindowContentProtected,
-	fileOpen, onWindowEvent,
+	fileOpen, onWindowEvent, preventClose,
 	windowRoot, windowDevice, commit, focusContent, setImeRect, setCursor,
 	setFramePolicy, setFrameWhenInactive, requestFrame, FrameOnDemand, FrameContinuous,
 	CursorArrow, CursorHand, CursorIbeam, CursorCross, CursorResizeH, CursorResizeV, Window, WindowOptions,

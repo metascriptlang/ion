@@ -236,6 +236,10 @@ void         ionWebviewForwardPointer(IonWebviewId id, int kind, double x, doubl
 //   4  input record — read via ionInputType / ionInputWindow / ionInputX / ...
 //   5  msc's loop has work due (a timer expired or a completion arrived)
 //   6  ionWakeLoop was called — run the onWake handlers
+//   7  the user asked the app to quit (Cmd+Q, the Quit item, a quit Apple Event; macOS only):
+//      run the onExitRequested handlers, and end the loop unless one prevented it
+// A close-requested window event leaves the window open: the caller closes it with
+// ionCloseWindow unless the app prevented the close.
 int  ionPollEvent(void);
 
 // Call after msRunOnce(0), before ionPollEvent, every turn. Tells the pump

@@ -18,9 +18,9 @@
 // the main run loop without one. Each of them, every other thread, and an SDL event watch call
 // ionMacNudge.
 //
-// A title-bar close pushes close-requested, then destroys that window (destroyed follows).
-// Quit (Cmd+Q, or SDL_EVENT_QUIT after the last close) and the last window gone → return 1,
-// once the queued lifecycle events have been delivered.
+// A title-bar close pushes close-requested and leaves the window to the app (ionCloseWindow).
+// Cmd+Q, the Quit item and a quit Apple Event → return 7, the app's call; SIGINT, SIGTERM and
+// the last window gone → return 1, once the queued lifecycle events have been delivered.
 
 #import "../state.h"
 #import "../../bridge.h"
@@ -44,6 +44,8 @@
 static IonWindowId s_last_wevt_id   = ION_WINDOW_INVALID;
 static int         s_last_wevt_type = 0;
 static int         s_quit = 0;
+static int         s_exitAsked = 0;
+static atomic_int  s_signalled;
 static atomic_int  s_wakePending;
 static int         s_wakeTaken;
 static atomic_int  s_nudgePending;
@@ -125,6 +127,7 @@ static void *mscWatcher(void *arg) {
             abort();
         }
         if (ready.filter == EVFILT_SIGNAL) {
+            atomic_store(&s_signalled, 1);
             usleep(10000);
             postNudge();
             continue;
@@ -194,7 +197,10 @@ static void waitForEvent(void) {
 }
 
 static void handleSdlEvent(const SDL_Event *ev) {
-    if (ev->type == SDL_EVENT_QUIT) s_quit = 1;
+    if (ev->type == SDL_EVENT_QUIT) {
+        if (atomic_load(&s_signalled)) s_quit = 1;
+        else s_exitAsked = 1;
+    }
 
     IonWindowId wid;
     switch (ev->type) {
@@ -223,10 +229,7 @@ static void handleSdlEvent(const SDL_Event *ev) {
             break;
         case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
             wid = windowIdForSdlWindowId(ev->window.windowID);
-            if (wid != ION_WINDOW_INVALID) {
-                ion_wevt_push(wid, ION_EVT_CLOSE_REQUESTED);
-                ionCloseWindow(wid);
-            }
+            if (wid != ION_WINDOW_INVALID) ion_wevt_push(wid, ION_EVT_CLOSE_REQUESTED);
             break;
         case SDL_EVENT_WINDOW_RESIZED:
             wid = windowIdForSdlWindowId(ev->window.windowID);
@@ -270,6 +273,10 @@ int ionPollEvent(void) {
     if (ion_queue_pop()) return 2;
     if (ion_input_next()) return 4;
     if (s_quit || ionMacAllWindowsClosed()) return 1;
+    if (s_exitAsked) {
+        s_exitAsked = 0;
+        return 7;
+    }
 
     // Each pump serves one wake and the frames due, as tao's cleared() runs the user events and
     // then the redraws on every run loop iteration (app_state.rs). The display link only fires
