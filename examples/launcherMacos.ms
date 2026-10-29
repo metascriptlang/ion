@@ -9,7 +9,7 @@ import {
 	createWindow, defaultOptions, closeWindow, runLoop, show, hide, focus, windowRoot, Window,
 	listen, onKey, onWindowEvent, keyName, KeyAction,
 	tryRegisterHotkeyKey, unregisterHotkey, HotkeyResult, ModCmd, ModAlt, ModCtrl,
-	WindowEventBlurred,
+	WindowEventBlurred, onFrame, setFramePolicy, FrameContinuous, commit,
 } from "../src/index";
 import { exit, env } from "std/process";
 
@@ -84,6 +84,10 @@ function main(): int32 {
 		return 1;
 	}
 	const launcher: Window = created;
+	commit(launcher);
+	setFramePolicy(launcher, FrameContinuous);
+	let launcherFrames = 0;
+	onFrame((window: int32, timeMs: float64): void => { if (window === launcher.id) launcherFrames += 1; });
 	const boardWin: Window = board;
 	const mode = env.get("LAUNCHER_MODE") ?? "";
 	lpConfigure(windowRoot(launcher), mode);
@@ -126,6 +130,7 @@ function main(): int32 {
 	setTimeout((): void => {
 		const root = windowRoot(launcher);
 		report("the hotkey summons the launcher", summons === 1 && lpOnScreen(root) === (1 as int32), `summons ${summons}${trusted ? "" : " (SKIP: called directly)"}`);
+		launcherFrames = 0;
 		report("the launcher is the key window", lpKeyState(root) >= (1 as int32), `key state ${lpKeyState(root)}`);
 		report("the board stays behind the other app's windows", lpAboveRemembered(windowRoot(boardWin)) === (0 as int32), `front app ${front()}, board above the other app ${lpAboveRemembered(windowRoot(boardWin))}`);
 		if (trusted) {
@@ -134,6 +139,7 @@ function main(): int32 {
 		}
 	}, 3000);
 	setTimeout((): void => {
+		report("the shown launcher gets frames to draw", launcherFrames > 20, `${launcherFrames} frames in 0.6 s`);
 		if (trusted) report("typed keys reach the launcher at once", typed === "ab", `typed "${typed}"`);
 		else console.log("SKIP typed keys: no accessibility");
 		if (trusted) lpPostKey(KEY_ESCAPE, 0 as int32, 0 as int32, 0 as int32);
