@@ -3,12 +3,13 @@
 // Priority order each turn:
 //   1. drain a queued window-lifecycle event  → return 3
 //   2. drain a queued IPC message              → return 2
-//   3. wait in Cocoa until an NSEvent is queued or msc's next timer is due, then pump SDL
+//   3. a coalesced ionWakeLoop, once per pump  → return 6
+//   4. wait in Cocoa until an NSEvent is queued or msc's next timer is due, then pump SDL
 //      and classify SDL_EVENT_WINDOW_* → push to wevt queue
-//   4. drain input, wevt and IPC again — events that arrived during the wait
-//   5. frame records for windows due one, on the vsync tick (core/frame.m) → return 4
-//   6. a coalesced ionWakeLoop → return 6
-//   7. msc has work (its kqueue turned readable, or a timer is due) → return 5
+//   5. drain input, wevt and IPC again — events that arrived during the wait
+//   6. frame records for windows due one, on the vsync tick (core/frame.m) → return 4
+//   7. a coalesced ionWakeLoop, if none was taken since the pump → return 6
+//   8. msc has work (its kqueue turned readable, or a timer is due) → return 5
 //
 // The wait is Ion's own, as MsgWaitForMultipleObjectsEx is on Windows: SDL_WaitEventTimeout
 // returns only once an SDL event is queued, and only while a window exists to wake it
@@ -44,6 +45,7 @@ static IonWindowId s_last_wevt_id   = ION_WINDOW_INVALID;
 static int         s_last_wevt_type = 0;
 static int         s_quit = 0;
 static atomic_int  s_wakePending;
+static int         s_wakeTaken;
 static atomic_int  s_nudgePending;
 
 static atomic_int      s_mscReady;
@@ -239,6 +241,12 @@ static void handleSdlEvent(const SDL_Event *ev) {
     }
 }
 
+static int takeWake(void) {
+    if (s_wakeTaken) return 0;
+    s_wakeTaken = atomic_exchange(&s_wakePending, 0);
+    return s_wakeTaken;
+}
+
 static int emitDueFrames(void) {
     double timeMs;
     return ionMacFrameTakeTick(&timeMs) && ion_frame_emit(timeMs) > 0 && ion_input_next();
@@ -263,9 +271,12 @@ int ionPollEvent(void) {
     if (ion_input_next()) return 4;
     if (s_quit || ionMacAllWindowsClosed()) return 1;
 
-    // The run loop is pumped every turn, and the tick taken before a wake, because the display
-    // link only fires while the run loop runs: a wake flood that skipped the pump starved the
-    // frames (66 of 240), as a wake ahead of the tick did on Windows (44 of 330).
+    // Each pump serves one wake and the frames due, as tao's cleared() runs the user events and
+    // then the redraws on every run loop iteration (app_state.rs). The display link only fires
+    // while the run loop runs, so a wake flood that skipped the pump starved the frames (66 of
+    // 240), and frames due on every turn held a wake back for up to 2.8 s.
+    if (takeWake()) return 6;
+    s_wakeTaken = 0;
     ionMacFrameSync();
     waitForEvent();
     SDL_Event ev;
@@ -276,7 +287,7 @@ int ionPollEvent(void) {
     if (ion_wevt_pop(&s_last_wevt_id, &s_last_wevt_type)) return 3;
     if (ion_queue_pop()) return 2;
     if (emitDueFrames()) return 4;
-    if (atomic_exchange(&s_wakePending, 0)) return 6;
+    if (takeWake()) return 6;
     if (atomic_exchange(&s_mscReady, 0) || mscDue()) return 5;
     return 0;
 }

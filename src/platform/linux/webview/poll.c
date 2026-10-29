@@ -12,6 +12,7 @@
 static IonWindowId s_lastWevtId   = ION_WINDOW_INVALID;
 static int         s_lastWevtType = 0;
 static gint        s_wakePending;
+static int         s_wakeTaken;
 
 void ionWakeLoop(void) {
     g_atomic_int_set(&s_wakePending, 1);
@@ -34,6 +35,12 @@ static int drain(void) {
     return 0;
 }
 
+static int takeWake(void) {
+    if (s_wakeTaken) return 0;
+    s_wakeTaken = g_atomic_int_compare_and_exchange(&s_wakePending, 1, 0);
+    return s_wakeTaken;
+}
+
 static gboolean keepWaking(gpointer data) {
     (void)data;
     return G_SOURCE_CONTINUE;
@@ -53,6 +60,9 @@ int ionPollEvent(void) {
     int got = drain();
     if (got) return got;
 
+    // Each pump serves one wake and the frames due, as on macOS (poll.m).
+    if (takeWake()) return 6;
+    s_wakeTaken = 0;
     ionLinuxFrameSync();
     while (g_main_context_iteration(NULL, FALSE)) {}
 
@@ -63,7 +73,7 @@ int ionPollEvent(void) {
     if (!g_atomic_int_get(&s_wakePending)) g_main_context_iteration(NULL, TRUE);
     got = drain();
     if (got) return got;
-    if (g_atomic_int_compare_and_exchange(&s_wakePending, 1, 0)) return 6;
+    if (takeWake()) return 6;
     return 0;
 }
 

@@ -253,6 +253,14 @@ static void releaseDestroyed(void) {
     }
 }
 
+static int s_wakeTaken;
+
+static int takeWake(void) {
+    if (s_wakeTaken) return 0;
+    s_wakeTaken = WaitForSingleObject(s_wake, 0) == WAIT_OBJECT_0;
+    return s_wakeTaken;
+}
+
 static int popQueued(void) {
     if (ion_wevt_pop(&s_lastWevtId, &s_lastWevtType)) return 3;
     if (ion_queue_pop()) return 2;
@@ -288,6 +296,12 @@ int ionPollEvent(void) {
     for (;;) {
         int type = popQueued();
         if (type != 0) return type;
+
+        // Each pump serves one wake and the frames due, as on macOS (poll.m): a tick signalled
+        // on every wait would otherwise hide the wake below it.
+        wakeEvent();
+        if (takeWake()) return 6;
+        s_wakeTaken = 0;
 
         // Quit waits until the queued lifecycle events (close-requested,
         // destroyed) have been delivered.
@@ -333,7 +347,7 @@ int ionPollEvent(void) {
             abort();
         }
         if (tickIndex != (DWORD)-1 && r == WAIT_OBJECT_0 + tickIndex) { ion_frame_emit(tickMs()); continue; }
-        if (r == WAIT_OBJECT_0 + wakeIndex) return 6;
+        if (r == WAIT_OBJECT_0 + wakeIndex) { s_wakeTaken = 1; return 6; }
         if (r == WAIT_TIMEOUT || r == WAIT_OBJECT_0 + readyIndex) return 5;
     }
 }
