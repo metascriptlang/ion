@@ -1,7 +1,7 @@
 // Bundle metadata.
 
 import { ionResourcePath, ionReadAsset, ionAssetStatus } from "./platform/bridge.h";
-import { readFile } from "std/fs";
+import { readFileBytes } from "std/fs";
 import { join } from "std/fs/path";
 
 when (ios) {
@@ -42,9 +42,9 @@ export function readResource(path: string): Result<uint8[], string> {
 	} else {
 		const root = resourcePath();
 		if (root === "") return Result.err("no resource directory: the app runs unbundled");
-		const read = readFile(join(root, path));
+		const read = readFileBytes(join(root, path));
 		if (!read.ok) return Result.err("cannot read resource " + path + ": " + read.error.message);
-		return Result.ok(read.value.asBytes().slice(0));
+		return Result.ok(read.value);
 	}
 }
 
