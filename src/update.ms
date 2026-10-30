@@ -14,7 +14,7 @@
 import { fetch } from "std/core/fetch";
 import { parseJson } from "std/serialize/json/parser";
 import { getDynamicField, asString, asNumber, at, length } from "std/serialize/json/accessors";
-import { writeFile, ensureDir, exists, removeAll, rename } from "std/fs";
+import { writeFileBytes, ensureDir, exists, removeAll, rename } from "std/fs";
 import { exec } from "std/process";
 import { sha256, fromBase64 } from "std/crypto";
 import { ed25519Verify } from "std/crypto/ed25519";
@@ -84,10 +84,10 @@ export function check(cfg: UpdateConfig): Result<UpdateInfo | null, string> {
 		return Result.ok(null as unknown as UpdateInfo | null);
 	}
 	if (resp.status < 200 || resp.status >= 300) {
-		return Result.err(`manifest http ${resp.status}: ${resp.body.slice(0, 200)}`);
+		return Result.err(`manifest http ${resp.status}: ${resp.bytes.asString().slice(0, 200)}`);
 	}
 
-	const parsed = parseJson(resp.body);
+	const parsed = parseJson(resp.bytes.asString());
 	if (!parsed.ok) return Result.err(`manifest json parse: ${parsed.error}`);
 	const root = parsed.value;
 
@@ -183,7 +183,7 @@ export function download(cfg: UpdateConfig, info: UpdateInfo,
 	if (resp.status < 200 || resp.status >= 300) {
 		return Result.err(`download http ${resp.status}`);
 	}
-	const body = resp.body;
+	const body = resp.bytes;
 
 	// 3. Size check. Cheap. The hash check below is the real guarantee, but
 	//    a size mismatch is a clearer error for ops than a hash mismatch.
@@ -214,8 +214,8 @@ export function download(cfg: UpdateConfig, info: UpdateInfo,
 	if (!ed.ok) return Result.err(`ensureDir ${tempDir}: ${ed.error.message}`);
 
 	const path = `${tempDir}/${cfg.platform}.${platformExt(cfg.platform)}`;
-	const w = writeFile(path, body);
-	if (!w.ok) return Result.err(`writeFile ${path}: ${w.error.message}`);
+	const w = writeFileBytes(path, body);
+	if (!w.ok) return Result.err(`writeFileBytes ${path}: ${w.error.message}`);
 
 	onProgress(info.artifactSize as int64, info.artifactSize as int64);
 	return Result.ok(path);
