@@ -3,7 +3,7 @@ import { resolve } from "./resolve";
 import { xcodeProject, iosEntry, iosEntryFile, infoPlists } from "./xcode";
 import { gradleProject, GeneratedFile, wrapperFiles } from "./gradle";
 import { visualStudioProject } from "./visualStudio";
-import { exists, isFile, isDir, ensureDir, writeFile, readFile, chmod, realpath, removeAll } from "std/fs";
+import { exists, isFile, isDir, ensureDir, writeFile, copyFile, chmod, realpath, removeAll } from "std/fs";
 import { dirname, basename, join } from "std/fs/path";
 
 function makeDirectories(path: string): Result<void, string> {
@@ -52,21 +52,25 @@ export function render(graph: Graph, sourceRoot: string, compiler: string, tools
 	const android = platformGraph(graph, true);
 	if (android.targets.length == 0) return Result.ok(files);
 	for (const file of try gradleProject(android, sourceRoot, compiler)) files.push(file);
-	for (const path of wrapperFiles) {
-		const vendored = readFile(tools + "/android/wrapper/" + basename(path));
-		if (!vendored.ok) return Result.err("cannot read vendored Gradle wrapper file: " + path);
-		files.push({ path, content: vendored.value });
-	}
 	return Result.ok(files);
 }
 
-function write(output: string, files: Vec<GeneratedFile>, graph: Graph): Result<void, string> {
+function write(output: string, files: Vec<GeneratedFile>, graph: Graph, tools: string): Result<void, string> {
 	try makeDirectories(output);
 	for (const file of files) {
 		const path = output + "/" + file.path;
 		try makeDirectories(dirname(path));
 		if (!writeFile(path, file.content).ok) return Result.err("cannot write " + path);
-		if (file.path == "gradlew" && !chmod(path, 493).ok) return Result.err("cannot make executable: " + path);
+	}
+	if (has(graph, Platform.Android)) {
+		for (const vendored of wrapperFiles) {
+			const path = output + "/" + vendored;
+			try makeDirectories(dirname(path));
+			if (!copyFile(tools + "/android/wrapper/" + basename(vendored), path).ok) {
+				return Result.err("cannot copy vendored Gradle wrapper file: " + vendored);
+			}
+			if (vendored == "gradlew" && !chmod(path, 493).ok) return Result.err("cannot make executable: " + path);
+		}
 	}
 	if (!writeFile(output + "/graph.json", JSON.stringify(graph)).ok) return Result.err("cannot write graph");
 	return Result.ok(null);
@@ -90,7 +94,7 @@ export function generate(project: Project, root: string, output: string, compile
 	}
 	const files = try render(graph, sourceRoot, compiler, tools);
 	if (exists(output)) return Result.err("output already exists: " + output);
-	const written = write(output, files, graph);
+	const written = write(output, files, graph, tools);
 	if (!written.ok) {
 		removeAll(output);
 		return Result.err(written.error);
