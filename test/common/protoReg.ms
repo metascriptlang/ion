@@ -19,7 +19,7 @@ const DUPLICATE: int32 = 5 as int32;
 
 function schemes(): string {
 	let out = "";
-	for (let i = 0; i < ionProtoSchemeCount(); i++) out += `${ionProtoSchemeAt(i as int32)} `;
+	for (let i = 0; i < ionProtoSchemeCount(); i++) out += `${ionProtoSchemeAt(i as int32) as string} `;
 	return out;
 }
 
