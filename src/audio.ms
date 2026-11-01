@@ -63,7 +63,7 @@ export struct PcmStream {
 }
 
 function failed(api: string, code: int32): string {
-	return api + ": " + ionAudioErrorName(code) as string;
+	return api + ": " + (ionAudioErrorName(code) as string);
 }
 
 function done(api: string, code: int32): Result<void, string> {

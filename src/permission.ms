@@ -27,7 +27,7 @@ const microphoneKind: int32 = 0 as int32;
 const cameraKind: int32 = 1 as int32;
 
 function decoded(api: string, code: int32): Result<MediaAccess, string> {
-	if (code < 0) { return Result.err(api + ": " + ionMediaErrorName(code) as string); }
+	if (code < 0) { return Result.err(api + ": " + (ionMediaErrorName(code) as string)); }
 	return mediaAccessFromCode(code);
 }
 
