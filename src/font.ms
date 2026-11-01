@@ -11,15 +11,25 @@ when (macos) {
 	@passL("-framework Foundation");
 }
 
+when (ios) {
+	@compile("./platform/macos/core/font.m", "-fobjc-arc");
+	@passL("-framework CoreText");
+	@passL("-framework Foundation");
+}
+
 when (windows) {
 	@compile("./platform/common/noFont.c");
+	@compile("./platform/windows/core/font.c");
+	@compile("./platform/windows/utf8.c");
+	@passL("-lgdi32");
 }
 
 when (linux) {
 	@compile("./platform/common/noFont.c");
+	@compile("./platform/linux/core/font.c");
 }
 
-import { ionFindSystemFonts, ionSystemFontIndex, ionSystemFontPath } from "./platform/bridge.h";
+import { ionFindSystemFonts, ionSystemFontIndex, ionSystemFontPath, ionRegisterFont } from "./platform/bridge.h";
 
 export enum Presentation { Text, Emoji }
 
@@ -44,4 +54,16 @@ export function findSystemFonts(codepoint: int32, request: FontRequest): SystemF
 		faces.push({ path: ionSystemFontPath(i), index: ionSystemFontIndex(i) });
 	}
 	return faces;
+}
+
+// Makes the faces of a font file the app ships (`Target.assets`) nameable by the platform text stack,
+// UIKit's `UIFont fontWithName:` and AppKit's `NSFont fontWithName:` included, for this process:
+//
+//   registerFont(join(resourcePath(), "fonts/Inter.ttf"));
+//
+// Registering the same file again succeeds. macOS and iOS register through CoreText, Windows as a
+// private GDI font; Linux refuses every file yet (TODO.md).
+export function registerFont(path: string): Result<void, string> {
+	if (ionRegisterFont(path) == 1) return Result.ok(null);
+	return Result.err("cannot register font " + path);
 }

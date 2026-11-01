@@ -471,7 +471,7 @@ void ionNotify(const char *title, const char *body, const char *id);
 int  ionRegisterHotkey(int modifiers, int keyCode, int id);
 void ionUnregisterHotkey(int id);
 
-// ---- System font lookup (macos/core/font.m; common/noFont.c on Windows and Linux) ----
+// ---- System fonts (macos/core/font.m on macOS and iOS; windows/core/font.c; common/noFont.c) ----
 //
 // Installed font files with a glyph for `codepoint`, best first: the emoji face for
 // emoji presentation, CoreText's answer from `family` ("" = the system UI font),
@@ -481,6 +481,11 @@ void ionUnregisterHotkey(int id);
 int      ionFindSystemFonts(int codepoint, int emoji, int weight, int italic, const char *family);
 msString ionSystemFontPath(int i);
 int      ionSystemFontIndex(int i);
+
+// Makes every face in the font file at `path` nameable by the platform text stack for this
+// process (CoreText on macOS and iOS, GDI's private fonts on Windows). 1 when registered or
+// already registered, 0 when the file is missing, unreadable or not a font.
+int      ionRegisterFont(const char *path);
 
 // ---- Audio (common/audio.c, miniaudio on every platform) -------------------
 //

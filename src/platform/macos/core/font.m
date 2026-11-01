@@ -166,3 +166,12 @@ msString ionSystemFontPath(int i) {
 int ionSystemFontIndex(int i) {
     return s_indices[(NSUInteger)i].intValue;
 }
+
+int ionRegisterFont(const char *path) {
+    NSURL *url = [NSURL fileURLWithPath:@(path)];
+    CFErrorRef error = NULL;
+    if (CTFontManagerRegisterFontsForURL((__bridge CFURLRef)url, kCTFontManagerScopeProcess, &error)) return 1;
+    BOOL already = CFErrorGetCode(error) == kCTFontManagerErrorAlreadyRegistered;
+    CFRelease(error);
+    return already ? 1 : 0;
+}
