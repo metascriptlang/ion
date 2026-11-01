@@ -177,6 +177,7 @@ const result = await window.ion.call("greet", { name: "Sơn" });
 | `tray` | `installTray`, `installTrayImage`, `uninstallTray` |
 | `menu` | `setAppMenu` with `Submenu` and `MenuItem.action` / `.standard` / `.separator`; an action item delivers `"menu.click"` with its id to `listen` (macOS only) |
 | `font` | `findSystemFonts(codepoint, { presentation, weight, italic, family })` returns `{ path, index }` of every installed font file that draws the codepoint, best first, or `[]` (macOS only) |
+| `paths` | `appIdentifier()` (bundle id on macOS, else the executable name) and `appDataDir()`, the OS data directory joined with it, as Tauri's `app_data_dir` (not created) |
 | `font` | `registerFont(path)` makes a font file the app ships nameable by the platform text stack (`UIFont`/`NSFont fontWithName:`) for this process (macOS, iOS, Windows) |
 | `notify` | `notify` |
 | `hotkey` | `registerHotkey`, `registerHotkeyKey`, `unregisterHotkey`, `keyCodeFromName` |
