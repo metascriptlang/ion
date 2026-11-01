@@ -63,7 +63,7 @@ export struct PcmStream {
 }
 
 function failed(api: string, code: int32): string {
-	return api + ": " + ionAudioErrorName(code);
+	return api + ": " + ionAudioErrorName(code) as string;
 }
 
 function done(api: string, code: int32): Result<void, string> {
@@ -176,6 +176,6 @@ export function recordingStatus(id: int32): Result<RecordingStatus, string> {
 	return Result.ok({
 		recording: recording === 1,
 		durationMs: ionAudioRecordDurationMs(id),
-		path: ionAudioRecordPath(id),
+		path: ionAudioRecordPath(id) as string,
 	});
 }
