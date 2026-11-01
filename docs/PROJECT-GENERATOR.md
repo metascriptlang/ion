@@ -393,6 +393,10 @@ byte for byte. Why the shape is what it is:
   forwards `onNewIntent` as `newIntent(Intent)`, as Tauri's template does, so
   a notification tap or a link reaches the running app, and the app the system
   recreates after killing its process; `getIntent()` stays the launch intent.
+  The root is focusable in touch mode and takes focus before its children, as
+  React Native's root view does, so a field that blurs hands focus to the root
+  instead of the first field. Every app declares `INTERNET`, as Tauri's
+  template does; there is no per-project permission list yet.
   The fixture's `fixture.c` shows the native half; Neon owns the real one.
 - **Release signing from the environment.** `ION_ANDROID_STORE_FILE`,
   `ION_ANDROID_STORE_PASSWORD`, `ION_ANDROID_KEY_ALIAS` and
