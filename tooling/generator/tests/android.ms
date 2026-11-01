@@ -171,7 +171,7 @@ function mixedProject(): void {
 	}
 	let paths: Vec<string> = [];
 	for (const generated of rendered.value) paths.push(generated.path);
-	for (const expected of ["Mobile.xcodeproj/project.pbxproj", "IonMain.m", "app/src/main/AndroidManifest.xml", "gradlew"]) {
+	for (const expected of ["Mobile.xcodeproj/project.pbxproj", "IonMain.m", "app/src/main/AndroidManifest.xml", "settings.gradle"]) {
 		check(paths.includes(expected), "the mixed project writes " + expected);
 	}
 	check(!file(rendered.value, "Mobile.xcodeproj/project.pbxproj").includes("Android"), "the Xcode project leaves the Android target out");
