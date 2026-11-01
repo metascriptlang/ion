@@ -16,8 +16,8 @@ import { parseJson } from "std/serialize/json/parser";
 import { getDynamicField, asString, asNumber, at, length } from "std/serialize/json/accessors";
 import { writeFileBytes, ensureDir, exists, removeAll, rename } from "std/fs";
 import { exec } from "std/process";
-import { sha256, fromBase64 } from "std/crypto";
-import { ed25519Verify } from "std/crypto/ed25519";
+import { sha256Sync, fromBase64, toHex } from "std/crypto";
+import { Ed25519PublicKey, verifySync } from "std/crypto/ed25519";
 import { isOlderThan } from "./internal/semver";
 import {
 	ionUpdateMountDmg,
@@ -162,15 +162,17 @@ export function download(cfg: UpdateConfig, info: UpdateInfo,
 	const sigB64 = stripPrefix(info.artifactSignature, "ed25519:");
 	if (sigB64 === "") return Result.err("artifactSignature missing ed25519: prefix");
 
-	const sigRaw = fromBase64(sigB64);
-	if (sigRaw.byteLength !== 64) {
-		return Result.err(`signature decode: expected 64 bytes, got ${sigRaw.byteLength}`);
+	const sigDecoded = fromBase64(sigB64);
+	if (!sigDecoded.ok) return Result.err(`signature decode: ${sigDecoded.error.message}`);
+	const sigRaw = sigDecoded.value;
+	if (sigRaw.length !== 64) {
+		return Result.err(`signature decode: expected 64 bytes, got ${sigRaw.length}`);
 	}
 
-	const pubRaw = fromBase64(cfg.publicKey);
-	if (pubRaw.byteLength !== 32) {
-		return Result.err(`publicKey decode: expected 32 bytes, got ${pubRaw.byteLength}`);
-	}
+	const pubDecoded = fromBase64(cfg.publicKey);
+	if (!pubDecoded.ok) return Result.err(`publicKey decode: ${pubDecoded.error.message}`);
+	const pub = Ed25519PublicKey.importSync(pubDecoded.value);
+	if (!pub.ok) return Result.err(`publicKey decode: ${pub.error.message}`);
 
 	// 2. Download. ion's std fetch is single-shot (no streaming yet) so we
 	//    pull the full body into memory before verifying. OK for typical
@@ -193,16 +195,17 @@ export function download(cfg: UpdateConfig, info: UpdateInfo,
 	}
 
 	// 4. sha256 — Cloudflare/proxy/connection corruption shows here first.
-	const h = sha256(body, "hex");
+	const h = sha256Sync(body);
 	if (!h.ok) return Result.err(`sha256 compute: ${h.error.message}`);
-	if (h.value !== expectedHash) {
-		return Result.err(`sha256 mismatch: expected ${expectedHash}, got ${h.value}`);
+	const got256 = toHex(h.value);
+	if (got256 !== expectedHash) {
+		return Result.err(`sha256 mismatch: expected ${expectedHash}, got ${got256}`);
 	}
 
 	// 5. Ed25519 — the trust anchor. Public key is embedded in the app at
 	//    build time, so only releases signed by the corresponding private
 	//    key can pass. This is what protects against a compromised OTA host.
-	if (!ed25519Verify(sigRaw, pubRaw, body)) {
+	if (!verifySync(pub.value, sigRaw, body)) {
 		return Result.err("ed25519 signature verification failed");
 	}
 
