@@ -368,9 +368,9 @@ int      ionAssetStatus(void);
 void ionSetContentProtected(int on);
 
 // Open `url` in the user's default handler (system browser). Same effect as
-// clicking an external link in the webview. No-op on NULL/empty/unparseable
-// URL. Used by OAuth loopback flows to launch the provider's consent page.
-void ionOpenExternal(const char *url);
+// clicking an external link in the webview. 1 when the system took the URL,
+// 0 for an empty or unparseable URL or one no handler opened.
+int ionOpenExternal(const char *url);
 
 // Text clipboard, UTF-8. Read returns "" when there is no text or the
 // clipboard could not be opened. Write returns 1 on success, 0 on failure.

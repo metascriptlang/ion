@@ -4,10 +4,10 @@
 
 #import <Cocoa/Cocoa.h>
 
-void ionOpenExternal(const char *url) {
-    if (url == NULL || url[0] == '\0') return;
+int ionOpenExternal(const char *url) {
+    if (url == NULL || url[0] == '\0') return 0;
     NSString *s = [NSString stringWithUTF8String:url];
-    NSURL *u = [NSURL URLWithString:s];
-    if (u == nil) return;
-    [[NSWorkspace sharedWorkspace] openURL:u];
+    NSURL *u = s == nil ? nil : [NSURL URLWithString:s];
+    if (u == nil) return 0;
+    return [[NSWorkspace sharedWorkspace] openURL:u] ? 1 : 0;
 }

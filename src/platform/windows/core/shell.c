@@ -5,13 +5,14 @@
 #include <shellapi.h>
 #include <stdlib.h>
 
-void ionOpenExternal(const char *url) {
-    if (url == NULL || url[0] == '\0') return;
+int ionOpenExternal(const char *url) {
+    if (url == NULL || url[0] == '\0') return 0;
     int n = MultiByteToWideChar(CP_UTF8, 0, url, -1, NULL, 0);
-    if (n <= 0) return;
+    if (n <= 0) return 0;
     wchar_t *w = (wchar_t *)malloc((size_t)n * sizeof(wchar_t));
-    if (w == NULL) return;
+    if (w == NULL) return 0;
     MultiByteToWideChar(CP_UTF8, 0, url, -1, w, n);
-    ShellExecuteW(NULL, L"open", w, NULL, NULL, SW_SHOWNORMAL);
+    HINSTANCE r = ShellExecuteW(NULL, L"open", w, NULL, NULL, SW_SHOWNORMAL);
     free(w);
+    return (INT_PTR)r > 32 ? 1 : 0;
 }
