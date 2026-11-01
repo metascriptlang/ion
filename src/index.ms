@@ -46,6 +46,7 @@ export { registerStaticProtocol, registerAssetScope } from "./protocol";
 export { installTray, installTrayImage, uninstallTray } from "./tray";
 export { setAppMenu, MenuItem, MenuItemKind, MenuRole, Submenu } from "./menu";
 export { findSystemFonts, registerFont, FontRequest, Presentation, SystemFont } from "./font";
+export { appIdentifier, appDataDir } from "./paths";
 export { notify } from "./notify";
 export {
 	registerHotkey, registerHotkeyKey,

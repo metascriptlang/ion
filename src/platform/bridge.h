@@ -356,6 +356,10 @@ msString ionFileOpen(void);
 // to the binary).
 msString ionResourcePath(void);
 
+// The app's identifier: the bundle id on macOS (the process name when unbundled), the
+// executable's name on Windows (without ".exe") and Linux. "" when the OS does not say.
+msString ionAppIdentifier(void);
+
 // Android only (android/core/resource.c): the bytes of `path` inside the APK's assets.
 // ionAssetStatus reports the last read: 1 read, 0 no such asset, -1 no AssetManager attached.
 msString ionReadAsset(const char *path);
