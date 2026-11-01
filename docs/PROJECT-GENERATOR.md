@@ -251,6 +251,13 @@ named by `INFOPLIST_FILE`, which Xcode merges with the keys it generates.
 Tuist's `.extendingDefault(with:)` takes the same key list but writes its own
 defaults into that file too. A key set twice is refused.
 
+`Target.urlSchemes` (`["neonnav"]`) lets the app open `neonnav://…` links, as
+Expo's `scheme` does: one `CFBundleURLTypes` entry named by the bundle id on
+macOS and iOS, and one `VIEW` + `BROWSABLE` intent filter on the Android
+activity. Each scheme must be an RFC 3986 scheme (a letter, then letters,
+digits, `+`, `-`, `.`); a Windows target or a raw `CFBundleURLTypes` entry
+beside it is refused.
+
 `Target.statusBar` (`{ style: StatusBarStyle.Light, hidden: false }`, iOS only)
 is the status bar the app starts with. `project.ms` is its one source: the build
 script passes it to `msc` as `-d:statusBarLight`, `-d:statusBarDark` and
