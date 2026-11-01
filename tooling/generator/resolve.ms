@@ -31,6 +31,18 @@ function validName(value: string): boolean {
 	return true;
 }
 
+// RFC 3986 section 3.1: a letter, then letters, digits, "+", "-" or ".".
+function validScheme(value: string): boolean {
+	if (value == "") return false;
+	for (let i = 0; i < value.byteLength; i += 1) {
+		const c = value.byteAt(i);
+		const letter = (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+		if (letter || (i > 0 && ((c >= 48 && c <= 57) || c == 43 || c == 45 || c == 46))) continue;
+		return false;
+	}
+	return true;
+}
+
 function validDeploymentTarget(value: string): boolean {
 	const parts = value.split(".");
 	if (parts.length < 2 || parts.length > 3) return false;
@@ -166,6 +178,14 @@ export function resolve(this project: Project): Result<Graph, string> {
 		}
 		if (target.platform != Platform.Ios && (target.statusBar.style != StatusBarStyle.Default || target.statusBar.hidden)) {
 			return Result.err("statusBar of " + quoted(target.name) + " applies to iOS targets only");
+		}
+		if (target.urlSchemes.length > 0 && target.platform == Platform.Windows) {
+			return Result.err("urlSchemes of " + quoted(target.name) + " apply to macOS, iOS and Android targets only");
+		}
+		for (let si = 0; si < target.urlSchemes.length; si += 1) {
+			const scheme = target.urlSchemes[si];
+			if (!validScheme(scheme)) return Result.err("invalid URL scheme for " + quoted(target.name) + ": " + quoted(scheme));
+			if (target.urlSchemes.indexOf(scheme) != si) return Result.err("URL scheme " + quoted(scheme) + " of " + quoted(target.name) + " is declared twice");
 		}
 		if (targetIndex(graph.targets, target.name) != i) return Result.err("the target " + quoted(target.name) + " is declared multiple times");
 		for (const dependency of target.dependencies) {

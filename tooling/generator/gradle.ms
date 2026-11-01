@@ -431,7 +431,21 @@ function appGradle(target: Target, files: Vec<PlacedFile>, root: string, compile
 	]);
 }
 
-function manifest(): string {
+// Expo's `scheme` adds the same filter: every scheme in one VIEW + BROWSABLE filter on the activity.
+function schemeFilter(schemes: Vec<string>): Vec<string> {
+	if (schemes.length == 0) return [];
+	let filter: Vec<string> = [
+		"\t\t\t<intent-filter>",
+		"\t\t\t\t<action android:name=\"android.intent.action.VIEW\" />",
+		"\t\t\t\t<category android:name=\"android.intent.category.DEFAULT\" />",
+		"\t\t\t\t<category android:name=\"android.intent.category.BROWSABLE\" />",
+	];
+	for (const scheme of schemes) filter.push("\t\t\t\t<data android:scheme=\"" + scheme + "\" />");
+	filter.push("\t\t\t</intent-filter>");
+	return filter;
+}
+
+function manifest(target: Target): string {
 	return lines([
 		"<?xml version=\"1.0\" encoding=\"utf-8\"?>",
 		"<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">",
@@ -448,6 +462,7 @@ function manifest(): string {
 		"\t\t\t\t<action android:name=\"android.intent.action.MAIN\" />",
 		"\t\t\t\t<category android:name=\"android.intent.category.LAUNCHER\" />",
 		"\t\t\t</intent-filter>",
+		...schemeFilter(target.urlSchemes),
 		"\t\t</activity>",
 		"\t</application>",
 		"</manifest>",
@@ -565,7 +580,7 @@ export function gradleProject(graph: Graph, root: string, compiler: string): Res
 		{ path: "app/build.gradle", content: appGradle(target, graph.files, root, compiler) },
 		{ path: "app/" + assetsSourceFile, content: assetsSource() },
 		{ path: "app/proguard-rules.pro", content: lines(["-keep class " + bootstrapPackage + ".NativeApp { native <methods>; }"]) },
-		{ path: "app/src/main/AndroidManifest.xml", content: manifest() },
+		{ path: "app/src/main/AndroidManifest.xml", content: manifest(target) },
 		{
 			path: "app/src/main/res/values/strings.xml",
 			content: lines(["<?xml version=\"1.0\" encoding=\"utf-8\"?>", "<resources>", "\t<string name=\"app_name\">" + xml(target.name) + "</string>", "</resources>"]),

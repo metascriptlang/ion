@@ -34,7 +34,7 @@ function buildSettings(target: Target): string {
 	};
 	const signing = target.developmentTeam == "" ? "CODE_SIGNING_ALLOWED = NO; " :
 		"CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = " + quote(target.developmentTeam) + "; ";
-	const infoPlist = target.infoPlist.length == 0 ? "" : "INFOPLIST_FILE = " + quote(infoPlistFile(target)) + "; ";
+	const infoPlist = target.infoPlist.length == 0 && target.urlSchemes.length == 0 ? "" : "INFOPLIST_FILE = " + quote(infoPlistFile(target)) + "; ";
 	return platform + signing + infoPlist + "ENABLE_USER_SCRIPT_SANDBOXING = NO; " +
 		"GENERATE_INFOPLIST_FILE = YES; PRODUCT_NAME = " + quote(target.name) + "; " +
 		"PRODUCT_BUNDLE_IDENTIFIER = " + quote(target.bundleId) + "; " +
@@ -71,9 +71,18 @@ function xmlText(value: string): string {
 export function infoPlists(graph: Graph): Result<Vec<GeneratedFile>, string> {
 	let files: Vec<GeneratedFile> = [];
 	for (const target of graph.targets) {
-		if (target.infoPlist.length == 0) continue;
+		if (target.infoPlist.length == 0 && target.urlSchemes.length == 0) continue;
 		let body = "";
 		let keys: Vec<string> = [];
+		if (target.urlSchemes.length > 0) {
+			keys.push("CFBundleURLTypes");
+			let schemes = "";
+			for (const scheme of target.urlSchemes) schemes += "\t\t\t\t<string>" + scheme + "</string>\n";
+			body += "\t<key>CFBundleURLTypes</key>\n\t<array>\n\t\t<dict>\n" +
+				"\t\t\t<key>CFBundleURLName</key>\n\t\t\t<string>" + xmlText(target.bundleId) + "</string>\n" +
+				"\t\t\t<key>CFBundleURLSchemes</key>\n\t\t\t<array>\n" + schemes + "\t\t\t</array>\n" +
+				"\t\t</dict>\n\t</array>\n";
+		}
 		for (const entry of target.infoPlist) {
 			if (entry.key == "" || keys.includes(entry.key)) {
 				return Result.err("target '" + target.name + "' sets Info.plist key '" + entry.key + "' " + (entry.key == "" ? "with no name" : "twice"));

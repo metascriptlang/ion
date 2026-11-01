@@ -98,6 +98,7 @@ export struct Target {
 	files: Vec<Placement>;
 	developmentTeam: string;
 	infoPlist: Vec<InfoPlistEntry>;
+	urlSchemes: Vec<string>;
 	statusBar: StatusBar;
 	android: AndroidSettings;
 }
@@ -148,27 +149,27 @@ export struct Graph {
 export function app(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Macos, arch: Arch.Arm64, deploymentTarget: "13.0",
-		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], statusBar: statusBarDefaults, android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], urlSchemes: [], statusBar: statusBarDefaults, android: androidDefaults,
 	};
 }
 
 export function iosApp(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Ios, arch: Arch.Arm64, deploymentTarget: "15.0",
-		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], statusBar: statusBarDefaults, android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], urlSchemes: [], statusBar: statusBarDefaults, android: androidDefaults,
 	};
 }
 
 export function androidApp(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Android, arch: Arch.Arm64, deploymentTarget: "",
-		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], statusBar: statusBarDefaults, android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], urlSchemes: [], statusBar: statusBarDefaults, android: androidDefaults,
 	};
 }
 
 export function windowsApp(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Windows, arch: Arch.X64, deploymentTarget: "",
-		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], statusBar: statusBarDefaults, android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], urlSchemes: [], statusBar: statusBarDefaults, android: androidDefaults,
 	};
 }
