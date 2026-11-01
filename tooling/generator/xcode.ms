@@ -112,7 +112,7 @@ export function iosEntry(): string {
 		"\treturn msProgramResult;\n}\n";
 }
 
-function iosScript(entry: string, compiler: string, statusBar: StatusBar): string {
+function iosScript(entry: string, compiler: string, statusBar: StatusBar, swiftLibrary: string): string {
 	return "set -eu\ncompiler=" + shellQuote(compiler) + "\nentry=" + shellQuote(entry) + "\n" +
 		"output=\"$TARGET_BUILD_DIR/$EXECUTABLE_PATH\"\n" +
 		"trap 'status=$?; if [ \"$status\" -ne 0 ]; then rm -f \"$output\"; fi' 0\n" +
@@ -138,7 +138,10 @@ function iosScript(entry: string, compiler: string, statusBar: StatusBar): strin
 		"\"$compiler\" build \"$entry\" --target=c --os=ios --cpu=\"$ARCHS\" \"--link=$build/IonMain.o\" " +
 		"--cc=\"$(xcrun --find clang)\" " +
 		"\"--passC=-target $ARCHS-apple-ios$IPHONEOS_DEPLOYMENT_TARGET$suffix " +
-		"-isysroot \\\"$SDKROOT\\\"\"" + statusBarDefines(statusBar) + " \"--output=$output\" \"$@\"\n";
+		"-isysroot \\\"$SDKROOT\\\"\"" + statusBarDefines(statusBar) +
+		(swiftLibrary == "" ? "" : " \"--link=$BUILT_PRODUCTS_DIR/lib" + swiftLibrary + ".a\"" +
+			" \"--passL=-L$SDKROOT/usr/lib/swift -L$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$PLATFORM_NAME\"") +
+		" \"--output=$output\" \"$@\"\n";
 }
 
 function copySubfolder(slot: Slot): int32 {
@@ -189,6 +192,37 @@ function copyPhases(graph: Graph, target: Target, root: string, index: int32): C
 	return result;
 }
 
+// A target's Swift sources become a static library Xcode compiles first; the Compile MetaScript
+// phase links it into the executable msc owns, as it links IonMain.o.
+function swiftLibraryTarget(target: Target, root: string, index: int32, base: int32): CopyPhases {
+	const name = target.name + "Swift";
+	let result: CopyPhases = { objects: "", phases: "", references: "" };
+	let files = "";
+	for (let k: int32 = 0; k < target.swiftSources.length; k += 1) {
+		const buildFileId = id(600000 + index * 1000 + k);
+		const referenceId = id(700000 + index * 1000 + k);
+		files += buildFileId + ",";
+		result.references += referenceId + ",";
+		result.objects += `${buildFileId} = { isa = PBXBuildFile; fileRef = ${referenceId}; };\n`;
+		result.objects += `${referenceId} = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ${quote(join(root, target.swiftSources[k]))}; sourceTree = "<absolute>"; };\n`;
+	}
+	const settings = "SDKROOT = iphoneos; SUPPORTED_PLATFORMS = \"iphoneos iphonesimulator\"; " +
+		"IPHONEOS_DEPLOYMENT_TARGET = " + quote(target.deploymentTarget) + "; TARGETED_DEVICE_FAMILY = \"1,2\"; " +
+		"PRODUCT_NAME = " + quote(name) + "; SWIFT_VERSION = 5.0; SKIP_INSTALL = YES; CODE_SIGNING_ALLOWED = NO; ENABLE_USER_SCRIPT_SANDBOXING = NO; ";
+	// Removed before Swift compiles, so a failed Swift build leaves no stale runnable app behind.
+	const stale = "rm -f \"$BUILT_PRODUCTS_DIR/" + target.name + ".app/" + target.name + "\"\n";
+	result.objects += `${id(base + 58)} = { isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = (); inputPaths = (); outputPaths = (); alwaysOutOfDate = 1; name = "Remove Stale Executable"; runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = ${quote(stale)}; };\n`;
+	result.objects += `${id(base + 50)} = { isa = PBXNativeTarget; name = ${quote(name)}; productName = ${quote(name)}; productType = "com.apple.product-type.library.static"; productReference = ${id(base + 51)}; buildConfigurationList = ${id(base + 52)}; buildPhases = (${id(base + 58)},${id(base + 55)},); buildRules = (); dependencies = (); };\n`;
+	result.objects += `${id(base + 51)} = { isa = PBXFileReference; explicitFileType = archive.ar; path = ${quote("lib" + name + ".a")}; sourceTree = BUILT_PRODUCTS_DIR; };\n`;
+	result.objects += `${id(base + 52)} = { isa = XCConfigurationList; buildConfigurations = (${id(base + 53)},${id(base + 54)},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; };\n`;
+	result.objects += `${id(base + 53)} = { isa = XCBuildConfiguration; name = Debug; buildSettings = { ${settings}}; };\n`;
+	result.objects += `${id(base + 54)} = { isa = XCBuildConfiguration; name = Release; buildSettings = { ${settings}}; };\n`;
+	result.objects += `${id(base + 55)} = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (${files}); runOnlyForDeploymentPostprocessing = 0; };\n`;
+	result.objects += `${id(base + 56)} = { isa = PBXContainerItemProxy; containerPortal = ${id(1)}; proxyType = 1; remoteGlobalIDString = ${id(base + 50)}; remoteInfo = ${quote(name)}; };\n`;
+	result.objects += `${id(base + 57)} = { isa = PBXTargetDependency; target = ${id(base + 50)}; targetProxy = ${id(base + 56)}; };\n`;
+	return result;
+}
+
 export function xcodeProject(graph: Graph, root: string, compiler: string): Result<string, string> {
 	for (const target of graph.targets) {
 		if (target.platform == Platform.Android || target.platform == Platform.Windows) {
@@ -223,11 +257,19 @@ export function xcodeProject(graph: Graph, root: string, compiler: string): Resu
 				objects += `${dependencyId} = { isa = PBXTargetDependency; target = ${id(100 + ti * 100)}; targetProxy = ${proxyId}; };\n`;
 			}
 		}
+		if (target.swiftSources.length > 0) {
+			const library = swiftLibraryTarget(target, root, i, base);
+			objects += library.objects;
+			targets += id(base + 50) + ",";
+			products += id(base + 51) + ",";
+			sources += library.references;
+			dependencies += id(base + 57) + ",";
+		}
 		const copies = copyPhases(graph, target, root, i);
 		objects += copies.objects;
 		sources += copies.references;
 		const entry = root + "/" + target.entry;
-		const script = target.platform == Platform.Ios ? iosScript(entry, compiler, target.statusBar) :
+		const script = target.platform == Platform.Ios ? iosScript(entry, compiler, target.statusBar, target.swiftSources.length == 0 ? "" : target.name + "Swift") :
 			"set -eu\ncd " + shellQuote(root) +
 			"\nmkdir -p \"$TARGET_BUILD_DIR/" + target.name + ".app/Contents/MacOS\"\n" +
 			shellQuote(compiler) + " build " + shellQuote(target.entry) +

@@ -179,6 +179,12 @@ export function resolve(this project: Project): Result<Graph, string> {
 		if (target.platform != Platform.Ios && (target.statusBar.style != StatusBarStyle.Default || target.statusBar.hidden)) {
 			return Result.err("statusBar of " + quoted(target.name) + " applies to iOS targets only");
 		}
+		if (target.swiftSources.length > 0 && target.platform != Platform.Ios) {
+			return Result.err("swiftSources of " + quoted(target.name) + " apply to iOS targets only");
+		}
+		for (const source of target.swiftSources) {
+			if (!source.endsWith(".swift")) return Result.err("Swift source of " + quoted(target.name) + " must end in .swift: " + source);
+		}
 		if (target.urlSchemes.length > 0 && target.platform == Platform.Windows) {
 			return Result.err("urlSchemes of " + quoted(target.name) + " apply to macOS, iOS and Android targets only");
 		}
