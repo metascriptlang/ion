@@ -20,7 +20,7 @@ export {
 	PointerHandler, KeyHandler, TextHandler, PreeditHandler, FocusHandler, ResizeHandler, FrameHandler,
 } from "./input";
 export { onWake, WakeHandler } from "./wake";
-export { onExitRequested, preventExit, ExitRequestedHandler } from "./exit";
+export { onExitRequested, preventExit, quit, ExitRequestedHandler } from "./exit";
 export { command, Command } from "./command";
 export {
 	createWindow, closeWindow, getWindow, windowCount, requestSingleInstance, defaultOptions,

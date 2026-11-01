@@ -19,6 +19,18 @@ export function preventExit(): void {
 	_exitPrevented = true;
 }
 
+let _quitRequested = false;
+
+// Asks the app to quit from code, as Tauri's AppHandle::exit and Electron's app.quit: the loop runs
+// the exit-requested handlers on its next turn, and one of them can still preventExit.
+export function quit(): void { _quitRequested = true; }
+
+export function takeQuitRequest(): boolean {
+	const asked = _quitRequested;
+	_quitRequested = false;
+	return asked;
+}
+
 // Returns whether the loop should end.
 export function dispatchExitRequested(): boolean {
 	_exitDispatching = true;
