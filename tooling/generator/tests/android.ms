@@ -123,6 +123,7 @@ if (first.ok && second.ok) {
 	check(manifest.includes("android:name=\"dev.metascript.app.MainActivity\""), "manifest names the bootstrap activity");
 	check(manifest.includes("android:configChanges=\""), "size changes reach the running activity");
 	check(manifest.includes("android:launchMode=\"singleTask\""), "a new intent reaches the running activity");
+	check(manifest.includes("<uses-permission android:name=\"android.permission.INTERNET\" />"), "the app may open network connections");
 	check(file(files, "app/src/main/res/values/strings.xml").includes("<string name=\"app_name\">Mobile</string>"), "label");
 	const native = file(files, "app/src/main/java/dev/metascript/app/NativeApp.java");
 	check(native.includes("package dev.metascript.app;") && native.includes("System.loadLibrary(\"metascript\")"), "JNI class loads the stable library");
@@ -132,6 +133,7 @@ if (first.ok && second.ok) {
 	const activity = file(files, "app/src/main/java/dev/metascript/app/MainActivity.java");
 	check(activity.includes("new FrameLayout(this)") && activity.includes("NativeApp.start(root)"), "activity creates the root");
 	check(activity.includes("NativeApp.newIntent(intent);"), "activity forwards a new intent");
+	check(activity.includes("root.setFocusableInTouchMode(true);") && activity.includes("root.setDescendantFocusability(ViewGroup.FOCUS_BEFORE_DESCENDANTS);"), "a blurred field hands focus to the root");
 	check(file(files, "app/proguard-rules.pro").includes("-keep class dev.metascript.app.NativeApp"), "R8 keeps the JNI class");
 }
 

@@ -207,6 +207,11 @@ try:
     assert first[0] == "start value=17" and "resume value=17" in first
     assert "listener=attached" in first, f"Debug did not attach the library listener: {first}"
     assert "asset marker=ion asset nested=nested asset missing=no asset assets/none.txt" in first, f"assets: {first}"
+    granted = run("permissions", [adb, "shell", "dumpsys", "package", package])
+    assert re.search(r"android\.permission\.INTERNET: granted=true", granted), "the app was not granted INTERNET"
+    ui = run("ui-root", [adb, "exec-out", "cat", "/sdcard/ion-android.xml"])
+    assert re.search(r'class="android\.widget\.FrameLayout" package="' + re.escape(package) + r'"[^>]*focusable="true"', ui), \
+        "the activity root is not focusable"
     tap(7)
     width, height = map(int, re.search(r"resize (\d+)x(\d+)", " ".join(first)).groups())
     process = pid()
