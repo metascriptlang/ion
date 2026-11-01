@@ -173,6 +173,17 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             ionEnqueueMessage("hotkey", buf);
             return 0;
         }
+        case WM_ACTIVATEAPP: {
+            // Every top-level window of the thread gets this when the app gains or loses the
+            // foreground; one message per change.
+            static int s_appActive = -1;
+            int active = wParam ? 1 : 0;
+            if (active != s_appActive) {
+                s_appActive = active;
+                ionEnqueueMessage(active ? "app.active" : "app.inactive", "");
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        }
         case WM_COPYDATA: {
             // Secondary ion instance forwarding a deep link URL — see
             // lifecycle.c forwardToPrimaryAndExit. Payload is UTF-8 string,
