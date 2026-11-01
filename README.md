@@ -53,6 +53,10 @@ other than the `msc` on `PATH`. The output directory must not exist. See
 [docs/PROJECT-GENERATOR.md](docs/PROJECT-GENERATOR.md) for the manifest API,
 architecture, verification command and current POC boundaries.
 
+An iOS or Android app imports the modules it uses (`src/window`, `src/font`)
+rather than `src/index`: the index re-exports the desktop window host, whose
+native sources are not built for a mobile target, so the app fails to link.
+
 ### Build the demo
 
 ```bash
