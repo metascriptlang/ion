@@ -1,4 +1,4 @@
-import { findSystemFonts, Presentation, FontRequest } from "../src/font";
+import { findSystemFonts, registerFont, Presentation, FontRequest } from "../src/font";
 import { readFile } from "std/fs";
 
 const text: FontRequest = { presentation: Presentation.Text, weight: 400 as int32, italic: false, family: "Menlo" };
@@ -68,4 +68,8 @@ test "an unassigned codepoint finds no font" {
 test "a surrogate or out-of-range codepoint finds no font" {
 	assert findSystemFonts(0xD800 as int32, text).length == 0;
 	assert findSystemFonts(0x110000 as int32, text).length == 0;
+}
+
+test "a missing font file does not register" {
+	assert !registerFont("/nonexistent/ion-font.ttf").ok;
 }
