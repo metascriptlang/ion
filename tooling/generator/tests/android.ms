@@ -222,6 +222,37 @@ function statusBarDeclared(): void {
 	check(!graph.ok && graph.error == "statusBar of 'Desk' applies to iOS targets only", "a macOS status bar is refused" + (graph.ok ? "" : ": " + graph.error));
 }
 statusBarDeclared();
+function urlSchemesDeclared(): void {
+	const rendered = (target: Target): Result<Vec<GeneratedFile>, string> => {
+		const graph = resolve({ name: "Mobile", targets: [target], plugins: [bundlePrefix("dev.ion")] });
+		if (!graph.ok) return Result.err(graph.error);
+		return renderProjects(graph.value, "/source", "/msc", "tooling/generator");
+	};
+	const tablet = rendered({ ...Target.iosApp("Tablet", "main.ms"), urlSchemes: ["neonnav", "neon-nav.v2"] });
+	if (!tablet.ok) {
+		check(false, "an iOS target with URL schemes renders: " + tablet.error);
+		return;
+	}
+	check(file(tablet.value, "Tablet-Info.plist").includes("<key>CFBundleURLTypes</key>\n\t<array>\n\t\t<dict>\n\t\t\t<key>CFBundleURLName</key>\n\t\t\t<string>dev.ion.Tablet</string>\n\t\t\t<key>CFBundleURLSchemes</key>\n\t\t\t<array>\n\t\t\t\t<string>neonnav</string>\n\t\t\t\t<string>neon-nav.v2</string>\n"), "URL schemes become one CFBundleURLTypes entry");
+	check(file(tablet.value, "Mobile.xcodeproj/project.pbxproj").includes("INFOPLIST_FILE = \"Tablet-Info.plist\"; "), "a target with URL schemes names its plist");
+	const desk = rendered({ ...Target.app("Desk", "main.ms"), urlSchemes: ["desk"] });
+	check(desk.ok && file(desk.value, "Desk-Info.plist").includes("<string>desk</string>"), "a macOS target declares its scheme too");
+	const phone = rendered({ ...app, urlSchemes: ["neonnav"] });
+	check(phone.ok && file(phone.value, "app/src/main/AndroidManifest.xml").includes("\t\t\t<intent-filter>\n\t\t\t\t<action android:name=\"android.intent.action.VIEW\" />\n\t\t\t\t<category android:name=\"android.intent.category.DEFAULT\" />\n\t\t\t\t<category android:name=\"android.intent.category.BROWSABLE\" />\n\t\t\t\t<data android:scheme=\"neonnav\" />\n\t\t\t</intent-filter>\n\t\t</activity>"), "an Android target gets a VIEW filter for its scheme");
+	const plain = rendered(app);
+	check(plain.ok && !file(plain.value, "app/src/main/AndroidManifest.xml").includes("BROWSABLE"), "no scheme, no VIEW filter");
+	for (const bad of ["", "1nav", "nav://", "na v"]) {
+		const refused = rendered({ ...Target.iosApp("Tablet", "main.ms"), urlSchemes: [bad] });
+		check(!refused.ok && refused.error == "invalid URL scheme for 'Tablet': '" + bad + "'", "scheme '" + bad + "' is refused");
+	}
+	const twice = rendered({ ...Target.iosApp("Tablet", "main.ms"), urlSchemes: ["a", "a"] });
+	check(!twice.ok && twice.error == "URL scheme 'a' of 'Tablet' is declared twice", "a scheme declared twice is refused");
+	const windows = rendered({ ...Target.windowsApp("Win", "main.ms"), urlSchemes: ["win"] });
+	check(!windows.ok && windows.error == "urlSchemes of 'Win' apply to macOS, iOS and Android targets only", "a Windows scheme is refused");
+	const clash = rendered({ ...Target.iosApp("Tablet", "main.ms"), urlSchemes: ["a"], infoPlist: [plistString("CFBundleURLTypes", "x")] });
+	check(!clash.ok && clash.error == "target 'Tablet' sets Info.plist key 'CFBundleURLTypes' twice", "a raw CFBundleURLTypes beside urlSchemes is refused");
+}
+urlSchemesDeclared();
 mixedProject();
 function androidAssets(): void {
 	const graph = resolve({ name: "Mobile", targets: [{ ...app, assets: ["assets/font.ttf", "src"] }], plugins: [bundlePrefix("dev.ion")] });
