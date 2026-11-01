@@ -251,6 +251,14 @@ named by `INFOPLIST_FILE`, which Xcode merges with the keys it generates.
 Tuist's `.extendingDefault(with:)` takes the same key list but writes its own
 defaults into that file too. A key set twice is refused.
 
+`Target.statusBar` (`{ style: StatusBarStyle.Light, hidden: false }`, iOS only)
+is the status bar the app starts with. `project.ms` is its one source: the build
+script passes it to `msc` as `-d:statusBarLight`, `-d:statusBarDark` and
+`-d:statusBarHidden`, which Neon's iOS root reads with `when` before its first
+mount, and `INFOPLIST_KEY_UIStatusBarStyle` / `INFOPLIST_KEY_UIStatusBarHidden`
+repeat it for the launch screen only. View-controller-based appearance stays on,
+so a mounted `<StatusBar>` still changes it at run time.
+
 The compiler owns the entire executable: generated C, runtime, package native
 directives, compile, link and incremental cache. Xcode owns the application
 bundle, generated Info.plist, signing and launch. The PBX project deliberately
