@@ -75,6 +75,17 @@ export function plistString(key: string, value: string): InfoPlistEntry {
 	return { key, kind: InfoPlistKind.String, value };
 }
 
+export enum StatusBarStyle { Default, Light, Dark }
+
+// The iOS status bar an app starts with: built into the app as `-d:statusBarLight`, `-d:statusBarDark`,
+// `-d:statusBarHidden` for its UI framework, and into Info.plist for the launch screen.
+export struct StatusBar {
+	style: StatusBarStyle;
+	hidden: boolean;
+}
+
+const statusBarDefaults: StatusBar = { style: StatusBarStyle.Default, hidden: false };
+
 export struct Target {
 	name: string;
 	platform: Platform;
@@ -87,6 +98,7 @@ export struct Target {
 	files: Vec<Placement>;
 	developmentTeam: string;
 	infoPlist: Vec<InfoPlistEntry>;
+	statusBar: StatusBar;
 	android: AndroidSettings;
 }
 
@@ -136,27 +148,27 @@ export struct Graph {
 export function app(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Macos, arch: Arch.Arm64, deploymentTarget: "13.0",
-		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], statusBar: statusBarDefaults, android: androidDefaults,
 	};
 }
 
 export function iosApp(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Ios, arch: Arch.Arm64, deploymentTarget: "15.0",
-		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], statusBar: statusBarDefaults, android: androidDefaults,
 	};
 }
 
 export function androidApp(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Android, arch: Arch.Arm64, deploymentTarget: "",
-		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], statusBar: statusBarDefaults, android: androidDefaults,
 	};
 }
 
 export function windowsApp(this typeof Target, name: string, entry: string): Target {
 	return {
 		name, entry, platform: Platform.Windows, arch: Arch.X64, deploymentTarget: "",
-		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], android: androidDefaults,
+		bundleId: "", dependencies: [], assets: [], files: [], developmentTeam: "", infoPlist: [], statusBar: statusBarDefaults, android: androidDefaults,
 	};
 }

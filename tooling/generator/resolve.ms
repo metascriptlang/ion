@@ -1,5 +1,6 @@
 import {
 	Project,
+	StatusBarStyle,
 	Graph,
 	Target,
 	BundleIdentity,
@@ -162,6 +163,9 @@ export function resolve(this project: Project): Result<Graph, string> {
 				"invalid deployment target for " + quoted(target.name) + ": " +
 				quoted(target.deploymentTarget) + " (expected major.minor or major.minor.patch)",
 			);
+		}
+		if (target.platform != Platform.Ios && (target.statusBar.style != StatusBarStyle.Default || target.statusBar.hidden)) {
+			return Result.err("statusBar of " + quoted(target.name) + " applies to iOS targets only");
 		}
 		if (targetIndex(graph.targets, target.name) != i) return Result.err("the target " + quoted(target.name) + " is declared multiple times");
 		for (const dependency of target.dependencies) {

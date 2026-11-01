@@ -1,4 +1,4 @@
-import { Graph, Target, Platform, Slot, slotName, platformName, InfoPlistKind } from "./description";
+import { Graph, Target, Platform, Slot, slotName, platformName, InfoPlistKind, StatusBar, StatusBarStyle } from "./description";
 import { GeneratedFile } from "./gradle";
 import { join } from "std/fs/path";
 import { isDir } from "std/fs";
@@ -28,7 +28,7 @@ function buildSettings(target: Target): string {
 			"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; " +
 			"INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = " + orientations + "; " +
 			"INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = " + orientations + "; " +
-			"CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 1.0; ",
+			"CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 1.0; " + launchStatusBar(target.statusBar),
 		Platform.Android => "",
 		Platform.Windows => "",
 	};
@@ -39,6 +39,24 @@ function buildSettings(target: Target): string {
 		"GENERATE_INFOPLIST_FILE = YES; PRODUCT_NAME = " + quote(target.name) + "; " +
 		"PRODUCT_BUNDLE_IDENTIFIER = " + quote(target.bundleId) + "; " +
 		"INFOPLIST_KEY_CFBundleDisplayName = " + quote(target.name) + ";";
+}
+
+function launchStatusBar(statusBar: StatusBar): string {
+	const style = match (statusBar.style) {
+		StatusBarStyle.Default => "",
+		StatusBarStyle.Light => "INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent; ",
+		StatusBarStyle.Dark => "INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDarkContent; ",
+	};
+	return style + (statusBar.hidden ? "INFOPLIST_KEY_UIStatusBarHidden = YES; " : "");
+}
+
+function statusBarDefines(statusBar: StatusBar): string {
+	const style = match (statusBar.style) {
+		StatusBarStyle.Default => "",
+		StatusBarStyle.Light => " -d:statusBarLight",
+		StatusBarStyle.Dark => " -d:statusBarDark",
+	};
+	return style + (statusBar.hidden ? " -d:statusBarHidden" : "");
 }
 
 function infoPlistFile(target: Target): string {
@@ -85,7 +103,7 @@ export function iosEntry(): string {
 		"\treturn msProgramResult;\n}\n";
 }
 
-function iosScript(entry: string, compiler: string): string {
+function iosScript(entry: string, compiler: string, statusBar: StatusBar): string {
 	return "set -eu\ncompiler=" + shellQuote(compiler) + "\nentry=" + shellQuote(entry) + "\n" +
 		"output=\"$TARGET_BUILD_DIR/$EXECUTABLE_PATH\"\n" +
 		"trap 'status=$?; if [ \"$status\" -ne 0 ]; then rm -f \"$output\"; fi' 0\n" +
@@ -111,7 +129,7 @@ function iosScript(entry: string, compiler: string): string {
 		"\"$compiler\" build \"$entry\" --target=c --os=ios --cpu=\"$ARCHS\" \"--link=$build/IonMain.o\" " +
 		"--cc=\"$(xcrun --find clang)\" " +
 		"\"--passC=-target $ARCHS-apple-ios$IPHONEOS_DEPLOYMENT_TARGET$suffix " +
-		"-isysroot \\\"$SDKROOT\\\"\" \"--output=$output\" \"$@\"\n";
+		"-isysroot \\\"$SDKROOT\\\"\"" + statusBarDefines(statusBar) + " \"--output=$output\" \"$@\"\n";
 }
 
 function copySubfolder(slot: Slot): int32 {
@@ -200,7 +218,7 @@ export function xcodeProject(graph: Graph, root: string, compiler: string): Resu
 		objects += copies.objects;
 		sources += copies.references;
 		const entry = root + "/" + target.entry;
-		const script = target.platform == Platform.Ios ? iosScript(entry, compiler) :
+		const script = target.platform == Platform.Ios ? iosScript(entry, compiler, target.statusBar) :
 			"set -eu\ncd " + shellQuote(root) +
 			"\nmkdir -p \"$TARGET_BUILD_DIR/" + target.name + ".app/Contents/MacOS\"\n" +
 			shellQuote(compiler) + " build " + shellQuote(target.entry) +
