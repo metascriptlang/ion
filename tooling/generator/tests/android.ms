@@ -1,4 +1,4 @@
-import { Project, Target, Platform, plistBoolean, plistString } from "../description";
+import { Project, Target, Platform, StatusBarStyle, plistBoolean, plistString } from "../description";
 import { bundlePrefix } from "../plugins";
 import { resolve } from "../resolve";
 import { gradleProject, GeneratedFile, nativeLibrary } from "../gradle";
@@ -203,6 +203,25 @@ function infoPlistKeys(): void {
 	check(!refused.ok && refused.error == "target 'Tablet' sets Info.plist key 'A' twice", "a key set twice is refused");
 }
 infoPlistKeys();
+function statusBarDeclared(): void {
+	const pbx = (target: Target): string => {
+		const graph = resolve({ name: "Mobile", targets: [target], plugins: [bundlePrefix("dev.ion")] });
+		if (!graph.ok) return "resolve: " + graph.error;
+		const rendered = renderProjects(graph.value, "/source", "/msc", "tooling/generator");
+		return rendered.ok ? file(rendered.value, "Mobile.xcodeproj/project.pbxproj") : "render: " + rendered.error;
+	};
+	const tablet = Target.iosApp("Tablet", "main.ms");
+	const light = pbx({ ...tablet, statusBar: { style: StatusBarStyle.Light, hidden: true } });
+	check(light.includes("-d:statusBarLight -d:statusBarHidden "), "a light, hidden status bar is built in as defines");
+	check(light.includes("INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent; INFOPLIST_KEY_UIStatusBarHidden = YES; "), "and written to Info.plist for launch");
+	const dark = pbx({ ...tablet, statusBar: { style: StatusBarStyle.Dark, hidden: false } });
+	check(dark.includes("-d:statusBarDark ") && dark.includes("UIStatusBarStyleDarkContent") && !dark.includes("statusBarHidden"), "a dark status bar");
+	const plain = pbx(tablet);
+	check(!plain.includes("-d:statusBar") && !plain.includes("UIStatusBar"), "the default status bar adds nothing");
+	const graph = resolve({ name: "Desk", targets: [{ ...Target.app("Desk", "main.ms"), statusBar: { style: StatusBarStyle.Light, hidden: false } }], plugins: [bundlePrefix("dev.ion")] });
+	check(!graph.ok && graph.error == "statusBar of 'Desk' applies to iOS targets only", "a macOS status bar is refused" + (graph.ok ? "" : ": " + graph.error));
+}
+statusBarDeclared();
 mixedProject();
 function androidAssets(): void {
 	const graph = resolve({ name: "Mobile", targets: [{ ...app, assets: ["assets/font.ttf", "src"] }], plugins: [bundlePrefix("dev.ion")] });
