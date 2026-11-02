@@ -85,6 +85,9 @@ export function generate(project: Project, root: string, output: string, compile
 	if (!isFile(compiler)) return Result.err("compiler does not exist: " + compiler);
 	for (const target of graph.targets) {
 		if (!isFile(sourceRoot + "/" + target.entry)) return Result.err("entry does not exist: " + target.entry);
+		for (const swift of target.swiftSources) {
+			if (!isFile(sourceRoot + "/" + swift)) return Result.err("Swift source of " + target.name + " does not exist: " + swift);
+		}
 	}
 	for (const placed of graph.files) {
 		const source = join(sourceRoot, placed.source);

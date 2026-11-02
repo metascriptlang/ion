@@ -140,7 +140,7 @@ function iosScript(entry: string, compiler: string, statusBar: StatusBar, swiftL
 		"\"--passC=-target $ARCHS-apple-ios$IPHONEOS_DEPLOYMENT_TARGET$suffix " +
 		"-isysroot \\\"$SDKROOT\\\"\"" + statusBarDefines(statusBar) +
 		(swiftLibrary == "" ? "" : " \"--link=$BUILT_PRODUCTS_DIR/lib" + swiftLibrary + ".a\"" +
-			" \"--passL=-L$SDKROOT/usr/lib/swift -L$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$PLATFORM_NAME\"") +
+			" \"--passL=-L\\\"$SDKROOT/usr/lib/swift\\\" -L\\\"$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$PLATFORM_NAME\\\"\"") +
 		" \"--output=$output\" \"$@\"\n";
 }
 

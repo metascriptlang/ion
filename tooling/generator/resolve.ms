@@ -182,6 +182,9 @@ export function resolve(this project: Project): Result<Graph, string> {
 		if (target.swiftSources.length > 0 && target.platform != Platform.Ios) {
 			return Result.err("swiftSources of " + quoted(target.name) + " apply to iOS targets only");
 		}
+		if (target.swiftSources.length > 0 && targetIndex(graph.targets, target.name + "Swift") >= 0) {
+			return Result.err("the Swift library of " + quoted(target.name) + " would be named " + quoted(target.name + "Swift") + ", which another target already is");
+		}
 		for (const source of target.swiftSources) {
 			if (!source.endsWith(".swift")) return Result.err("Swift source of " + quoted(target.name) + " must end in .swift: " + source);
 		}
