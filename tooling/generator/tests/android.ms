@@ -253,6 +253,34 @@ function urlSchemesDeclared(): void {
 	check(!clash.ok && clash.error == "target 'Tablet' sets Info.plist key 'CFBundleURLTypes' twice", "a raw CFBundleURLTypes beside urlSchemes is refused");
 }
 urlSchemesDeclared();
+function swiftSourcesDeclared(): void {
+	const rendered = (targets: Vec<Target>): Result<Vec<GeneratedFile>, string> => {
+		const graph = resolve({ name: "Mobile", targets, plugins: [bundlePrefix("dev.ion")] });
+		if (!graph.ok) return Result.err(graph.error);
+		return renderProjects(graph.value, "/source", "/msc", "tooling/generator");
+	};
+	const tablet: Target = { ...Target.iosApp("Tablet", "main.ms"), swiftSources: ["native/value.swift"] };
+	const built = rendered([tablet]);
+	if (!built.ok) {
+		check(false, "an iOS target with Swift sources renders: " + built.error);
+		return;
+	}
+	const pbx = file(built.value, "Mobile.xcodeproj/project.pbxproj");
+	check(pbx.includes("name = \"TabletSwift\"; productName = \"TabletSwift\"; productType = \"com.apple.product-type.library.static\";"), "the Swift sources become a static library target");
+	check(pbx.includes("isa = PBXSourcesBuildPhase;") && pbx.includes("lastKnownFileType = sourcecode.swift; path = \"/source/native/value.swift\";"), "the library compiles the Swift file");
+	check(pbx.includes("--link=$BUILT_PRODUCTS_DIR/libTabletSwift.a"), "msc links the library");
+	check(pbx.includes("-L\\\\\\\"$SDKROOT/usr/lib/swift\\\\\\\""), "the Swift search paths are quoted for msc");
+	check(pbx.includes("rm -f \\\"$BUILT_PRODUCTS_DIR/Tablet.app/Tablet\\\""), "a failed Swift build removes the app's executable first");
+	const plain = rendered([Target.iosApp("Tablet", "main.ms")]);
+	check(plain.ok && !file(plain.value, "Mobile.xcodeproj/project.pbxproj").includes("PBXSourcesBuildPhase"), "no Swift, no Sources phase");
+	const desk = rendered([{ ...Target.app("Desk", "main.ms"), swiftSources: ["a.swift"] }]);
+	check(!desk.ok && desk.error == "swiftSources of 'Desk' apply to iOS targets only", "a macOS target with Swift is refused");
+	const header = rendered([{ ...tablet, swiftSources: ["native/value.h"] }]);
+	check(!header.ok && header.error == "Swift source of 'Tablet' must end in .swift: native/value.h", "a non-Swift source is refused");
+	const clash = rendered([tablet, Target.iosApp("TabletSwift", "main.ms")]);
+	check(!clash.ok && clash.error == "the Swift library of 'Tablet' would be named 'TabletSwift', which another target already is", "a target named like the Swift library is refused");
+}
+swiftSourcesDeclared();
 mixedProject();
 function androidAssets(): void {
 	const graph = resolve({ name: "Mobile", targets: [{ ...app, assets: ["assets/font.ttf", "src"] }], plugins: [bundlePrefix("dev.ion")] });
