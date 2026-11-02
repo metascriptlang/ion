@@ -266,9 +266,21 @@ mount, and `INFOPLIST_KEY_UIStatusBarStyle` / `INFOPLIST_KEY_UIStatusBarHidden`
 repeat it for the launch screen only. View-controller-based appearance stays on,
 so a mounted `<StatusBar>` still changes it at run time.
 
+`Target.swiftSources` (`["native/speech.swift"]`, iOS only) are Swift files the
+app calls through `@_cdecl` exports. Xcode compiles them into a static library
+target `<App>Swift`, as Tauri's iOS template compiles native sources in Xcode.
+The app target depends on it, and the Compile MetaScript phase passes
+`--link=$BUILT_PRODUCTS_DIR/lib<App>Swift.a` with the SDK and toolchain Swift
+library directories, so `import Speech` and the back-deployment libraries of an
+older deployment target resolve. The library target first removes the app's
+executable, so a failed Swift build leaves none behind. A missing source, a
+non-`.swift` file, a non-iOS target, or another target already named `<App>Swift`
+is refused.
+
 The compiler owns the entire executable: generated C, runtime, package native
 directives, compile, link and incremental cache. Xcode owns the application
-bundle, generated Info.plist, signing and launch. The PBX project deliberately
+bundle, generated Info.plist, signing and launch, and compiles an app's own
+Swift sources into the library above. The PBX project deliberately
 has no inventory of compiler/runtime/Yoga sources. Ion imports neither Neon nor
 Yoga to generate a project.
 
