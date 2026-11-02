@@ -189,6 +189,62 @@ try:
     build("native-recovery")
     launch(62)
 
+    # Target.swiftSources: Xcode builds the Swift files into libIonIosSwift.a, msc links it.
+    native_dir = source / "native"
+    native_dir.mkdir()
+    swift_value = native_dir / "value.swift"
+    swift_value.write_text('@_cdecl("ionSwiftValue")\npublic func ionSwiftValue() -> Int32 { 5 }\n')
+    (native_dir / "speech.swift").write_text(
+        "import AVFoundation\nimport Speech\n\n"
+        '@_cdecl("ionSpeechAvailable")\npublic func ionSpeechAvailable() -> Int32 {\n'
+        "    _ = AVAudioSession.sharedInstance()\n"
+        "    if #available(iOS 26.0, *) { return SpeechTranscriber.isAvailable ? 1 : 0 }\n"
+        "    return 0\n}\n")
+    header.write_text(header.read_text() + "int32_t ionSwiftValue(void);\nint32_t ionSpeechAvailable(void);\n")
+    entry.write_text(entry.read_text().replace("ionFixtureRun(ionArchiveValue());",
+                                               "ionFixtureRun(ionArchiveValue() + ionSwiftValue() + ionSpeechAvailable() * 1000);") +
+                     "extern function ionSwiftValue(): int32;\nextern function ionSpeechAvailable(): int32;\n")
+    manifest.write_text(manifest.read_text().replace(
+        'assets: ["assets/marker.txt", "bundle"],', 'assets: ["assets/marker.txt", "bundle"], swiftSources: ["native/value.swift", "native/speech.swift"],'))
+    run("generate-swift", [*generator, manifest, results / "swift"])
+    swift_pbx = (results / "swift/IonIos.xcodeproj/project.pbxproj").read_text()
+    assert 'productType = "com.apple.product-type.library.static"' in swift_pbx
+    swift_products = results / "swift products"
+    swift_base = ["xcodebuild", "-project", results / "swift/IonIos.xcodeproj", "-target", "IonIos", "-jobs", "1",
+                  "ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", f"SYMROOT={swift_products}",
+                  f"OBJROOT={results / 'swift objects'}", "-configuration", "Debug", "-sdk", "iphonesimulator", "build"]
+    swift_app = swift_products / "Debug-iphonesimulator/IonIos.app"
+
+    def swift_launch(expected):
+        run("swift-install", ["xcrun", "simctl", "install", device, swift_app])
+        container = Path(run("swift-container", ["xcrun", "simctl", "get_app_container", device,
+                                                  "dev.ion.IonIos", "data"]).strip())
+        marker = container / "Documents/ion-generator.txt"
+        marker.unlink(missing_ok=True)
+        run("swift-launch", ["xcrun", "simctl", "launch", "--terminate-running-process", device, "dev.ion.IonIos"])
+        deadline = time.monotonic() + 30
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        actual = marker.read_text()
+        (results / f"{sequence:02d}-swift-launched-value.txt").write_text(actual)
+        values = [f"Ion iOS generator\nNative value: {v}\nAsset: found" for v in expected]
+        assert actual in values, f"expected native value in {expected}, got {actual!r}; logs={results}"
+
+    # 62 from the archive step, plus the Swift export; +1000 where the simulator offers SpeechTranscriber.
+    run("swift-build", swift_base)
+    links = run("swift-links", ["otool", "-L", swift_app / "IonIos"])
+    assert "Speech.framework" in links and "libswiftAVFoundation" in links, links
+    swift_launch([67, 1067])
+    swift_value.write_text(swift_value.read_text().replace("{ 5 }", "{ 8 }"))
+    run("swift-edit", swift_base)
+    swift_launch([70, 1070])
+    swift_value.write_text(swift_value.read_text() + '\nlet ionFixtureBroken: Int = "deliberate"\n')
+    run("swift-failure", swift_base, success=False)
+    assert not (swift_app / "IonIos").exists(), "failed Swift build left a runnable stale executable"
+    swift_value.write_text(swift_value.read_text().replace('\nlet ionFixtureBroken: Int = "deliberate"\n', ""))
+    run("swift-recovery", swift_base)
+    swift_launch([70, 1070])
+
     script_env = dict(os.environ, PLATFORM_NAME="iphonesimulator", ARCHS="arm64",
                       CONFIGURATION="Debug", SDKROOT=sdkroot, IPHONEOS_DEPLOYMENT_TARGET="15.0",
                       TARGET_TEMP_DIR=str(results / "invalid temp"),
@@ -204,5 +260,5 @@ finally:
     run("shutdown", ["xcrun", "simctl", "shutdown", device])
     run("delete-simulator", ["xcrun", "simctl", "delete", device])
 
-print("PASS: iOS deterministic generation, simulator Debug/Release launch, ad-hoc signing, unsigned device, metadata, spaced paths, source/header/archive rebuilds, failure propagation and environment rejection")
+print("PASS: iOS deterministic generation, simulator Debug/Release launch, ad-hoc signing, unsigned device, metadata, spaced paths, source/header/archive/Swift rebuilds, Swift Speech linking, failure propagation and environment rejection")
 print(f"ios logs={results}")

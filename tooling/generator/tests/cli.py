@@ -43,6 +43,10 @@ assert tree(first) == original, "overwrite refusal changed the existing project"
 invalid = results / "invalid"
 generate("invalid", "tooling/generator/tests/invalid.ms", invalid, 1)
 assert not invalid.exists(), "invalid manifest created output"
+missing_swift = results / "missing swift"
+generate("missing-swift", "tooling/generator/tests/missingSwift.ms", missing_swift, 1)
+assert "Swift source of MissingSwift does not exist: native/missing.swift" in (results / "missing-swift.log").read_text()
+assert not missing_swift.exists(), "a missing Swift source created output"
 android = results / "android nested" / "output with spaces"
 generate("android", repo / "examples/generatorAndroid/project.ms", android, 0)
 default = repo / "examples/generator/out/xcode"
@@ -52,5 +56,5 @@ assert tree(default) == original, "default manifest and output differ from the e
 shutil.rmtree(default)
 assert evaluators() == leftover, "an evaluator directory was left behind"
 print("PASS: generator fresh-process determinism, relative and absolute native paths, "
-      "overwrite preservation, invalid-manifest isolation, nested Android output with spaces, default manifest and output, no evaluator left behind (6 invocations)")
+      "overwrite preservation, invalid-manifest isolation, missing Swift source refused, nested Android output with spaces, default manifest and output, no evaluator left behind (7 invocations)")
 print(f"generator logs={results}")
