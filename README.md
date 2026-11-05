@@ -171,7 +171,7 @@ const result = await window.ion.call("greet", { name: "Sơn" });
 | `ipc` | `listen`, `messageWebviewId`, `runLoop` (and `Handler` type) |
 | `window` | `resourcePath`, `resourceUrl`, `readResource` (the bytes of a bundled file; the one way to read an asset on Android) |
 | `command` | `command` (and `Command` type) |
-| `dialog` | `openFile`; `messageBox(title, message, buttons, style)` returns the pressed button's index or -1 when closed without one (macOS, Linux; Windows refuses until the Common Controls decision in `TODO.md`) |
+| `dialog` | `openFile`; `messageBox(title, message, buttons, style)` returns the pressed button's index or -1 when closed without one (macOS `NSAlert`, Windows `TaskDialogIndirect` through the Common Controls v6 manifest every Ion exe embeds, Linux `GtkAlertDialog`) |
 | `share` | `share(title, text, url)` opens the OS share picker on the active window (macOS, Windows 10+; Linux refuses) |
 | `announce` | `announce(text)` asks the screen reader to speak without moving focus (macOS, Windows, Linux GTK 4.14+) |
 | `security` | `setContentProtected` |
