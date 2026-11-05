@@ -146,6 +146,17 @@ static BOOL isTypedText(NSString *s) {
     return c >= 0x20 && c != 0x7F && !(c >= 0xF700 && c <= 0xF8FF);
 }
 
+// winit appkit event.rs create_key_event: a named key gives Key::to_text, a layout key with
+// Control or Command held gives charactersIgnoringModifiers (Shift only), any other its characters.
+static NSString *chordTextOf(NSEvent *e, int key) {
+    int named = ionKeyNamedText(key);
+    if (named == 0) return nil;
+    if (named > 0) return [NSString stringWithFormat:@"%C", (unichar)named];
+    if (e.modifierFlags & (NSEventModifierFlagControl | NSEventModifierFlagCommand))
+        return e.charactersIgnoringModifiers;
+    return e.characters;
+}
+
 static id     s_monitor = nil;
 static int    s_buttonsDown = 0;
 static IonWindowId s_lastWin = ION_WINDOW_INVALID;
@@ -360,6 +371,10 @@ static void installPointerMonitor(void) {
     NSString *bare = [event charactersByApplyingModifiers:0];
     r.unshifted = isTypedText(bare) ? [bare characterAtIndex:0] : 0;
     r.text = typed.UTF8String;
+    if (!self.hasMarkedText && rest.count == 0) {
+        r.chordText = chordTextOf(translated, r.key).UTF8String;
+        r.allModsText = translated.characters.UTF8String;
+    }
     pushRecord(&r);
 
     for (NSString *s in rest) pushText(ION_INPUT_TEXT, self.win, s, 0);
@@ -374,6 +389,7 @@ static void installPointerMonitor(void) {
     r.key = macKeyToIon(event.keyCode);
     r.scancode = event.keyCode;
     r.mods = modsFromEvent(event);
+    r.allModsText = [self translated:event].characters.UTF8String;
     pushRecord(&r);
 }
 
