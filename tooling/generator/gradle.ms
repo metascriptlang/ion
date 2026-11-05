@@ -91,6 +91,15 @@ function validate(target: Target): Result<void, string> {
 	}
 	if (settings.javaVersion < 17) return Result.err(name + " needs Java 17 or newer, got " + settings.javaVersion.toString());
 	if (!validApplicationId(target.bundleId)) return Result.err(name + " has invalid applicationId '" + target.bundleId + "'");
+	for (let i = 0; i < settings.permissions.length; i += 1) {
+		const permission = settings.permissions[i];
+		if (!validApplicationId(permission)) {
+			return Result.err(name + " has invalid permission '" + permission + "' (expected a full name such as android.permission.CAMERA)");
+		}
+		for (let j = 0; j < i; j += 1) {
+			if (settings.permissions[j] == permission) return Result.err(name + " declares permission '" + permission + "' twice");
+		}
+	}
 	return Result.ok(null);
 }
 
@@ -445,14 +454,25 @@ function schemeFilter(schemes: Vec<string>): Vec<string> {
 	return filter;
 }
 
+const internetPermission = "android.permission.INTERNET";
+
+function usesPermissions(declared: Vec<string>): Vec<string> {
+	let written: Vec<string> = ["\t<uses-permission android:name=\"" + internetPermission + "\" />"];
+	for (const permission of declared) {
+		if (permission != internetPermission) written.push("\t<uses-permission android:name=\"" + permission + "\" />");
+	}
+	return written;
+}
+
 function manifest(target: Target): string {
 	return lines([
 		"<?xml version=\"1.0\" encoding=\"utf-8\"?>",
 		"<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">",
-		"\t<uses-permission android:name=\"android.permission.INTERNET\" />",
+		...usesPermissions(target.android.permissions),
 		"\t<application",
 		"\t\tandroid:allowBackup=\"false\"",
 		"\t\tandroid:label=\"@string/app_name\"",
+		"\t\tandroid:supportsRtl=\"true\"",
 		"\t\tandroid:theme=\"@android:style/Theme.Material.Light.NoActionBar\">",
 		"\t\t<activity",
 		"\t\t\tandroid:name=\"" + bootstrapPackage + ".MainActivity\"",
@@ -505,6 +525,18 @@ function mainActivity(): string {
 		"\t}",
 		"",
 		"\t@Override",
+		"\tpublic void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {",
+		"\t\tsuper.onRequestPermissionsResult(requestCode, permissions, grantResults);",
+		"\t\tNativeApp.permissionsResult(requestCode, permissions, grantResults);",
+		"\t}",
+		"",
+		"\t@Override",
+		"\tprotected void onActivityResult(int requestCode, int resultCode, Intent data) {",
+		"\t\tsuper.onActivityResult(requestCode, resultCode, data);",
+		"\t\tNativeApp.activityResult(requestCode, resultCode, data);",
+		"\t}",
+		"",
+		"\t@Override",
 		"\tprotected void onResume() {",
 		"\t\tsuper.onResume();",
 		"\t\tNativeApp.resume();",
@@ -544,6 +576,8 @@ function nativeApp(): string {
 		"\tstatic native void resume();",
 		"\tstatic native void destroy();",
 		"\tstatic native void newIntent(Intent intent);",
+		"\tstatic native void permissionsResult(int requestCode, String[] permissions, int[] grantResults);",
+		"\tstatic native void activityResult(int requestCode, int resultCode, Intent data);",
 		"\tstatic native void assets(AssetManager assets);",
 		"",
 		"\tprivate NativeApp() {}",
