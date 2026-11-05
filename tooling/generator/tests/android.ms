@@ -48,7 +48,7 @@ function file(files: Vec<GeneratedFile>, path: string): string {
 
 const app = Target.androidApp("Mobile", "main.ms");
 check(app.platform == Platform.Android, "androidApp selects Android");
-check(app.android.minSdk == 23 && app.android.compileSdk == 36 && app.android.targetSdk == 36, "SDK defaults");
+check(app.android.minSdk == 24 && app.android.compileSdk == 36 && app.android.targetSdk == 36, "SDK defaults");
 check(app.android.ndkVersion == "28.0.13004108" && app.android.abi == "arm64-v8a", "NDK and ABI defaults");
 check(app.android.javaVersion == 17, "Java default");
 check(app.deploymentTarget == "", "Android minimum lives only in android.minSdk");
@@ -90,7 +90,7 @@ if (first.ok && second.ok) {
 	check(root.includes("id 'com.android.application' version '9.1.0' apply false"), "AGP pinned");
 	check(root.includes("id 'com.android.library' version '9.1.0' apply false"), "library plugin pinned with the application");
 	check(root.includes("rootProject.layout.buildDirectory.dir(\"androidLibraries/${name}\")"), "library build output stays in the project");
-	check(root.includes("compileSdk = 36") && root.includes("minSdk = 23") && root.includes("JavaVersion.VERSION_17"), "libraries use the target's levels");
+	check(root.includes("compileSdk = 36") && root.includes("minSdk = 24") && root.includes("JavaVersion.VERSION_17"), "libraries use the target's levels");
 	check(root.includes("tasks.withType(JavaCompile)") && root.includes("\"apk/${variant}\").deleteDir()"), "library javac drops the variant's packages");
 	const wrapper = file(files, "gradle/wrapper/gradle-wrapper.properties");
 	check(wrapper.includes("gradle-9.3.1-bin.zip"), "Gradle pinned");
@@ -99,7 +99,7 @@ if (first.ok && second.ok) {
 	const build = file(files, "app/build.gradle");
 	check(build.includes("namespace = 'dev.metascript.app'"), "package-stable namespace");
 	check(build.includes("applicationId = 'dev.ion.Mobile'"), "bundle identity is applicationId");
-	check(build.includes("minSdk = 23") && build.includes("targetSdk = 36") && build.includes("compileSdk = 36"), "SDK levels");
+	check(build.includes("minSdk = 24") && build.includes("targetSdk = 36") && build.includes("compileSdk = 36"), "SDK levels");
 	check(build.includes("ndkVersion = '28.0.13004108'") && build.includes("abiFilters 'arm64-v8a'"), "NDK and ABI");
 	check(build.includes("JavaVersion.VERSION_17"), "Java level");
 	check(build.includes("def mscCompiler = '/compiler\\'s path/msc'"), "compiler pinned and quoted");
@@ -145,8 +145,8 @@ expectError([app, Target.iosApp("Other", "main.ms")], "Android project cannot co
 expectError([Target.iosApp("Mobile", "main.ms")], "Android project cannot contain the iOS target 'Mobile'");
 expectError([{ ...app, deploymentTarget: "23.0" }], "Android target 'Mobile' sets deploymentTarget '23.0'; set android.minSdk instead");
 expectError([{ ...app, android: { ...app.android, minSdk: 21 } }], "Android target 'Mobile' needs minSdk >= 23, got 21");
-expectError([{ ...app, android: { ...app.android, targetSdk: 22 } }], "Android target 'Mobile' needs minSdk <= targetSdk <= compileSdk, got 23 <= 22 <= 36");
-expectError([{ ...app, android: { ...app.android, compileSdk: 35 } }], "Android target 'Mobile' needs minSdk <= targetSdk <= compileSdk, got 23 <= 36 <= 35");
+expectError([{ ...app, android: { ...app.android, targetSdk: 22 } }], "Android target 'Mobile' needs minSdk <= targetSdk <= compileSdk, got 24 <= 22 <= 36");
+expectError([{ ...app, android: { ...app.android, compileSdk: 35 } }], "Android target 'Mobile' needs minSdk <= targetSdk <= compileSdk, got 24 <= 36 <= 35");
 expectError([{ ...app, android: { ...app.android, abi: "x86_64" } }], "Android target 'Mobile' has unsupported ABI 'x86_64' (supported: arm64-v8a)");
 expectError([{ ...app, android: { ...app.android, ndkVersion: "27.1.12297006" } }],
 	"Android target 'Mobile' needs NDK 28 or newer for 16 KiB page alignment, got '27.1.12297006'");

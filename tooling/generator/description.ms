@@ -56,7 +56,7 @@ export struct AndroidSettings {
 }
 
 const androidDefaults: AndroidSettings = {
-	minSdk: 23, compileSdk: 36, targetSdk: 36, ndkVersion: "28.0.13004108", abi: "arm64-v8a", javaVersion: 17,
+	minSdk: 24, compileSdk: 36, targetSdk: 36, ndkVersion: "28.0.13004108", abi: "arm64-v8a", javaVersion: 17,
 };
 
 export enum InfoPlistKind { Boolean, String }
