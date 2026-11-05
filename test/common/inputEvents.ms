@@ -7,11 +7,15 @@
 @include("./inputEventsHelper.h");
 @include("../../src/platform/common/inputEvents.h");
 @include("../../src/platform/bridge.h");
+@include("../../src/platform/common/keys.h");
 
-import { dispatchInput, onPointer, PointerEvent, PointerKind, DeltaMode, KeyMod } from "../../src/input";
+import { dispatchInput, onPointer, onKey, PointerEvent, PointerKind, DeltaMode, KeyMod, KeyEvent, KeyAction } from "../../src/input";
 
 extern function ionTestPushPointer(type: int32, window: int32, x: float64, y: float64, p1: float64, p2: float64, mods: int32): int32;
 extern function ionTestPushWheel(window: int32, dx: float64, dy: float64, unit: int32): int32;
+extern function ionTestPushKey(window: int32, action: int32, vk: int32, text: cstring, chordText: cstring, allModsText: cstring): int32;
+extern function ionKeyNamedText(key: int32): int32;
+extern function ionKeyCtrlChar(cp: uint32): uint32;
 
 extern function ion_input_push(type: int32, x: float64, y: float64, p1: float64, p2: float64): int32;
 extern function ion_input_next(): int32;
@@ -163,4 +167,66 @@ test "a handler registered during dispatch runs from the next event" {
 	assert late === 0;
 	dispatchPointerRecord(1 as int32, 0 as int32);
 	assert late === 1;
+}
+
+const _keys: KeyEvent[] = [];
+onKey((e: KeyEvent): void => { _keys.push(e); });
+
+function dispatchKeyRecord(action: int32, vk: int32, text: cstring, chordText: cstring, allModsText: cstring): void {
+	drain();
+	_keys.length = 0;
+	ionTestPushKey(4 as int32, action, vk, text, chordText, allModsText);
+	if (ion_input_next() === 1 as int32) dispatchInput(ionInputType());
+}
+
+test "a Ctrl+[ press reaches KeyEvent with its chord text, its control byte and its virtual key" {
+	dispatchKeyRecord(1 as int32, 0xDB as int32, "", "[", "\x1b");
+	assert _keys.length === 1;
+	const e = _keys[0];
+	assert e.action === KeyAction.Press;
+	assert e.text === "";
+	assert e.chordText === "[";
+	assert e.allModsText === "\x1b";
+	assert e.windowsVirtualKey === 0xDB as int32;
+}
+
+test "a release record keeps its virtual key and its all-modifier text" {
+	dispatchKeyRecord(0 as int32, 0x41 as int32, "", "", "\x01");
+	assert _keys.length === 1;
+	const e = _keys[0];
+	assert e.action === KeyAction.Release;
+	assert e.chordText === "";
+	assert e.allModsText === "\x01";
+	assert e.windowsVirtualKey === 0x41 as int32;
+}
+
+test "an Alt+Shift+. press carries > in both chord texts" {
+	dispatchKeyRecord(1 as int32, 0xBE as int32, "", ">", ">");
+	assert _keys.length === 1 && _keys[0].chordText === ">" && _keys[0].allModsText === ">";
+}
+
+test "named keys give winit's text and layout keys give none of their own" {
+	assert ionKeyNamedText(58 as int32) === 0x0D as int32;
+	assert ionKeyNamedText(102 as int32) === 0x0D as int32;
+	assert ionKeyNamedText(64 as int32) === 0x09 as int32;
+	assert ionKeyNamedText(53 as int32) === 0x08 as int32;
+	assert ionKeyNamedText(125 as int32) === 0x1B as int32;
+	assert ionKeyNamedText(83 as int32) === 0 as int32;
+	assert ionKeyNamedText(20 as int32) === -1 as int32;
+	assert ionKeyNamedText(63 as int32) === -1 as int32;
+	assert ionKeyNamedText(85 as int32) === -1 as int32;
+}
+
+test "Control maps ASCII as XkbToControl does" {
+	assert ionKeyCtrlChar(0x61 as uint32) === 0x01 as uint32;
+	assert ionKeyCtrlChar(0x41 as uint32) === 0x01 as uint32;
+	assert ionKeyCtrlChar(0x5B as uint32) === 0x1B as uint32;
+	assert ionKeyCtrlChar(0x5F as uint32) === 0x1F as uint32;
+	assert ionKeyCtrlChar(0x20 as uint32) === 0x00 as uint32;
+	assert ionKeyCtrlChar(0x32 as uint32) === 0x00 as uint32;
+	assert ionKeyCtrlChar(0x36 as uint32) === 0x1E as uint32;
+	assert ionKeyCtrlChar(0x38 as uint32) === 0x7F as uint32;
+	assert ionKeyCtrlChar(0x2F as uint32) === 0x1F as uint32;
+	assert ionKeyCtrlChar(0x0D as uint32) === 0x0D as uint32;
+	assert ionKeyCtrlChar(0xE9 as uint32) === 0xE9 as uint32;
 }

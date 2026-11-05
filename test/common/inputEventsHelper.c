@@ -27,3 +27,17 @@ int ionTestPushWheel(int window, double dx, double dy, int unit) {
     r.key = unit;
     return ion_input_push_record(&r);
 }
+
+// A key record carrying the texts and the virtual key a Windows producer fills.
+int ionTestPushKey(int window, int action, int vk, const char *text, const char *chordText, const char *allModsText) {
+    IonInputRecord r;
+    memset(&r, 0, sizeof r);
+    r.type = ION_INPUT_KEY;
+    r.window = window;
+    r.p1 = action;
+    r.windowsVirtualKey = vk;
+    r.text = text;
+    r.chordText = chordText;
+    r.allModsText = allModsText;
+    return ion_input_push_record(&r);
+}
