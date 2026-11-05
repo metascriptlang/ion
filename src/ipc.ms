@@ -118,6 +118,7 @@ when (windows) {
 	@compile("./platform/windows/state.c");
 	@compile("./platform/windows/utf8.c");
 	@compile("./platform/windows/core/lifecycle.c");
+	@compile("./platform/windows/core/manifest.c");
 	@compile("./platform/windows/core/window.c");
 	@compile("./platform/windows/core/composition.cpp");
 	@compile("./platform/windows/core/shell.c");
