@@ -372,6 +372,7 @@ int  ionMessageBoxRun(const char *title, const char *message, int style);
 #define ION_SERVICE_UNSUPPORTED (-1)
 #define ION_SERVICE_REFUSED     (-2)
 int ionShare(const char *title, const char *text, const char *url);
+int ionAnnounce(const char *text);
 
 // Returns the absolute path of the platform's resource directory:
 //   macOS:   <bundle>.app/Contents/Resources/

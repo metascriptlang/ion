@@ -39,6 +39,7 @@ export {
 } from "./windowManager";
 export { openFile, messageBox, MessageStyle } from "./dialog";
 export { share } from "./share";
+export { announce } from "./announce";
 export { readClipboardText, writeClipboardText } from "./clipboard";
 export { openExternal } from "./shell";
 export { setContentProtected } from "./security";
