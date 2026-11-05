@@ -19,7 +19,7 @@ export enum MessageStyle {
 	Critical,
 }
 
-const ION_MESSAGE_BOX_UNSUPPORTED: int32 = -2 as int32;
+const ION_MESSAGE_BOX_FAILED: int32 = -2 as int32;
 
 // An application-modal alert with the buttons' labels in order (one "OK" when empty). Returns the
 // pressed button's index, or -1 when it was closed without one. Linux shows no style icon.
@@ -27,8 +27,8 @@ export function messageBox(title: string, message: string, buttons: string[], st
 	if (buttons.length === 0) ionMessageBoxAddButton("OK");
 	for (const label of buttons) ionMessageBoxAddButton(label);
 	const pressed = ionMessageBoxRun(title, message, style as int32);
-	if (pressed === ION_MESSAGE_BOX_UNSUPPORTED) {
-		return Result.err("messageBox: not available on Windows until the person chooses between a Common Controls v6 manifest (TaskDialogIndirect, custom labels) and MessageBoxW (fixed button sets); see TODO.md");
+	if (pressed === ION_MESSAGE_BOX_FAILED) {
+		return Result.err("messageBox: TaskDialogIndirect failed or is missing; it needs Common Controls v6, which Ion's manifest selects unless the app links its own manifest without that dependency");
 	}
 	return Result.ok(pressed);
 }

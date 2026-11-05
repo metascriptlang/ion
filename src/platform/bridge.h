@@ -373,7 +373,7 @@ msString ionFileOpen(void);
 
 // Add every label in order, then Run: it blocks until answered and clears the labels.
 #define ION_MESSAGE_BOX_DISMISSED   (-1)
-#define ION_MESSAGE_BOX_UNSUPPORTED (-2)
+#define ION_MESSAGE_BOX_FAILED      (-2)
 #define ION_MESSAGE_STYLE_INFO     0
 #define ION_MESSAGE_STYLE_WARNING  1
 #define ION_MESSAGE_STYLE_CRITICAL 2

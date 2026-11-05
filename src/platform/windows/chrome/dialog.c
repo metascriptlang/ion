@@ -1,4 +1,5 @@
-// Ion Windows — native file open dialog via IFileOpenDialog (COM).
+// Ion Windows — native file open dialog via IFileOpenDialog (COM), and messageBox via
+// TaskDialogIndirect, which only Common Controls v6 exports (core/manifest.c selects it).
 //
 // Modal Show() — blocks the caller's message pump like mac NSOpenPanel does.
 // Mirrors mac webview/macos/chrome/dialog.m: single-file selection, no type
@@ -19,6 +20,7 @@
 // helper macros, which keeps the C-style vtable invocations readable.
 #define COBJMACROS
 #include <shobjidl.h>
+#include <commctrl.h>
 #include <objbase.h>
 
 #include <stdio.h>
@@ -72,9 +74,57 @@ msString ionWinFileOpen(HWND parent) {
     return cStringToMs(s_lastFilePath);
 }
 
-void ionMessageBoxAddButton(const char *label) { (void)label; }
+#define ION_MESSAGE_BOX_FIRST_ID 100
+
+static TASKDIALOG_BUTTON *s_messageButtons = NULL;
+static int s_messageButtonCount = 0;
+
+void ionMessageBoxAddButton(const char *label) {
+    TASKDIALOG_BUTTON *grown = (TASKDIALOG_BUTTON *)realloc(s_messageButtons, (size_t)(s_messageButtonCount + 1) * sizeof(TASKDIALOG_BUTTON));
+    if (grown == NULL) abort();
+    s_messageButtons = grown;
+    wchar_t *w = ionUtf8ToWide(label);
+    grown[s_messageButtonCount].nButtonID = ION_MESSAGE_BOX_FIRST_ID + s_messageButtonCount;
+    grown[s_messageButtonCount].pszButtonText = w != NULL ? w : _wcsdup(L"");
+    s_messageButtonCount++;
+}
+
+typedef HRESULT (WINAPI *TaskDialogIndirectFn)(const TASKDIALOGCONFIG *, int *, int *, BOOL *);
 
 int ionMessageBoxRun(const char *title, const char *message, int style) {
-    (void)title; (void)message; (void)style;
-    return ION_MESSAGE_BOX_UNSUPPORTED;
+    TASKDIALOG_BUTTON *buttons = s_messageButtons;
+    int count = s_messageButtonCount;
+    s_messageButtons = NULL;
+    s_messageButtonCount = 0;
+
+    HMODULE comctl = LoadLibraryW(L"comctl32.dll");
+    TaskDialogIndirectFn taskDialog = comctl != NULL ? (TaskDialogIndirectFn)(void *)GetProcAddress(comctl, "TaskDialogIndirect") : NULL;
+    int result = ION_MESSAGE_BOX_FAILED;
+    if (taskDialog != NULL) {
+        wchar_t *wTitle = ionUtf8ToWide(title);
+        wchar_t *wMessage = ionUtf8ToWide(message);
+        TASKDIALOGCONFIG config = {0};
+        config.cbSize = sizeof(config);
+        config.hwndParent = s_mainHwnd;
+        config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW;
+        config.pszWindowTitle = wTitle;
+        config.pszMainInstruction = wTitle;
+        config.pszContent = wMessage;
+        config.pszMainIcon = style == ION_MESSAGE_STYLE_CRITICAL ? TD_ERROR_ICON
+                           : style == ION_MESSAGE_STYLE_WARNING ? TD_WARNING_ICON
+                           : TD_INFORMATION_ICON;
+        config.cButtons = (UINT)count;
+        config.pButtons = buttons;
+        config.nDefaultButton = ION_MESSAGE_BOX_FIRST_ID;
+        int pressed = 0;
+        HRESULT hr = taskDialog(&config, &pressed, NULL, NULL);
+        int index = pressed - ION_MESSAGE_BOX_FIRST_ID;
+        if (SUCCEEDED(hr)) result = index >= 0 && index < count ? index : ION_MESSAGE_BOX_DISMISSED;
+        free(wTitle);
+        free(wMessage);
+    }
+    if (comctl != NULL) FreeLibrary(comctl);
+    for (int i = 0; i < count; i++) free((void *)buttons[i].pszButtonText);
+    free(buttons);
+    return result;
 }
