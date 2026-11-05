@@ -23,6 +23,8 @@ typedef struct IonWinWindow {
     void       *compTarget;
     void       *compRoot;
     void       *uia;
+    int       (*automationGetObject)(void *hwnd, unsigned long long wParam, long long lParam, long long *result);
+    void      (*automationDisconnect)(void *hwnd);
     int         resizable;
     int         active;
     int         minimized;

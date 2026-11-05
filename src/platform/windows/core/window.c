@@ -125,6 +125,7 @@ static void installCloakHook(void) {
 static void destroyed(IonWinWindow *w) {
     HWND hwnd = w->hwnd;
     ionWebView2RevokeDrop(hwnd);
+    if (w->automationDisconnect != NULL) w->automationDisconnect(hwnd);
     ionWebView2DetachAutomation(hwnd, &w->uia);
     ionWebView2CloseWindow(w->id);
     ionCompDetach(w);
@@ -294,9 +295,14 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
         case WM_SETTINGCHANGE:
             if (lParam != 0 && lstrcmpW((LPCWSTR)lParam, L"ImmersiveColorSet") == 0) applySystemTheme(hwnd);
             return DefWindowProcW(hwnd, msg, wParam, lParam);
-        case WM_GETOBJECT:
+        case WM_GETOBJECT: {
+            long long answer = 0;
+            if (w->automationGetObject != NULL &&
+                w->automationGetObject(hwnd, (unsigned long long)wParam, (long long)lParam, &answer))
+                return (LRESULT)answer;
             if (ionWebView2HostAutomation(hwnd, &w->uia, wParam, lParam, &handled)) return handled;
             return DefWindowProcW(hwnd, msg, wParam, lParam);
+        }
         case WM_CLOSE:
             // The app closes the window (ionCloseWindow) unless it prevents the close.
             ion_wevt_push(w->id, ION_EVT_CLOSE_REQUESTED);
@@ -540,6 +546,13 @@ void ionWindowRequestUserAttention(IonWindowId id, int type) {
 
 void ionBeep(void) {
     MessageBeep(MB_OK);
+}
+
+void ionWindowSetAutomation(IonWindowId id, IonAutomationGetObject getObject, IonAutomationDisconnect disconnect) {
+    IonWinWindow *w = ionWinWindow(id);
+    if (w == NULL) return;
+    w->automationGetObject = getObject;
+    w->automationDisconnect = getObject != NULL ? disconnect : NULL;
 }
 
 // Same two frames createWindow picks (caption + frame, or WS_POPUP). The

@@ -380,6 +380,10 @@ void ionBeep(void) {
     gdk_display_beep(gdk_display_get_default());
 }
 
+void ionWindowSetAutomation(IonWindowId id, IonAutomationGetObject getObject, IonAutomationDisconnect disconnect) {
+    (void)id; (void)getObject; (void)disconnect;
+}
+
 void ionSetWindowDecorations(IonWindowId id, int on) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
     if (!st) return;

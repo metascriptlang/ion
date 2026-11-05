@@ -309,6 +309,10 @@ void ionBeep(void) {
     NSBeep();
 }
 
+void ionWindowSetAutomation(IonWindowId id, IonAutomationGetObject getObject, IonAutomationDisconnect disconnect) {
+    (void)id; (void)getObject; (void)disconnect;
+}
+
 void ionSetWindowDecorations(IonWindowId winId, int on) {
     IonMacWindowState *st = ionMacWindowState(winId);
     if (st && st->sdlWindow) SDL_SetWindowBordered(st->sdlWindow, on ? true : false);

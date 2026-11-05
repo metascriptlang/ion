@@ -163,6 +163,13 @@ void        ionSetWindowAlwaysOnTop(IonWindowId id, int on);
 void        ionWindowRequestUserAttention(IonWindowId id, int type);
 // The system alert sound.
 void        ionBeep(void);
+// Windows: a native library answers WM_GETOBJECT for the window before Ion's webview host does,
+// as a Flutter plugin's top-level window proc delegate: getObject returns 1 with the LRESULT in
+// *result, or 0 to leave the message to Ion. disconnect runs on WM_DESTROY, before Ion drops its own
+// provider. NULL getObject removes the hook. macOS and Linux have no WM_GETOBJECT: a no-op there.
+typedef int  (*IonAutomationGetObject)(void *hwnd, unsigned long long wParam, long long lParam, long long *result);
+typedef void (*IonAutomationDisconnect)(void *hwnd);
+void        ionWindowSetAutomation(IonWindowId id, IonAutomationGetObject getObject, IonAutomationDisconnect disconnect);
 void        ionSetWindowDecorations(IonWindowId id, int on);
 void        ionSetWindowContentProtected(IonWindowId id, int on);
 
