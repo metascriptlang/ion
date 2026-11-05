@@ -71,3 +71,10 @@ msString ionWinFileOpen(HWND parent) {
     IFileOpenDialog_Release(pDialog);
     return cStringToMs(s_lastFilePath);
 }
+
+void ionMessageBoxAddButton(const char *label) { (void)label; }
+
+int ionMessageBoxRun(const char *title, const char *message, int style) {
+    (void)title; (void)message; (void)style;
+    return ION_MESSAGE_BOX_UNSUPPORTED;
+}

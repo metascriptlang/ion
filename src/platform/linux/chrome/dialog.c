@@ -39,3 +39,46 @@ msString ionFileOpen(void) {
     g_free(r.path);
     return out;
 }
+
+static GPtrArray *s_messageButtons = NULL;
+
+void ionMessageBoxAddButton(const char *label) {
+    if (s_messageButtons == NULL) s_messageButtons = g_ptr_array_new_with_free_func(g_free);
+    g_ptr_array_add(s_messageButtons, g_strdup(label));
+}
+
+typedef struct {
+    int done;
+    int index;
+} ChooseResult;
+
+static void onChosen(GObject *source, GAsyncResult *res, gpointer data) {
+    ChooseResult *r = (ChooseResult *)data;
+    GError *err = NULL;
+    r->index = gtk_alert_dialog_choose_finish(GTK_ALERT_DIALOG(source), res, &err);
+    if (err != NULL) {
+        r->index = ION_MESSAGE_BOX_DISMISSED;
+        g_error_free(err);
+    }
+    r->done = 1;
+}
+
+int ionMessageBoxRun(const char *title, const char *message, int style) {
+    (void)style;
+    GPtrArray *labels = s_messageButtons != NULL ? s_messageButtons : g_ptr_array_new_with_free_func(g_free);
+    s_messageButtons = NULL;
+    g_ptr_array_add(labels, NULL);
+
+    GtkAlertDialog *dialog = gtk_alert_dialog_new("%s", title);
+    gtk_alert_dialog_set_detail(dialog, message);
+    gtk_alert_dialog_set_buttons(dialog, (const char *const *)labels->pdata);
+    gtk_alert_dialog_set_modal(dialog, TRUE);
+
+    ChooseResult r = {0, ION_MESSAGE_BOX_DISMISSED};
+    GtkWindow *parent = s_mainWindow != NULL ? GTK_WINDOW(s_mainWindow) : NULL;
+    gtk_alert_dialog_choose(dialog, parent, NULL, onChosen, &r);
+    ionLinuxPumpUntil(&r.done, -1);
+    g_object_unref(dialog);
+    g_ptr_array_free(labels, TRUE);
+    return r.index;
+}
