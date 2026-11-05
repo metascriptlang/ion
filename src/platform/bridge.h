@@ -367,6 +367,12 @@ msString ionFileOpen(void);
 void ionMessageBoxAddButton(const char *label);
 int  ionMessageBoxRun(const char *title, const char *message, int style);
 
+#define ION_SERVICE_DONE        1
+#define ION_SERVICE_NO_WINDOW   0
+#define ION_SERVICE_UNSUPPORTED (-1)
+#define ION_SERVICE_REFUSED     (-2)
+int ionShare(const char *title, const char *text, const char *url);
+
 // Returns the absolute path of the platform's resource directory:
 //   macOS:   <bundle>.app/Contents/Resources/
 //   Windows: <exe-dir>/resources/
