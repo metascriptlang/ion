@@ -13,6 +13,11 @@
 static int            s_pendingActive = 0;
 static IonInputRecord s_pending;
 static char           s_pendingText[ION_TEXT_CAP];
+static WCHAR          s_pendingUnits[16];
+static int            s_pendingUnitCount = 0;
+static BYTE           s_pendingState[256];
+static char           s_pendingChord[ION_TEXT_CAP];
+static char           s_pendingAllMods[ION_TEXT_CAP];
 static WCHAR          s_highSurrogate = 0;
 
 static int scancodeToKey(unsigned sc) {
@@ -225,6 +230,14 @@ static int utf16ToUtf8(const WCHAR *w, int n, char *out, int cap) {
     return len;
 }
 
+// The text the layout gives the key under `state`, without touching the dead-key state
+// (flag 0x4); a dead key gives none. winit keyboard_layout.rs to_unicode_string.
+static void keyTextUnder(WPARAM vk, unsigned sc, const BYTE *state, char *out, int cap) {
+    WCHAR buf[8];
+    int n = ToUnicodeEx((UINT)vk, sc & 0xff, state, buf, 8, 0x4, GetKeyboardLayout(0));
+    utf16ToUtf8(buf, n > 0 ? n : 0, out, cap);
+}
+
 static void pushText(int type, int win, const char *utf8, double p1) {
     IonInputRecord r;
     memset(&r, 0, sizeof r);
@@ -248,6 +261,19 @@ void ionWinKeyFlush(void) {
             s_pending.consumedMods |= ION_MOD_CTRL | ION_MOD_ALT;
     }
     s_pending.text = s_pendingText;
+    // winit keyboard.rs WM_CHAR: with Ctrl held (and not as AltGr) the chord text is the key
+    // under the same state with Ctrl taken out; otherwise it is the characters themselves.
+    utf16ToUtf8(s_pendingUnits, s_pendingUnitCount, s_pendingAllMods, sizeof s_pendingAllMods);
+    int ctrlOn = (s_pending.mods & ION_MOD_CTRL) && !(s_pending.mods & ION_MOD_ALT);
+    if (ctrlOn && s_pendingUnitCount > 0) {
+        s_pendingState[VK_CONTROL] = s_pendingState[VK_LCONTROL] = s_pendingState[VK_RCONTROL] = 0;
+        keyTextUnder((WPARAM)s_pending.windowsVirtualKey, (unsigned)s_pending.scancode, s_pendingState,
+                     s_pendingChord, sizeof s_pendingChord);
+    } else {
+        memcpy(s_pendingChord, s_pendingAllMods, sizeof s_pendingChord);
+    }
+    s_pending.chordText = s_pendingChord;
+    s_pending.allModsText = s_pendingAllMods;
     ion_input_push_record(&s_pending);
 }
 
@@ -271,6 +297,12 @@ static void appendChar(int win, WCHAR unit) {
     }
 }
 
+static void keyChar(int win, WCHAR unit, int sys) {
+    if (s_pendingActive && s_pendingUnitCount < (int)(sizeof s_pendingUnits / sizeof s_pendingUnits[0]))
+        s_pendingUnits[s_pendingUnitCount++] = unit;
+    if (!sys) appendChar(win, unit);
+}
+
 static void keyEvent(int win, UINT msg, WPARAM vk, LPARAM lParam) {
     ionWinKeyFlush();
     unsigned sc = scancodeOf(vk, lParam);
@@ -282,14 +314,22 @@ static void keyEvent(int win, UINT msg, WPARAM vk, LPARAM lParam) {
     r.scancode = (int)sc;
     r.mods = currentMods();
     r.unshifted = unshiftedOf(vk, sc);
+    r.windowsVirtualKey = (int)vk;
+    BYTE state[256];
+    GetKeyboardState(state);
     if (msg == WM_KEYUP || msg == WM_SYSKEYUP) {
+        char allMods[ION_TEXT_CAP];
+        keyTextUnder(vk, sc, state, allMods, sizeof allMods);
         r.p1 = ION_KEY_RELEASE;
+        r.allModsText = allMods;
         ion_input_push_record(&r);
         return;
     }
     r.p1 = (lParam & (1 << 30)) ? ION_KEY_REPEAT : ION_KEY_PRESS;
     s_pending = r;
     s_pendingText[0] = '\0';
+    s_pendingUnitCount = 0;
+    memcpy(s_pendingState, state, sizeof s_pendingState);
     s_pendingActive = 1;
 }
 
@@ -523,9 +563,10 @@ int ionWinHandleInput(IonWinWindow *w, UINT msg, WPARAM wParam, LPARAM lParam, L
             return 1;
 
         case WM_CHAR:
-            appendChar(win, (WCHAR)wParam);
+            keyChar(win, (WCHAR)wParam, 0);
             return 1;
         case WM_SYSCHAR:
+            keyChar(win, (WCHAR)wParam, 1);
             return 1;
         case WM_DEADCHAR: case WM_SYSDEADCHAR:
             return 1;
