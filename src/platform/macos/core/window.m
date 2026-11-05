@@ -210,6 +210,11 @@ void *ionWindowRoot(IonWindowId winId) {
     return st && st->nsWindow ? (__bridge void *)[st->nsWindow contentView] : NULL;
 }
 
+int64_t ionWindowContentXid(IonWindowId winId) {
+    (void)winId;
+    return 0;
+}
+
 void ionWindowCommit(IonWindowId winId) {
     (void)winId;
 }

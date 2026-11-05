@@ -18,6 +18,10 @@ void       ionLinuxSyncFrameState(IonLinuxWindowState *st);
 double     ionLinuxScale(IonLinuxWindowState *st);
 
 int  ionLinuxX11SetAbove(GtkWidget *window, int on);
+int  ionLinuxX11Display(void);
+unsigned long ionLinuxX11CreateContent(GtkWidget *window);
+void ionLinuxX11PlaceContent(GtkWidget *window, unsigned long xid, GtkWidget *content);
+void ionLinuxX11DestroyContent(GtkWidget *window, unsigned long xid);
 
 void ionLinuxFrameSync(void);
 void ionLinuxFrameDetach(IonLinuxWindowState *st);

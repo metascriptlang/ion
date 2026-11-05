@@ -28,6 +28,10 @@ int ionInit(void) {
     return ok;
 }
 
+int ionRequestX11(void) {
+    return 0;
+}
+
 // LaunchServices starts one instance of a bundle and delivers later URLs to it.
 int ionRequestSingleInstance(void) {
     return 1;

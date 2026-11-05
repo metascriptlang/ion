@@ -19,6 +19,7 @@ typedef struct {
     IonWindowId   id;
     GtkWidget    *window;          // GtkWindow
     GtkWidget    *root;            // GtkFixed filling the window; ionWindowRoot
+    unsigned long contentXid;      // ionWindowContentXid, 0 until asked for
     GtkIMContext *im;
     int           iconified;
     int           wantAbove;       // ionSetWindowAlwaysOnTop, applied once the surface is mapped

@@ -20,6 +20,7 @@
 // const char*. This matches MS std/ convention (os.h, process.h, crypto/)
 // and gives clean call sites on the MS side — no fromC wrappers needed.
 // See ~/metascript/recompiler/docs/LANG-INTERLOP.md "Current state vs intent".
+#include <stdint.h>
 #include "runtime/core/string.h"
 #include "common/windowRegistry.h"   // IonWindowId, ION_WINDOW_INVALID
 
@@ -30,6 +31,11 @@ void ionQuit(void);
 // instance anyway); 0: an earlier process holds it, our cold-start URL was forwarded
 // and its window raised. Same answer on every call; opt-in, never taken by ionInit.
 int  ionRequestSingleInstance(void);
+// Linux: restricts GDK to its X11 backend (XWayland under a Wayland session) and
+// initializes; 1 when the display is X11, also when Ion was already initialized on
+// X11. Call before Ion initializes, because GDK picks its backend once. Windows,
+// macOS: 0. Opt-in: without it GDK keeps its default order, Wayland first.
+int  ionRequestX11(void);
 
 // ---- Windows and their content -------------------------------------------
 //
@@ -95,6 +101,14 @@ msString    ionWindowLabel(IonWindowId id);
 // visuals there or below.
 void       *ionWindowDevice(IonWindowId id);
 void       *ionWindowRoot(IonWindowId id);
+
+// Linux on X11 (ionRequestX11): the XID of an X11 child window of the toplevel,
+// created on the first call, covering the content area in device pixels (below
+// a client-side header bar) and kept placed and sized by Ion until the window
+// closes. It selects no events, so input still reaches the window, and sits
+// above everything GTK draws in the window, webviews included. 0 on Wayland,
+// on Windows and macOS, and for an invalid id.
+int64_t     ionWindowContentXid(IonWindowId id);
 
 // Commit the app's compositor changes as one transaction. Windows:
 // IDCompositionDevice::Commit. macOS, Linux: no-op (the toolkit commits).

@@ -16,6 +16,7 @@
 // — the session bus is the reliable cross-sandbox channel.
 
 #include "../state.h"
+#include "../internal.h"
 #include "../../bridge.h"
 #include "../../common/queue.h"
 
@@ -229,6 +230,11 @@ int ionInit(void) {
     g_signal_connect(settings, "notify::gtk-interface-color-scheme", G_CALLBACK(onColorSchemeChanged), NULL);
     s_initialized = 1;
     return 1;
+}
+
+int ionRequestX11(void) {
+    if (!s_initialized) gdk_set_allowed_backends("x11");
+    return ionInit() && ionLinuxX11Display();
 }
 
 int ionRequestSingleInstance(void) {

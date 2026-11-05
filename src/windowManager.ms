@@ -8,7 +8,7 @@
 //   if (main === null) return 1;
 
 import {
-    ionInit, ionRequestSingleInstance, ionCreateWindow, ionCloseWindow, ionWindowCount, ionFindWindow,
+    ionInit, ionRequestSingleInstance, ionRequestX11, ionCreateWindow, ionCloseWindow, ionWindowCount, ionFindWindow,
     ionShowWindow, ionHideWindow, ionFocusWindow,
     ionMinimizeWindow, ionMaximizeWindow,
     ionSetWindowTitle, ionSetWindowSize, ionSetWindowPosition,
@@ -16,7 +16,7 @@ import {
     ionSetWindowContentProtected,
     ionWindowPixelWidth, ionWindowPixelHeight,
     ionFileOpenWindow,
-    ionWindowDevice, ionWindowRoot, ionWindowCommit,
+    ionWindowDevice, ionWindowRoot, ionWindowContentXid, ionWindowCommit,
     ionWindowFocusContent, ionWindowSetImeRect, ionWindowSetCursor, ionWindowSetOptionAsAlt,
     ionWindowSetFramePolicy, ionWindowSetFrameWhenInactive, ionWindowRequestFrame,
     ionWindowFrameRead, ionWindowFrameX, ionWindowFrameY, ionWindowFrameWidth, ionWindowFrameHeight,
@@ -126,6 +126,13 @@ export function requestSingleInstance(): boolean {
     return ionRequestSingleInstance() !== (0 as int32);
 }
 
+// Opt-in, before the first window. Linux: GDK runs on X11 (XWayland under Wayland), so
+// windowContentXid hands out X11 windows; true when the display is X11. Windows, macOS: false.
+export function requestX11(): boolean {
+    if (_windowOpened) throw new Error("requestX11 must be called before the first createWindow");
+    return ionRequestX11() !== (0 as int32);
+}
+
 export function createWindow(label: string, options: WindowOptions): Window | null {
     _windowOpened = true;
     if (ionInit() === (0 as int32)) return null as unknown as Window | null;
@@ -223,6 +230,8 @@ export const OptionAsAltBoth: int32 = 3 as int32;
 
 export function windowRoot(win: Window): Ptr<void> { return ionWindowRoot(win.id); }
 export function windowDevice(win: Window): Ptr<void> { return ionWindowDevice(win.id); }
+// Linux after requestX11: an X11 window over the content area, placed and sized by Ion (bridge.h).
+export function windowContentXid(win: Window): int64 { return ionWindowContentXid(win.id); }
 export function commit(win: Window): void { ionWindowCommit(win.id); }
 export function focusContent(win: Window): void { ionWindowFocusContent(win.id); }
 export function setImeRect(win: Window, x: int32, y: int32, w: int32, h: int32): void { ionWindowSetImeRect(win.id, x, y, w, h); }

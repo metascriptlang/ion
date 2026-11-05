@@ -103,6 +103,10 @@ int ionInit(void) {
     return s_hInstance != NULL ? 1 : 0;
 }
 
+int ionRequestX11(void) {
+    return 0;
+}
+
 // The mutex stays alive for the process lifetime; the OS reclaims it on exit.
 // We never close it explicitly because ionQuit can run mid-shutdown when
 // releasing is more risk than help.

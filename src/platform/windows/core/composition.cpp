@@ -102,6 +102,11 @@ extern "C" void *ionWindowRoot(IonWindowId id) {
     return w ? w->compRoot : nullptr;
 }
 
+extern "C" int64_t ionWindowContentXid(IonWindowId id) {
+    (void)id;
+    return 0;
+}
+
 extern "C" void ionWindowCommit(IonWindowId id) {
     if (ionWinWindow(id)) ionCompCommit();
 }

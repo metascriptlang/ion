@@ -84,6 +84,7 @@ static void onToplevelState(GObject *surface, GParamSpec *pspec, gpointer data) 
 static void onSurfaceScale(GObject *surface, GParamSpec *pspec, gpointer data) {
     (void)surface; (void)pspec;
     IonLinuxWindowState *st = (IonLinuxWindowState *)data;
+    ionLinuxX11PlaceContent(st->window, st->contentXid, st->root);
     ionLinuxPushResize(st, gtk_widget_get_width(st->root), gtk_widget_get_height(st->root));
 }
 
@@ -118,6 +119,7 @@ static void onProbeResize(GtkDrawingArea *area, int width, int height, gpointer 
         st->normalW = width;
         st->normalH = height;
     }
+    ionLinuxX11PlaceContent(st->window, st->contentXid, GTK_WIDGET(area));
     ionLinuxPushResize(st, width, height);
     ion_wevt_push(st->id, ION_EVT_RESIZED);
 }
@@ -218,6 +220,7 @@ void ionCloseWindow(IonWindowId winId) {
     ionLinuxFrameDetach(st);
     ionLinuxDetachInput(st);
     ionWindowSetBackgroundColor(winId, -1);
+    ionLinuxX11DestroyContent(st->window, st->contentXid);
     gtk_window_destroy(GTK_WINDOW(st->window));
     free(st);
     slot->platformState = NULL;
@@ -270,6 +273,16 @@ void *ionWindowDevice(IonWindowId id) { (void)id; return NULL; }
 void *ionWindowRoot(IonWindowId id) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
     return st ? (void *)st->root : NULL;
+}
+
+int64_t ionWindowContentXid(IonWindowId id) {
+    IonLinuxWindowState *st = ionLinuxWindowState(id);
+    if (!st) return 0;
+    if (st->contentXid == 0) {
+        st->contentXid = ionLinuxX11CreateContent(st->window);
+        ionLinuxX11PlaceContent(st->window, st->contentXid, st->root);
+    }
+    return (int64_t)st->contentXid;
 }
 
 void ionWindowCommit(IonWindowId id) { (void)id; }

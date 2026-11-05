@@ -23,14 +23,14 @@ export { onWake, WakeHandler } from "./wake";
 export { onExitRequested, preventExit, quit, ExitRequestedHandler } from "./exit";
 export { command, Command } from "./command";
 export {
-	createWindow, closeWindow, getWindow, windowCount, requestSingleInstance, defaultOptions,
+	createWindow, closeWindow, getWindow, windowCount, requestSingleInstance, requestX11, defaultOptions,
 	show, hide, focus, minimize, maximize,
 	setTitle, setSize, setPosition, pixelWidth, pixelHeight,
 	setAlwaysOnTop, setDecorations, setWindowContentProtected,
 	windowFrame, WindowFrame, setResizeIncrements, setBackgroundColor, NoBackgroundColor,
 	requestUserAttention, AttentionNone, AttentionInformational, AttentionCritical, beep,
 	fileOpen, onWindowEvent, preventClose,
-	windowRoot, windowDevice, commit, focusContent, setImeRect, setCursor,
+	windowRoot, windowDevice, windowContentXid, commit, focusContent, setImeRect, setCursor,
 	setFramePolicy, setFrameWhenInactive, requestFrame, FrameOnDemand, FrameContinuous,
 	CursorArrow, CursorHand, CursorIbeam, CursorCross, CursorResizeH, CursorResizeV, Window, WindowOptions,
 	setOptionAsAlt, OptionAsAltNeither, OptionAsAltLeft, OptionAsAltRight, OptionAsAltBoth,
