@@ -19,6 +19,8 @@ import {
     ionWindowDevice, ionWindowRoot, ionWindowCommit,
     ionWindowFocusContent, ionWindowSetImeRect, ionWindowSetCursor, ionWindowSetOptionAsAlt,
     ionWindowSetFramePolicy, ionWindowSetFrameWhenInactive, ionWindowRequestFrame,
+    ionWindowFrameRead, ionWindowFrameX, ionWindowFrameY, ionWindowFrameWidth, ionWindowFrameHeight,
+    ionWindowFrameMaximized, ionWindowRestoreFrame, ionWindowSetResizeIncrements, ionWindowSetBackgroundColor,
 } from "./platform/bridge.h";
 
 // ---- Window flags (mirror bridge.h) ---------------------------------------
@@ -47,6 +49,18 @@ export const WindowEventMoved:          int32 = 6 as int32;
 
 // ---- Types ----------------------------------------------------------------
 
+// Outer top-left in setPosition's units and client size in setSize's; a maximized window carries the
+// frame it restores to.
+export interface WindowFrame {
+    x: int32;
+    y: int32;
+    width: int32;
+    height: int32;
+    maximized: boolean;
+}
+
+export const NoBackgroundColor: int32 = -1 as int32;
+
 export interface WindowOptions {
     title: string;
     width: int32;
@@ -63,6 +77,10 @@ export interface WindowOptions {
     panel: boolean;
     x: int32;
     y: int32;
+    // A frame windowFrame gave, fitted onto the monitors that exist now; replaces width, height, x, y and center.
+    frame: WindowFrame | null;
+    // 0xRRGGBB shown where the app's content does not cover the window yet.
+    backgroundColor: int32;
 }
 
 export interface Window {
@@ -79,6 +97,7 @@ export function defaultOptions(title: string, width: int32, height: int32): Wind
         alwaysOnTop: false, transparent: false,
         visible: true, center: false, fullscreen: false, panel: false,
         x: 0 as int32, y: 0 as int32,
+        frame: null, backgroundColor: NoBackgroundColor,
     };
 }
 
@@ -110,13 +129,19 @@ export function requestSingleInstance(): boolean {
 export function createWindow(label: string, options: WindowOptions): Window | null {
     _windowOpened = true;
     if (ionInit() === (0 as int32)) return null as unknown as Window | null;
-    const id = ionCreateWindow(label, options.title,
-                               options.width, options.height,
-                               flagsFromOptions(options));
+    const frame = options.frame;
+    const deferShow = options.visible && (frame !== null || options.backgroundColor !== NoBackgroundColor);
+    let flags = flagsFromOptions(options);
+    if (deferShow) flags = (flags & ~ION_WIN_VISIBLE) as int32;
+    const id = ionCreateWindow(label, options.title, options.width, options.height, flags);
     if (id < (0 as int32)) return null as unknown as Window | null;
-    if ((options.x !== (0 as int32) || options.y !== (0 as int32)) && !options.center) {
+    if (options.backgroundColor !== NoBackgroundColor) ionWindowSetBackgroundColor(id, options.backgroundColor);
+    if (frame !== null) {
+        ionWindowRestoreFrame(id, frame.x, frame.y, frame.width, frame.height, frame.maximized ? (1 as int32) : (0 as int32));
+    } else if ((options.x !== (0 as int32) || options.y !== (0 as int32)) && !options.center) {
         ionSetWindowPosition(id, options.x, options.y);
     }
+    if (deferShow) ionShowWindow(id);
     return { id, label } as Window | null;
 }
 
@@ -153,6 +178,26 @@ export function requestUserAttention(win: Window, type: int32): void { ionWindow
 export function beep(): void { ionBeep(); }
 export function setDecorations(win: Window, on: boolean):            void { ionSetWindowDecorations(win.id, on ? (1 as int32) : (0 as int32)); }
 export function setWindowContentProtected(win: Window, on: boolean): void { ionSetWindowContentProtected(win.id, on ? (1 as int32) : (0 as int32)); }
+
+// The frame to pass back as WindowOptions.frame next launch; null once the window is closed.
+export function windowFrame(win: Window): WindowFrame | null {
+    if (ionWindowFrameRead(win.id) === (0 as int32)) return null as unknown as WindowFrame | null;
+    return {
+        x: ionWindowFrameX(), y: ionWindowFrameY(),
+        width: ionWindowFrameWidth(), height: ionWindowFrameHeight(),
+        maximized: ionWindowFrameMaximized() !== (0 as int32),
+    } as WindowFrame | null;
+}
+
+// A live resize steps the client area in baseWidth + n * cellWidth (and height), physical pixels;
+// 0, 0 turns it off. Call again when the cell or the scale changes. macOS steps from the current size,
+// so size the window on the grid first; Linux prints "unavailable".
+export function setResizeIncrements(win: Window, cellWidth: int32, cellHeight: int32, baseWidth: int32, baseHeight: int32): void {
+    ionWindowSetResizeIncrements(win.id, cellWidth, cellHeight, baseWidth, baseHeight);
+}
+
+// 0xRRGGBB, or NoBackgroundColor for the platform default.
+export function setBackgroundColor(win: Window, rgb: int32): void { ionWindowSetBackgroundColor(win.id, rgb); }
 
 // Per-window file picker. Returns "" on cancel.
 export function fileOpen(win: Window): string {

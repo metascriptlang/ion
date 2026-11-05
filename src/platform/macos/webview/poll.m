@@ -233,11 +233,15 @@ static void handleSdlEvent(const SDL_Event *ev) {
             break;
         case SDL_EVENT_WINDOW_RESIZED:
             wid = windowIdForSdlWindowId(ev->window.windowID);
-            if (wid != ION_WINDOW_INVALID) ion_wevt_push(wid, ION_EVT_RESIZED);
+            if (wid == ION_WINDOW_INVALID) break;
+            ionMacNoteFrame(wid);
+            ion_wevt_push(wid, ION_EVT_RESIZED);
             break;
         case SDL_EVENT_WINDOW_MOVED:
             wid = windowIdForSdlWindowId(ev->window.windowID);
-            if (wid != ION_WINDOW_INVALID) ion_wevt_push(wid, ION_EVT_MOVED);
+            if (wid == ION_WINDOW_INVALID) break;
+            ionMacNoteFrame(wid);
+            ion_wevt_push(wid, ION_EVT_MOVED);
             break;
         default:
             break;

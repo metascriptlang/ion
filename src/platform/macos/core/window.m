@@ -2,13 +2,16 @@
 
 
 #import "../state.h"
+#import <QuartzCore/QuartzCore.h>
 #import "../../bridge.h"
 #import "../internal.h"
 #include "../../common/frameClock.h"
 #include "../../common/windowEvents.h"
 #include "../../common/webviewRegistry.h"
 #include "../../common/windowRegistry.h"
+#include "../../common/windowFrame.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +35,8 @@ static void teardownWindow(IonMacWindowState *st) {
         ionContentHostDestroy(st->host);
         st->host = nil;
     }
+    [st->background removeFromSuperlayer];
+    st->background = nil;
     st->nsWindow = nil;
     if (st->sdlWindow) {
         SDL_DestroyWindow(st->sdlWindow);
@@ -127,6 +132,7 @@ IonWindowId ionCreateWindow(const char *label, const char *title,
     slot->platformState = st;
     ion_frame_window_open(winId);
     ionSyncFrameState(winId);
+    ionMacNoteFrame(winId);
     s_hadWindow = 1;
 
     if (strcmp(label, kMainLabel) == 0) syncMainGlobals(st);
@@ -307,4 +313,89 @@ void ionSetWindowContentProtected(IonWindowId winId, int on) {
     IonMacWindowState *st = ionMacWindowState(winId);
     if (!st || st->nsWindow == nil) return;
     st->nsWindow.sharingType = on ? NSWindowSharingNone : NSWindowSharingReadOnly;
+}
+
+// ---- Frame, resize steps, background ----------------------------------------
+
+static CGFloat primaryHeight(void) {
+    return NSScreen.screens[0].frame.size.height;
+}
+
+static BOOL restoredState(NSWindow *w) {
+    return !w.isZoomed && !w.isMiniaturized && !(w.styleMask & NSWindowStyleMaskFullScreen);
+}
+
+void ionMacNoteFrame(IonWindowId winId) {
+    IonMacWindowState *st = ionMacWindowState(winId);
+    if (st && st->nsWindow && restoredState(st->nsWindow)) st->normalFrame = st->nsWindow.frame;
+}
+
+int ionWindowFrameRead(IonWindowId winId) {
+    IonMacWindowState *st = ionMacWindowState(winId);
+    if (!st || st->nsWindow == nil) return 0;
+    NSWindow *w = st->nsWindow;
+    NSRect f = restoredState(w) || NSIsEmptyRect(st->normalFrame) ? w.frame : st->normalFrame;
+    NSSize content = [w contentRectForFrameRect:f].size;
+    int maximized = w.isZoomed || ((SDL_GetWindowFlags(st->sdlWindow) & SDL_WINDOW_MAXIMIZED) != 0);
+    ion_window_frame_store((int)lround(f.origin.x), (int)lround(primaryHeight() - NSMaxY(f)),
+                           (int)lround(content.width), (int)lround(content.height), maximized);
+    return 1;
+}
+
+void ionWindowRestoreFrame(IonWindowId winId, int x, int y, int width, int height, int maximized) {
+    IonMacWindowState *st = ionMacWindowState(winId);
+    if (!st || st->nsWindow == nil) return;
+    NSWindow *w = st->nsWindow;
+    if (!restoredState(w) && w.isZoomed) [w zoom:nil];
+    NSRect outer = [w frameRectForContentRect:NSMakeRect(0, 0, width > 0 ? width : 1, height > 0 ? height : 1)];
+    IonBox areas[16];
+    int count = 0;
+    for (NSScreen *screen in NSScreen.screens) {
+        if (count == 16) break;
+        NSRect v = screen.visibleFrame;
+        areas[count++] = (IonBox){(int)v.origin.x, (int)(primaryHeight() - NSMaxY(v)), (int)v.size.width, (int)v.size.height};
+    }
+    IonBox box = ion_box_fit((IonBox){x, y, (int)outer.size.width, (int)outer.size.height}, areas, count);
+    NSSize content = [w contentRectForFrameRect:NSMakeRect(0, 0, box.width, box.height)].size;
+    ionSetWindowSize(winId, (int)lround(content.width), (int)lround(content.height));
+    ionSetWindowPosition(winId, box.x, box.y);
+    ionMacNoteFrame(winId);
+    if (maximized) SDL_MaximizeWindow(st->sdlWindow);
+}
+
+// winit window_delegate.rs set_resize_increments_inner: contentResizeIncrements, in points.
+void ionWindowSetResizeIncrements(IonWindowId winId, int cellW, int cellH, int baseW, int baseH) {
+    (void)baseW; (void)baseH;
+    IonMacWindowState *st = ionMacWindowState(winId);
+    if (!st || st->nsWindow == nil) return;
+    CGFloat scale = st->nsWindow.backingScaleFactor > 0 ? st->nsWindow.backingScaleFactor : 1;
+    st->nsWindow.contentResizeIncrements = NSMakeSize(cellW > 0 ? cellW / scale : 1, cellH > 0 ? cellH / scale : 1);
+}
+
+// tao macos/window.rs set_background_color. SDL3View keeps its own layer opaque black, so the
+// colour also goes in a sublayer under every subview (measured 2026-11-05, examples/windowFrame.ms).
+void ionWindowSetBackgroundColor(IonWindowId winId, int rgb) {
+    IonMacWindowState *st = ionMacWindowState(winId);
+    if (!st || st->nsWindow == nil) return;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    if (rgb < 0) {
+        st->nsWindow.backgroundColor = NSColor.windowBackgroundColor;
+        [st->background removeFromSuperlayer];
+        st->background = nil;
+    } else {
+        NSColor *color = [NSColor colorWithSRGBRed:((rgb >> 16) & 0xff) / 255.0 green:((rgb >> 8) & 0xff) / 255.0
+                                              blue:(rgb & 0xff) / 255.0 alpha:1.0];
+        st->nsWindow.backgroundColor = color;
+        st->nsWindow.contentView.wantsLayer = YES;
+        CALayer *host = st->nsWindow.contentView.layer;
+        if (st->background == nil) {
+            st->background = [CALayer layer];
+            st->background.frame = host.bounds;
+            st->background.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
+            [host insertSublayer:st->background atIndex:0];
+        }
+        st->background.backgroundColor = color.CGColor;
+    }
+    [CATransaction commit];
 }

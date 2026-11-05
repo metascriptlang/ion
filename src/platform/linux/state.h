@@ -25,6 +25,8 @@ typedef struct {
     int           contentFocused;  // last focus record pushed
     int           clientW, clientH;
     int           wantW, wantH;    // requested client size, until the decorations around it are measured
+    int           normalW, normalH;
+    GtkCssProvider *background;
     int           pointerKnown;
     double        lastX, lastY;
 } IonLinuxWindowState;

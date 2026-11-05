@@ -5,6 +5,7 @@
 #include "../../common/webviewRegistry.h"
 #include "../../common/windowEvents.h"
 #include "../../common/windowRegistry.h"
+#include "../../common/windowFrame.h"
 
 #include <gtk/gtk.h>
 #include <linux/limits.h>
@@ -112,6 +113,11 @@ static void onProbeResize(GtkDrawingArea *area, int width, int height, gpointer 
     (void)area;
     IonLinuxWindowState *st = (IonLinuxWindowState *)data;
     applyWantedSize(st, width, height);
+    GtkWindow *win = GTK_WINDOW(st->window);
+    if (!gtk_window_is_maximized(win) && !gtk_window_is_fullscreen(win)) {
+        st->normalW = width;
+        st->normalH = height;
+    }
     ionLinuxPushResize(st, width, height);
     ion_wevt_push(st->id, ION_EVT_RESIZED);
 }
@@ -211,6 +217,7 @@ void ionCloseWindow(IonWindowId winId) {
     g_signal_handlers_disconnect_by_data(st->window, st);
     ionLinuxFrameDetach(st);
     ionLinuxDetachInput(st);
+    ionWindowSetBackgroundColor(winId, -1);
     gtk_window_destroy(GTK_WINDOW(st->window));
     free(st);
     slot->platformState = NULL;
@@ -388,4 +395,50 @@ int ionWindowPixelWidth(IonWindowId id) {
 int ionWindowPixelHeight(IonWindowId id) {
     IonLinuxWindowState *st = ionLinuxWindowState(id);
     return st ? (int)lround(gtk_widget_get_height(st->root) * ionLinuxScale(st)) : 0;
+}
+
+int ionWindowFrameRead(IonWindowId id) {
+    IonLinuxWindowState *st = ionLinuxWindowState(id);
+    if (!st) return 0;
+    int w = st->normalW > 0 ? st->normalW : st->wantW, h = st->normalH > 0 ? st->normalH : st->wantH;
+    ion_window_frame_store(0, 0, w, h, gtk_window_is_maximized(GTK_WINDOW(st->window)));
+    return 1;
+}
+
+void ionWindowRestoreFrame(IonWindowId id, int x, int y, int width, int height, int maximized) {
+    (void)x; (void)y;
+    IonLinuxWindowState *st = ionLinuxWindowState(id);
+    if (!st) return;
+    ionSetWindowSize(id, width, height);
+    if (maximized) gtk_window_maximize(GTK_WINDOW(st->window));
+}
+
+void ionWindowSetResizeIncrements(IonWindowId id, int cellW, int cellH, int baseW, int baseH) {
+    (void)cellW; (void)cellH; (void)baseW; (void)baseH;
+    if (!ionLinuxWindowState(id)) return;
+    fprintf(stderr, "[ion] setResizeIncrements: unavailable, GTK4 has no geometry hints\n");
+}
+
+void ionWindowSetBackgroundColor(IonWindowId id, int rgb) {
+    IonLinuxWindowState *st = ionLinuxWindowState(id);
+    if (!st) return;
+    char cls[32];
+    snprintf(cls, sizeof cls, "ionBackground%d", (int)id);
+    if (rgb < 0) {
+        if (st->background == NULL) return;
+        gtk_style_context_remove_provider_for_display(gdk_display_get_default(), GTK_STYLE_PROVIDER(st->background));
+        g_object_unref(st->background);
+        st->background = NULL;
+        gtk_widget_remove_css_class(st->window, cls);
+        return;
+    }
+    if (st->background == NULL) {
+        st->background = gtk_css_provider_new();
+        gtk_style_context_add_provider_for_display(gdk_display_get_default(), GTK_STYLE_PROVIDER(st->background),
+                                                   GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+        gtk_widget_add_css_class(st->window, cls);
+    }
+    char css[96];
+    snprintf(css, sizeof css, "window.%s { background-color: #%06x; }", cls, (unsigned)(rgb & 0xffffff));
+    gtk_css_provider_load_from_string(st->background, css);
 }

@@ -6,6 +6,7 @@
 #include "../../common/frameClock.h"
 #include "../../common/windowRegistry.h"
 #include "../../common/windowEvents.h"
+#include "../../common/windowFrame.h"
 
 #include <dwmapi.h>
 #include <limits.h>
@@ -138,6 +139,47 @@ static void destroyed(IonWinWindow *w) {
     }
 }
 
+static int edgesOfSizing(int side) {
+    switch (side) {
+        case WMSZ_LEFT:        return ION_EDGE_LEFT;
+        case WMSZ_RIGHT:       return ION_EDGE_RIGHT;
+        case WMSZ_TOP:         return ION_EDGE_TOP;
+        case WMSZ_BOTTOM:      return ION_EDGE_BOTTOM;
+        case WMSZ_TOPLEFT:     return ION_EDGE_TOP | ION_EDGE_LEFT;
+        case WMSZ_TOPRIGHT:    return ION_EDGE_TOP | ION_EDGE_RIGHT;
+        case WMSZ_BOTTOMLEFT:  return ION_EDGE_BOTTOM | ION_EDGE_LEFT;
+        case WMSZ_BOTTOMRIGHT: return ION_EDGE_BOTTOM | ION_EDGE_RIGHT;
+        default:               return 0;
+    }
+}
+
+static void decorationSize(HWND hwnd, int *dw, int *dh) {
+    RECT r = {0, 0, 0, 0};
+    AdjustWindowRectExForDpi(&r, (DWORD)GetWindowLongPtrW(hwnd, GWL_STYLE), FALSE,
+                             (DWORD)GetWindowLongPtrW(hwnd, GWL_EXSTYLE), GetDpiForWindow(hwnd));
+    *dw = r.right - r.left;
+    *dh = r.bottom - r.top;
+}
+
+// winit event_loop.rs WM_SIZING, with a base the cells start from.
+static void snapSizing(IonWinWindow *w, int side, RECT *r) {
+    int dw, dh;
+    decorationSize(w->hwnd, &dw, &dh);
+    IonBox box = {r->left, r->top, r->right - r->left, r->bottom - r->top};
+    ion_sizing_snap(&box, edgesOfSizing(side), dw, dh, w->cellW, w->cellH, w->baseW, w->baseH);
+    *r = (RECT){box.x, box.y, box.x + box.width, box.y + box.height};
+}
+
+// tao event_loop.rs WM_ERASEBKGND: the fill lands on the DWM redirection surface, which shows
+// wherever the composition tree has no content yet.
+static void paintBackground(IonWinWindow *w, HDC dc) {
+    RECT rc;
+    if (!GetClientRect(w->hwnd, &rc)) return;
+    HBRUSH brush = CreateSolidBrush(RGB((w->background >> 16) & 0xff, (w->background >> 8) & 0xff, w->background & 0xff));
+    FillRect(dc, &rc, brush);
+    DeleteObject(brush);
+}
+
 // Matches lifecycle.c's secondary→primary deep-link forward marker. Kept
 // as a file-local constant; if more COPYDATA channels appear we'll lift
 // this to internal.h.
@@ -216,6 +258,13 @@ static LRESULT CALLBACK ionWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
             ionWinPushResize(w);
             ion_wevt_push(w->id, ION_EVT_RESIZED);
             return 0;
+        case WM_SIZING:
+            if (w->cellW > 0 || w->cellH > 0) snapSizing(w, (int)wParam, (RECT *)lParam);
+            return TRUE;
+        case WM_ERASEBKGND:
+            if (w->background < 0) return DefWindowProcW(hwnd, msg, wParam, lParam);
+            paintBackground(w, (HDC)wParam);
+            return 1;
         case WM_DPICHANGED: {
             const RECT *r = (const RECT *)lParam;
             RECT before, after;
@@ -294,6 +343,7 @@ static IonWinWindow *allocWindow(const char *label) {
     w->id = id;
     w->active = 1;
     w->cursor = ION_CURSOR_ARROW;
+    w->background = -1;
     ion_registry_get(id)->platformState = w;
     return w;
 }
@@ -425,7 +475,12 @@ int ionWindowPixelHeight(IonWindowId id) {
     return hwnd && GetClientRect(hwnd, &rc) ? rc.bottom - rc.top : 0;
 }
 
-void ionShowWindow(IonWindowId id)     { HWND h = ionWinHwnd(id); if (h) ShowWindow(h, SW_SHOW); }
+void ionShowWindow(IonWindowId id) {
+    IonWinWindow *w = ionWinWindow(id);
+    if (w == NULL) return;
+    ShowWindow(w->hwnd, w->showMaximized ? SW_SHOWMAXIMIZED : SW_SHOW);
+    w->showMaximized = 0;
+}
 void ionHideWindow(IonWindowId id)     { HWND h = ionWinHwnd(id); if (h) ShowWindow(h, SW_HIDE); }
 void ionMinimizeWindow(IonWindowId id) { HWND h = ionWinHwnd(id); if (h) ShowWindow(h, SW_MINIMIZE); }
 void ionMaximizeWindow(IonWindowId id) { HWND h = ionWinHwnd(id); if (h) ShowWindow(h, SW_MAXIMIZE); }
@@ -521,4 +576,76 @@ void ionSetWindowContentProtected(IonWindowId id, int on) {
 msString ionFileOpenWindow(IonWindowId id) {
     HWND h = ionWinHwnd(id);
     return h ? ionWinFileOpen(h) : MS_EMPTY_STRING;
+}
+
+static BOOL CALLBACK collectWorkArea(HMONITOR monitor, HDC dc, LPRECT clip, LPARAM data) {
+    (void)dc; (void)clip;
+    struct { IonBox areas[16]; int count; } *list = (void *)data;
+    MONITORINFO mi = {sizeof mi};
+    if (list->count == 16 || !GetMonitorInfoW(monitor, &mi)) return TRUE;
+    IonBox area = {mi.rcWork.left, mi.rcWork.top, mi.rcWork.right - mi.rcWork.left, mi.rcWork.bottom - mi.rcWork.top};
+    int at = list->count++;
+    if (mi.dwFlags & MONITORINFOF_PRIMARY) {
+        list->areas[at] = list->areas[0];
+        at = 0;
+    }
+    list->areas[at] = area;
+    return TRUE;
+}
+
+// rcNormalPosition is in workspace coordinates (MSDN WINDOWPLACEMENT): offset from the work area of
+// its monitor, so a taskbar on the top or left shifts it against screen coordinates.
+int ionWindowFrameRead(IonWindowId id) {
+    IonWinWindow *w = ionWinWindow(id);
+    WINDOWPLACEMENT wp = {sizeof wp};
+    if (w == NULL || !GetWindowPlacement(w->hwnd, &wp)) return 0;
+    RECT r = wp.rcNormalPosition;
+    MONITORINFO mi = {sizeof mi};
+    if (GetMonitorInfoW(MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST), &mi))
+        OffsetRect(&r, mi.rcWork.left - mi.rcMonitor.left, mi.rcWork.top - mi.rcMonitor.top);
+    int dw, dh;
+    decorationSize(w->hwnd, &dw, &dh);
+    UINT dpi = GetDpiForWindow(w->hwnd);
+    int maximized = IsZoomed(w->hwnd) || w->showMaximized ||
+                    (IsIconic(w->hwnd) && (wp.flags & WPF_RESTORETOMAXIMIZED));
+    ion_window_frame_store(r.left, r.top, MulDiv(r.right - r.left - dw, 96, (int)dpi),
+                           MulDiv(r.bottom - r.top - dh, 96, (int)dpi), maximized);
+    return 1;
+}
+
+// The window first moves to x,y so a monitor of another DPI resizes it (WM_DPICHANGED), then its
+// outer box at that DPI is fitted onto the work areas.
+void ionWindowRestoreFrame(IonWindowId id, int x, int y, int width, int height, int maximized) {
+    IonWinWindow *w = ionWinWindow(id);
+    if (w == NULL) return;
+    HWND h = w->hwnd;
+    if (IsZoomed(h) || IsIconic(h)) ShowWindow(h, SW_RESTORE);
+    SetWindowPos(h, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    int ow, oh;
+    clientToOuter((DWORD)GetWindowLongPtrW(h, GWL_STYLE), (DWORD)GetWindowLongPtrW(h, GWL_EXSTYLE),
+                  GetDpiForWindow(h), width > 0 ? width : 1, height > 0 ? height : 1, &ow, &oh);
+    struct { IonBox areas[16]; int count; } list = {0};
+    EnumDisplayMonitors(NULL, NULL, collectWorkArea, (LPARAM)&list);
+    IonBox box = ion_box_fit((IonBox){x, y, ow, oh}, list.areas, list.count);
+    SetWindowPos(h, NULL, box.x, box.y, box.width, box.height, SWP_NOZORDER | SWP_NOACTIVATE);
+    if (!maximized) return;
+    if (IsWindowVisible(h)) ShowWindow(h, SW_MAXIMIZE);
+    else w->showMaximized = 1;
+}
+
+void ionWindowSetResizeIncrements(IonWindowId id, int cellW, int cellH, int baseW, int baseH) {
+    IonWinWindow *w = ionWinWindow(id);
+    if (w == NULL) return;
+    w->cellW = cellW > 0 ? cellW : 0;
+    w->cellH = cellH > 0 ? cellH : 0;
+    w->baseW = baseW > 0 ? baseW : 0;
+    w->baseH = baseH > 0 ? baseH : 0;
+}
+
+void ionWindowSetBackgroundColor(IonWindowId id, int rgb) {
+    IonWinWindow *w = ionWinWindow(id);
+    if (w == NULL) return;
+    w->background = rgb < 0 ? -1 : (rgb & 0xffffff);
+    InvalidateRect(w->hwnd, NULL, TRUE);
+    UpdateWindow(w->hwnd);
 }

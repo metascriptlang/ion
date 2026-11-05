@@ -33,6 +33,9 @@ typedef struct IonWinWindow {
     int         cursor;
     int         preeditActive;
     RECT        imeRect;
+    int         cellW, cellH, baseW, baseH;
+    int         background;
+    int         showMaximized;
 } IonWinWindow;
 
 HWND          ionGetMainHwnd(void);

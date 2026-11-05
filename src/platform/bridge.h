@@ -157,6 +157,19 @@ void        ionSetWindowContentProtected(IonWindowId id, int on);
 int         ionWindowPixelWidth(IonWindowId id);
 int         ionWindowPixelHeight(IonWindowId id);
 
+// Restore frame in ionSetWindowPosition / ionSetWindowSize units; maximized reports what it restores to.
+int         ionWindowFrameRead(IonWindowId id);
+int         ionWindowFrameX(void);
+int         ionWindowFrameY(void);
+int         ionWindowFrameWidth(void);
+int         ionWindowFrameHeight(void);
+int         ionWindowFrameMaximized(void);
+void        ionWindowRestoreFrame(IonWindowId id, int x, int y, int width, int height, int maximized);
+// Physical pixels; cell 0 turns an axis off. macOS steps from the current size and ignores base.
+void        ionWindowSetResizeIncrements(IonWindowId id, int cellW, int cellH, int baseW, int baseH);
+// 0xRRGGBB painted where content does not cover yet; -1 restores the default.
+void        ionWindowSetBackgroundColor(IonWindowId id, int rgb);
+
 // Per-window file picker. The window param is reserved for future window-
 // modal sheet behavior; currently it's application-modal, identical to
 // ionFileOpen. Empty string on cancel.

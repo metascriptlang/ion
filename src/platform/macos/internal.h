@@ -29,6 +29,7 @@ void       ionEnsureMenu(NSString *appName);
 
 void       ionSyncFrameState(IonWindowId winId);
 void       ionMacReleaseDestroyed(IonWindowId winId);
+void       ionMacNoteFrame(IonWindowId winId);
 int        ionMacAllWindowsClosed(void);
 
 // webview/poll.m — wakes the loop's wait; any thread

@@ -27,6 +27,7 @@ export {
 	show, hide, focus, minimize, maximize,
 	setTitle, setSize, setPosition, pixelWidth, pixelHeight,
 	setAlwaysOnTop, setDecorations, setWindowContentProtected,
+	windowFrame, WindowFrame, setResizeIncrements, setBackgroundColor, NoBackgroundColor,
 	requestUserAttention, AttentionNone, AttentionInformational, AttentionCritical, beep,
 	fileOpen, onWindowEvent, preventClose,
 	windowRoot, windowDevice, commit, focusContent, setImeRect, setCursor,
