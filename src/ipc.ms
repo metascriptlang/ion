@@ -35,6 +35,7 @@
 @compile("./platform/common/protoReg.c");
 @compile("./platform/common/mscLoop.c");
 @compile("./platform/common/utf16.c");
+@compile("./platform/common/windowFrame.c");
 
 when (macos) {
 	@compile("./platform/macos/state.m", "-fobjc-arc");
