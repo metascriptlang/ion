@@ -2,12 +2,14 @@
 #include <android/log.h>
 #include <jni.h>
 #include <stdio.h>
+#include <string.h>
 
 extern void MsMain(void);
 
 static int32_t fixtureValue;
 static int started;
 static jobject label;
+static jobject activity;
 static char assetResult[160];
 
 static void report(const char *event) {
@@ -43,6 +45,8 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_start(JNIEnv *env, jcla
 		(*env)->GetMethodID(env, viewGroup, "addView", "(Landroid/view/View;)V"), view);
 	if (label) (*env)->DeleteGlobalRef(env, label);
 	label = (*env)->NewGlobalRef(env, view);
+	if (activity) (*env)->DeleteGlobalRef(env, activity);
+	activity = (*env)->NewGlobalRef(env, context);
 	report("start");
 	__android_log_print(ANDROID_LOG_INFO, "IonFixture", "asset %s", assetResult);
 	jclass tap = (*env)->FindClass(env, "dev/ion/fixture/Tap");
@@ -79,6 +83,8 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_destroy(JNIEnv *env, jc
 	(void)cls;
 	if (label) (*env)->DeleteGlobalRef(env, label);
 	label = NULL;
+	if (activity) (*env)->DeleteGlobalRef(env, activity);
+	activity = NULL;
 	report("destroy");
 }
 
@@ -88,7 +94,48 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_newIntent(JNIEnv *env, 
 		(*env)->GetMethodID(env, (*env)->GetObjectClass(env, intent), "getDataString", "()Ljava/lang/String;"));
 	const char *text = data ? (*env)->GetStringUTFChars(env, data, NULL) : NULL;
 	__android_log_print(ANDROID_LOG_INFO, "IonFixture", "newIntent data=%s value=%d", text ? text : "", fixtureValue);
+	int askPermission = text && strcmp(text, "ionfixture://permission") == 0;
+	int askResult = text && strcmp(text, "ionfixture://result") == 0;
 	if (text) (*env)->ReleaseStringUTFChars(env, data, text);
+	if (!activity || (!askPermission && !askResult)) return;
+	jclass activityClass = (*env)->GetObjectClass(env, activity);
+	if (askPermission) {
+		jobjectArray names = (*env)->NewObjectArray(env, 1, (*env)->FindClass(env, "java/lang/String"),
+			(*env)->NewStringUTF(env, "android.permission.CAMERA"));
+		(*env)->CallVoidMethod(env, activity,
+			(*env)->GetMethodID(env, activityClass, "requestPermissions", "([Ljava/lang/String;I)V"), names, 41);
+	}
+	if (askResult) {
+		jclass intentClass = (*env)->FindClass(env, "android/content/Intent");
+		jobject echo = (*env)->NewObject(env, intentClass,
+			(*env)->GetMethodID(env, intentClass, "<init>", "(Landroid/content/Context;Ljava/lang/Class;)V"),
+			activity, (*env)->FindClass(env, "dev/ion/fixture/Echo"));
+		(*env)->CallVoidMethod(env, activity,
+			(*env)->GetMethodID(env, activityClass, "startActivityForResult", "(Landroid/content/Intent;I)V"), echo, 42);
+	}
+}
+
+JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_permissionsResult(JNIEnv *env, jclass cls, jint requestCode,
+	jobjectArray permissions, jintArray grantResults) {
+	(void)cls;
+	jstring name = (*env)->GetArrayLength(env, permissions) > 0 ? (*env)->GetObjectArrayElement(env, permissions, 0) : NULL;
+	const char *text = name ? (*env)->GetStringUTFChars(env, name, NULL) : NULL;
+	jint grant = -2;
+	if ((*env)->GetArrayLength(env, grantResults) > 0) (*env)->GetIntArrayRegion(env, grantResults, 0, 1, &grant);
+	__android_log_print(ANDROID_LOG_INFO, "IonFixture", "permissionsResult code=%d %s=%d value=%d",
+		requestCode, text ? text : "", grant, fixtureValue);
+	if (text) (*env)->ReleaseStringUTFChars(env, name, text);
+}
+
+JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_activityResult(JNIEnv *env, jclass cls, jint requestCode,
+	jint resultCode, jobject data) {
+	(void)cls;
+	jstring uri = data ? (*env)->CallObjectMethod(env, data,
+		(*env)->GetMethodID(env, (*env)->GetObjectClass(env, data), "getDataString", "()Ljava/lang/String;")) : NULL;
+	const char *text = uri ? (*env)->GetStringUTFChars(env, uri, NULL) : NULL;
+	__android_log_print(ANDROID_LOG_INFO, "IonFixture", "activityResult code=%d result=%d data=%s value=%d",
+		requestCode, resultCode, text ? text : "", fixtureValue);
+	if (text) (*env)->ReleaseStringUTFChars(env, uri, text);
 }
 
 JNIEXPORT void JNICALL Java_dev_ion_fixture_Tap_tapped(JNIEnv *env, jclass cls, jint tag) {

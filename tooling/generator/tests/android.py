@@ -60,10 +60,9 @@ refused = run("overwrite", [*generator, manifest, project], success=False)
 assert "output already exists" in refused
 assert tree(project) == generated
 invalid = source / "invalid.ms"
-target = '...Target.androidApp("IonAndroid", "main.ms"),'
-assert manifest.read_text().count(target) == 1, "the fixture manifest no longer spreads Target.androidApp once"
-invalid.write_text(manifest.read_text().replace(
-    target, target + ' android: { ...Target.androidApp("IonAndroid", "main.ms").android, minSdk: 21 },'))
+target = 'permissions: ["android.permission.CAMERA"]'
+assert manifest.read_text().count(target) == 1, "the fixture manifest no longer declares its permissions once"
+invalid.write_text(manifest.read_text().replace(target, "minSdk: 21, " + target))
 rejected = run("invalid", [*generator, invalid, results / "invalid"], success=False)
 assert "needs minSdk >= 23, got 21" in rejected
 assert not (results / "invalid").exists()
@@ -93,7 +92,9 @@ def inspect(variant):
     exports = run("nm-" + variant, [ndk_bin / "llvm-nm", "-D", "--defined-only", path])
     for symbol in ("MsMain", "Java_dev_metascript_app_NativeApp_start", "Java_dev_metascript_app_NativeApp_resize",
                    "Java_dev_metascript_app_NativeApp_pause", "Java_dev_metascript_app_NativeApp_resume",
-                   "Java_dev_metascript_app_NativeApp_destroy", "Java_dev_metascript_app_NativeApp_newIntent"):
+                   "Java_dev_metascript_app_NativeApp_destroy", "Java_dev_metascript_app_NativeApp_newIntent",
+                   "Java_dev_metascript_app_NativeApp_permissionsResult",
+                   "Java_dev_metascript_app_NativeApp_activityResult"):
         assert re.search(rf"\b{symbol}$", exports, re.M), f"{variant} misses {symbol}"
     segments = run("readelf-" + variant, [ndk_bin / "llvm-readelf", "-lW", path])
     loads = [line.split()[-1] for line in segments.splitlines() if line.split()[:1] == ["LOAD"]]
@@ -209,6 +210,9 @@ try:
     assert "asset marker=ion asset nested=nested asset missing=no asset assets/none.txt" in first, f"assets: {first}"
     granted = run("permissions", [adb, "shell", "dumpsys", "package", package])
     assert re.search(r"android\.permission\.INTERNET: granted=true", granted), "the app was not granted INTERNET"
+    requested = re.search(r"requested permissions:\n((?:\s+\S+\n)+)", granted).group(1).split()
+    assert requested == ["android.permission.INTERNET", "android.permission.CAMERA"], f"requested permissions: {requested}"
+    assert re.search(r"android\.permission\.CAMERA: granted=false", granted), "CAMERA was granted before the request"
     ui = run("ui-root", [adb, "exec-out", "cat", "/sdcard/ion-android.xml"])
     assert re.search(r'class="android\.widget\.FrameLayout" package="' + re.escape(package) + r'"[^>]*focusable="true"', ui), \
         "the activity root is not focusable"
@@ -229,6 +233,18 @@ try:
     run("live-intent", [adb, "shell", "am", "start", "-W", "-n", activity, "-d", "ionfixture://live"])
     live = settle(lambda seen: "newIntent data=ionfixture://live value=17" in seen and seen[-1] == "resume value=17")
     assert "start value=17" not in live and pid() == process, f"a new intent recreated the activity: {live}"
+    run("grant-camera", [adb, "shell", "pm", "grant", package, "android.permission.CAMERA"])
+    run("logcat-clear", [adb, "logcat", "-c"])
+    run("permission-intent", [adb, "shell", "am", "start", "-W", "-n", activity, "-d", "ionfixture://permission"])
+    asked = settle(lambda seen: "permissionsResult code=41 android.permission.CAMERA=0 value=17" in seen
+                   and seen[-1] == "resume value=17")
+    (results / f"{sequence:02d}-permissions-result.txt").write_text("\n".join(asked))
+    run("logcat-clear", [adb, "logcat", "-c"])
+    run("result-intent", [adb, "shell", "am", "start", "-W", "-n", activity, "-d", "ionfixture://result"])
+    echoed = settle(lambda seen: "activityResult code=42 result=-1 data=ionfixture://echo value=17" in seen
+                    and seen[-1] == "resume value=17")
+    (results / f"{sequence:02d}-activity-result.txt").write_text("\n".join(echoed))
+    assert "start value=17" not in asked + echoed and pid() == process, f"a result recreated the activity: {asked + echoed}"
     run("home-before-kill", [adb, "shell", "input", "keyevent", "KEYCODE_HOME"])
     settle(lambda seen: seen[-1] == "pause value=17")
     deadline = time.monotonic() + 15
@@ -316,6 +332,7 @@ finally:
 
 print("PASS: Android deterministic generation, vendored wrapper, overwrite and invalid-manifest refusal, "
       "Debug/Release separation, 16 KiB ELF/APK alignment, signed APK/AAB, missing-signing refusal, "
-      "JNI lifecycle on Android 36 (" + os.environ["ANDROID_SERIAL"] + "), spaced paths, source/header rebuilds and failure recovery, "
+      "JNI lifecycle on Android 36 (" + os.environ["ANDROID_SERIAL"] + "), declared CAMERA, forwarded permission and "
+      "activity results, spaced paths, source/header rebuilds and failure recovery, "
       "declared Android library (listener in Debug/Release, missing keep rule, Java edit, javac failure, removal)")
 print(f"android logs={results}")
