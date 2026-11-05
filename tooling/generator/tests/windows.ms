@@ -155,6 +155,7 @@ if (first.ok && second.ok) {
 	check(script.includes("\"--link=%~dp0obj\\Desk.res\""), "--link names the compiled .res");
 	check(file(files, "Desk/Desk.rc").includes("VALUE \"InternalName\", \"dev.ion.Desk\""), "version resource carries the bundle identity");
 	check(file(files, "Desk/Desk.manifest").includes("name=\"dev.ion.Desk\""), "manifest identity is the bundle identity");
+	check(file(files, "Desk/Desk.manifest").includes("name=\"Microsoft.Windows.Common-Controls\" version=\"6.0.0.0\""), "manifest keeps the Common Controls v6 that Ion's default manifest carries");
 }
 
 const graph = resolve({ name: "Desk", targets: [app], plugins: [bundlePrefix("dev.ion")] });
