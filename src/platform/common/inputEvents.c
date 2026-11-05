@@ -19,15 +19,23 @@ static char *dupText(const char *s) {
     return d;
 }
 
+static void freeTexts(IonInputRecord *r) {
+    free((void *)r->text);
+    free((void *)r->chordText);
+    free((void *)r->allModsText);
+}
+
 int ion_input_push_record(const IonInputRecord *r) {
     if (s_count >= ION_INPUT_CAP) {
         // Drop oldest to keep the latest interaction responsive.
-        free((void *)s_ring[s_head].text);
+        freeTexts(&s_ring[s_head]);
         s_head = (s_head + 1) % ION_INPUT_CAP;
         s_count--;
     }
     s_ring[s_tail] = *r;
     s_ring[s_tail].text = dupText(r->text);
+    s_ring[s_tail].chordText = dupText(r->chordText);
+    s_ring[s_tail].allModsText = dupText(r->allModsText);
     s_tail = (s_tail + 1) % ION_INPUT_CAP;
     s_count++;
     return 0;
@@ -47,7 +55,7 @@ int ion_input_push(int type, double x, double y, double p1, double p2) {
 
 int ion_input_next(void) {
     if (s_count == 0) return 0;
-    free((void *)s_current.text);
+    freeTexts(&s_current);
     s_current = s_ring[s_head];
     s_head = (s_head + 1) % ION_INPUT_CAP;
     s_count--;
@@ -66,3 +74,6 @@ int      ionInputMods(void)         { return s_current.mods; }
 int      ionInputConsumedMods(void) { return s_current.consumedMods; }
 int      ionInputUnshifted(void)    { return (int)s_current.unshifted; }
 msString ionInputText(void)         { return cStringToMs(s_current.text); }
+msString ionInputChordText(void)    { return cStringToMs(s_current.chordText); }
+msString ionInputAllModsText(void)  { return cStringToMs(s_current.allModsText); }
+int      ionInputWindowsVirtualKey(void) { return s_current.windowsVirtualKey; }

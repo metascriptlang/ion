@@ -36,11 +36,14 @@ typedef struct {
     int         mods;
     int         consumedMods;
     unsigned    unshifted;
+    int         windowsVirtualKey;
     const char *text;
+    const char *chordText;
+    const char *allModsText;
 } IonInputRecord;
 
 int ion_input_push(int type, double x, double y, double p1, double p2);
-// Copies r->text; the caller keeps ownership of its buffer.
+// Copies r->text, r->chordText and r->allModsText; the caller keeps ownership of its buffer.
 int ion_input_push_record(const IonInputRecord *r);
 
 // Moves the oldest record into the slot the ionInput* accessors read.

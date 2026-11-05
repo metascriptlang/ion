@@ -300,7 +300,13 @@ int         ionWindowEventType(void);
 //             KeyboardEvent.code, name via ionKeyName); scancode = native;
 //             mods / consumedMods = ION_MOD_* bits; unshifted = the codepoint
 //             the key gives with no modifier (0 when none); text = the UTF-8
-//             the press produced (empty for release and for non-text keys)
+//             the press produced (empty for release and for non-text keys);
+//             chordText = winit KeyEvent::text: the press's text with every
+//             modifier but Ctrl applied, control characters kept (Ctrl+[ is
+//             "[", Enter is "\r"; empty for release); allModsText = winit
+//             text_with_all_modifiers: every modifier applied, Ctrl included
+//             (Ctrl+A is "\x01"), on release and repeat too;
+//             windowsVirtualKey = the Win32 VK of wParam, 0 off Windows
 //   5 text    text = UTF-8 not tied to a key press (IME commit, injected input)
 //   6 preedit text = the IME composition in progress (empty = cleared);
 //             p1 = caret offset in bytes into text
@@ -339,6 +345,9 @@ int         ionInputMods(void);
 int         ionInputConsumedMods(void);
 int         ionInputUnshifted(void);
 msString    ionInputText(void);
+msString    ionInputChordText(void);
+msString    ionInputAllModsText(void);
+int         ionInputWindowsVirtualKey(void);
 
 // W3C KeyboardEvent.code name of an ION_KEY code ("KeyA", "ArrowUp"); "" when
 // out of range. The table lives in common/keys.c.

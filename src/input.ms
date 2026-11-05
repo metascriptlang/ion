@@ -10,6 +10,9 @@ import {
 	ionInputConsumedMods,
 	ionInputUnshifted,
 	ionInputText,
+	ionInputChordText,
+	ionInputAllModsText,
+	ionInputWindowsVirtualKey,
 	ionKeyName,
 } from "./platform/bridge.h";
 
@@ -80,6 +83,9 @@ export struct KeyEvent {
 	consumedMods: BitSet<KeyMod>;
 	unshifted: int32;
 	text: string;
+	chordText: string;
+	allModsText: string;
+	windowsVirtualKey: int32;
 }
 
 export type PointerHandler = (e: PointerEvent) => void;
@@ -154,6 +160,9 @@ function dispatchKey(window: int32): void {
 		consumedMods: keyMods(ionInputConsumedMods() as int32),
 		unshifted: ionInputUnshifted() as int32,
 		text: ionInputText(),
+		chordText: ionInputChordText(),
+		allModsText: ionInputAllModsText(),
+		windowsVirtualKey: ionInputWindowsVirtualKey() as int32,
 	};
 	const n = _keyHandlers.length;
 	for (let i = 0; i < n; i++) _keyHandlers[i](e);
