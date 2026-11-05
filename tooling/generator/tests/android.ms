@@ -51,6 +51,7 @@ check(app.platform == Platform.Android, "androidApp selects Android");
 check(app.android.minSdk == 24 && app.android.compileSdk == 36 && app.android.targetSdk == 36, "SDK defaults");
 check(app.android.ndkVersion == "28.0.13004108" && app.android.abi == "arm64-v8a", "NDK and ABI defaults");
 check(app.android.javaVersion == 17, "Java default");
+check(app.android.permissions.length == 0, "no declared permission by default");
 check(app.deploymentTarget == "", "Android minimum lives only in android.minSdk");
 
 const first = render([app]);
@@ -124,15 +125,21 @@ if (first.ok && second.ok) {
 	check(manifest.includes("android:configChanges=\""), "size changes reach the running activity");
 	check(manifest.includes("android:launchMode=\"singleTask\""), "a new intent reaches the running activity");
 	check(manifest.includes("<uses-permission android:name=\"android.permission.INTERNET\" />"), "the app may open network connections");
+	check(manifest.split("<uses-permission ").length == 2, "no permission beyond INTERNET by default");
+	check(manifest.includes("\t\tandroid:supportsRtl=\"true\"\n"), "the application follows a right-to-left locale");
 	check(file(files, "app/src/main/res/values/strings.xml").includes("<string name=\"app_name\">Mobile</string>"), "label");
 	const native = file(files, "app/src/main/java/dev/metascript/app/NativeApp.java");
 	check(native.includes("package dev.metascript.app;") && native.includes("System.loadLibrary(\"metascript\")"), "JNI class loads the stable library");
-	for (const method of ["start(FrameLayout root)", "resize(int width, int height)", "pause()", "resume()", "destroy()", "newIntent(Intent intent)"]) {
+	for (const method of ["start(FrameLayout root)", "resize(int width, int height)", "pause()", "resume()", "destroy()", "newIntent(Intent intent)",
+		"permissionsResult(int requestCode, String[] permissions, int[] grantResults)", "activityResult(int requestCode, int resultCode, Intent data)"]) {
 		check(native.includes("static native void " + method + ";"), "JNI method " + method);
 	}
 	const activity = file(files, "app/src/main/java/dev/metascript/app/MainActivity.java");
 	check(activity.includes("new FrameLayout(this)") && activity.includes("NativeApp.start(root)"), "activity creates the root");
 	check(activity.includes("NativeApp.newIntent(intent);"), "activity forwards a new intent");
+	check(activity.includes("public final class MainActivity extends Activity {"), "the activity stays a platform Activity");
+	check(activity.includes("\tpublic void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {\n\t\tsuper.onRequestPermissionsResult(requestCode, permissions, grantResults);\n\t\tNativeApp.permissionsResult(requestCode, permissions, grantResults);\n"), "activity forwards a permission result");
+	check(activity.includes("\tprotected void onActivityResult(int requestCode, int resultCode, Intent data) {\n\t\tsuper.onActivityResult(requestCode, resultCode, data);\n\t\tNativeApp.activityResult(requestCode, resultCode, data);\n"), "activity forwards an activity result");
 	check(activity.includes("root.setFocusableInTouchMode(true);") && activity.includes("root.setDescendantFocusability(ViewGroup.FOCUS_BEFORE_DESCENDANTS);"), "a blurred field hands focus to the root");
 	check(file(files, "app/proguard-rules.pro").includes("-keep class dev.metascript.app.NativeApp"), "R8 keeps the JNI class");
 }
@@ -255,6 +262,26 @@ function urlSchemesDeclared(): void {
 	check(!clash.ok && clash.error == "target 'Tablet' sets Info.plist key 'CFBundleURLTypes' twice", "a raw CFBundleURLTypes beside urlSchemes is refused");
 }
 urlSchemesDeclared();
+function permissionsDeclared(): void {
+	const declared = render([{ ...app, android: { ...app.android, permissions: ["android.permission.CAMERA", "android.permission.INTERNET", "com.example.permission.C2D_MESSAGE"] } }]);
+	if (!declared.ok) {
+		check(false, "an Android target with permissions renders: " + declared.error);
+		return;
+	}
+	check(file(declared.value, "app/src/main/AndroidManifest.xml").includes(
+		"<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n" +
+		"\t<uses-permission android:name=\"android.permission.INTERNET\" />\n" +
+		"\t<uses-permission android:name=\"android.permission.CAMERA\" />\n" +
+		"\t<uses-permission android:name=\"com.example.permission.C2D_MESSAGE\" />\n" +
+		"\t<application\n"), "declared permissions follow INTERNET, which is written once");
+	for (const bad of ["CAMERA", "", "android.permission.", "android.permission.CAMERA\" />", "1android.permission.CAMERA"]) {
+		expectError([{ ...app, android: { ...app.android, permissions: [bad] } }],
+			"Android target 'Mobile' has invalid permission '" + bad + "' (expected a full name such as android.permission.CAMERA)");
+	}
+	expectError([{ ...app, android: { ...app.android, permissions: ["android.permission.CAMERA", "android.permission.CAMERA"] } }],
+		"Android target 'Mobile' declares permission 'android.permission.CAMERA' twice");
+}
+permissionsDeclared();
 function swiftSourcesDeclared(): void {
 	const rendered = (targets: Vec<Target>): Result<Vec<GeneratedFile>, string> => {
 		const graph = resolve({ name: "Mobile", targets, plugins: [bundlePrefix("dev.ion")] });
