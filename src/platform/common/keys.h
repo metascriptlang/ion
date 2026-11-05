@@ -191,4 +191,16 @@ enum {
     ION_KEY_COUNT = 182
 };
 
+// The text winit's KeyEvent::text gives a key whose logical key is named
+// (winit-core keyboard.rs Key::to_text): 0x0D Enter, 0x09 Tab, 0x08 Backspace,
+// 0x1B Escape, 0 for any other named key, and -1 for a key whose text comes
+// from the layout (the writing-system keys, Space, the numpad's characters).
+int ionKeyNamedText(int key);
+
+// The Control transformation of an ASCII character (libX11 XKBBind.c
+// XkbToControl, as xkb_state_key_get_utf8 applies it): Ctrl+a is 0x01, Ctrl+[
+// 0x1B, Ctrl+2 0x00, Ctrl+3..7 0x1B..0x1F, Ctrl+8 0x7F, Ctrl+/ 0x1F. Any other
+// codepoint comes back unchanged.
+unsigned ionKeyCtrlChar(unsigned cp);
+
 #endif

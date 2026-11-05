@@ -190,3 +190,25 @@ msString ionKeyName(int key) {
     if (key < 0 || key >= ION_KEY_COUNT) return MS_EMPTY_STRING;
     return cStringToMs(s_names[key]);
 }
+
+int ionKeyNamedText(int key) {
+    if ((key >= ION_KEY_BACKQUOTE && key <= ION_KEY_SLASH) || key == ION_KEY_SPACE
+        || (key >= ION_KEY_NUMPAD0 && key <= ION_KEY_NUMPAD_SEPARATOR && key != ION_KEY_NUMPAD_ENTER))
+        return -1;
+    switch (key) {
+        case ION_KEY_ENTER: case ION_KEY_NUMPAD_ENTER: return 0x0D;
+        case ION_KEY_TAB:       return 0x09;
+        case ION_KEY_BACKSPACE: return 0x08;
+        case ION_KEY_ESCAPE:    return 0x1B;
+        default:                return 0;
+    }
+}
+
+unsigned ionKeyCtrlChar(unsigned cp) {
+    if ((cp >= '@' && cp < 0x7F) || cp == ' ') return cp & 0x1F;
+    if (cp == '2') return 0;
+    if (cp >= '3' && cp <= '7') return cp - ('3' - 0x1B);
+    if (cp == '8') return 0x7F;
+    if (cp == '/') return '_' & 0x1F;
+    return cp;
+}
