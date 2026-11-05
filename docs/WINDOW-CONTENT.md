@@ -138,6 +138,37 @@ through `SDL_WINDOW_OCCLUDED`, which Windows lacks.
 - **The device on a D2D device hosts WebView2 unchanged** (measured 2026-10-14 and again by the
   examples below).
 
+## Void areas on Linux
+
+Void draws only on X11 (GLX or EGL on an X11 `Window`, void `docs/EMBED.md` "Linux: two drivers
+in one binary"), while GTK4 on a Wayland session gives Ion a Wayland surface and no X11 window. So
+an app that hosts Void areas calls `requestX11()` before its first window: GDK then opens only its
+X11 backend (`gdk_set_allowed_backends`), which under GNOME on Wayland is XWayland. It is opt-in,
+like `requestSingleInstance`, because a webview-only app keeps native Wayland. On a session with no X server
+the call returns false, because GTK fails to initialize.
+
+`windowContentXid(win)` is the area Void draws into: an X11 child of the toplevel (an X window per
+Ion window, as Neon has one area per window) at the origin of the content area in device pixels,
+which sits below a client-side header bar and inside a compositor's shadow margin
+(`gtk_native_get_surface_transform`), sized to `pixelWidth` x `pixelHeight` and re-placed at every
+resize and scale change. Void creates its own child inside it and Ion never draws there. Limits
+that follow from X11:
+
+- **It covers everything GTK draws in the window**, a WebKitGTK webview included, because GTK4
+  renders every widget into the toplevel's one surface and an X child sits above its parent's
+  content. A webview and a Void area cannot overlap; place webviews beside the area.
+- **No alpha between them**: X11 does not composite a child with its parent, so a Void area
+  covers what is behind it whatever its alpha.
+- **Input is meant to reach GTK**: neither Ion's child nor Void's selects events, so X propagates
+  pointer and key events to the toplevel. Not run yet: no probe sends input through the area.
+- **Destroy Void's view before closing the window**: closing destroys the XID and Void's child
+  with it, so a later `viewDestroy` acts on a dead window over Void's own X connection.
+
+Measured 2026-11-05 by `test/linux/contentXid.sh` (Ion's Linux C linked without MetaScript, run
+under Xvfb on rtx); results in `TODO.md`. In that run GDK's process-wide X error handler is
+replaced after Void's `voidLinuxViewInit` (Void's `releaseErrorHandler` sets `NULL`, Xlib's
+default, which exits the process on the next X error GDK expected to trap); reported to Void.
+
 ## Measured
 
 2026-10-15, Windows 11, msc v0.3.3 (`9a4775dc`), WebView2 Runtime installed:
