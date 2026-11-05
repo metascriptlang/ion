@@ -164,7 +164,7 @@ const result = await window.ion.call("greet", { name: "Sơn" });
 
 | Module | Exports |
 |---|---|
-| `windowManager` | `requestSingleInstance`, `createWindow` (with `panel: true` a macOS launcher panel that takes keys without activating the app), `windowRoot`, `windowDevice`, `commit`, `focusContent`, `setImeRect`, `setCursor`, `setOptionAsAlt`, `requestUserAttention`, `beep`, frame policy, `onWindowEvent` with `preventClose` (a close-requested handler keeps the window open) |
+| `windowManager` | `requestSingleInstance`, `createWindow` (with `panel: true` a macOS launcher panel that takes keys without activating the app), `windowRoot`, `windowDevice`, `commit`, `focusContent`, `setImeRect`, `setCursor`, `setOptionAsAlt`, `requestUserAttention`, `beep`, frame policy, `windowFrame` (restore frame and maximized state; pass it back as `WindowOptions.frame`, fitted onto the monitors that exist), `setResizeIncrements` (live resize in cell steps), `backgroundColor` / `setBackgroundColor` (the colour shown before the content's first frame and in resize strips), `onWindowEvent` with `preventClose` (a close-requested handler keeps the window open) |
 | `exit` | `onExitRequested`, `preventExit`: Cmd+Q, the Quit item or a quit Apple Event asks the handlers before the loop ends (macOS); `quit()` asks them from code, as Tauri's `AppHandle::exit` (every platform) |
 | `webview` | `createWebview`, `webviewNode`, `setWebviewBounds`, `forwardPointer`, `focusWebview`, `navigate`, `evalJs`, `emit`, `emitTo`, `emitAll` |
 | `input` | `onPointer`, `onKey`, `onText`, `onImePreedit`, `onFocus`, `onResize`, `onFrame` |

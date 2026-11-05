@@ -17,7 +17,7 @@ each has a unique label, its own webview, its own IPC channel. No
 ```ms
 import {
     createWindow, closeWindow, getWindow, getAllWindows,
-    setTitle, setSize, setPosition,
+    setTitle, setSize, setPosition, windowFrame, setResizeIncrements, setBackgroundColor,
     show, hide, focus, minimize, maximize,
     setAlwaysOnTop, setDecorations, setContentProtected,
     emitTo, emitAll, onWindowEvent,
