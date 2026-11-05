@@ -1,7 +1,7 @@
 import { Project, Target } from "../tooling/generator/description";
 import { bundlePrefix, webview } from "../tooling/generator/plugins";
 
-const app = { ...Target.windowsApp("IonHello", "helloWebview.ms"), assets: ["hello.html"] };
+const app: Target = { ...Target.windowsApp("IonHello", "helloWebview.ms"), assets: ["hello.html"] };
 
 export const project: Project = {
 	name: "IonHello",
