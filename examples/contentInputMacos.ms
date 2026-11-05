@@ -77,6 +77,7 @@ let lastH: int32 = 0 as int32;
 let focusTrue = 0;
 let clicks = "";
 let keys = "";
+let chords = "";
 let texts = "";
 let preedits = "";
 let typed = "";
@@ -100,10 +101,17 @@ function hitName(x: float64, y: float64): string {
 	return "background";
 }
 
+function hexUnits(s: string): string {
+	let out = "";
+	for (let i = 0; i < s.length; i++) out += `${i > 0 ? "." : ""}${s.charCodeAt(i).toString(16)}`;
+	return out;
+}
+
 function resetStep(name: string): void {
 	stepName = name;
 	clicks = "";
 	keys = "";
+	chords = "";
 	texts = "";
 	preedits = "";
 	typed = "";
@@ -241,14 +249,17 @@ function verify(root: Ptr<void>, i: int32): void {
 	} else if (i === 6) {
 		check(`key '${keys}' == 'KeyA:a'`, keys === "KeyA:a ");
 		check(`text '${texts}' == ''`, texts === "");
+		check(`chord '${chords}' == 'KeyA:61/61 KeyA:/61^'`, chords === "KeyA:61/61 KeyA:/61^ ");
 	} else if (i === 7) {
 		check(`key '${keys}' == 'KeyA:A shift consumed-shift'`, keys === "KeyA:A shift consumed-shift ");
 	} else if (i === 8) {
 		check(`key '${keys}' == 'Enter:'`, keys === "Enter: ");
 		check(`text '${texts}' == ''`, texts === "");
+		check(`chord '${chords}' == 'Enter:d/d Enter:/d^'`, chords === "Enter:d/d Enter:/d^ ");
 	} else if (i === 9) {
 		check(`key '${keys}' == 'KeyC:'`, keys === "KeyC: ");
 		check(`text '${texts}' == ''`, texts === "");
+		check(`chord '${chords}' == 'KeyC:63/3 KeyC:/3^'`, chords === "KeyC:63/3 KeyC:/3^ ");
 	} else if (i === 10) {
 		check(`key '${keys}' == 'KeyE:é'`, keys === "KeyE:é ");
 	} else if (i === 11) {
@@ -365,6 +376,11 @@ function main(): int32 {
 		const consumedAlt = e.consumedMods.has(KeyMod.Alt) ? " consumed-alt" : "";
 		keys += `${keyName(e.key)}:${e.text}${shift}${alt}${consumed}${consumedAlt} `;
 		typed += e.text;
+	});
+	onKey((e: KeyEvent): void => {
+		if (keyName(e.key).startsWith("Shift") || keyName(e.key).startsWith("Control")) return;
+		const up = e.action === KeyAction.Release ? "^" : "";
+		chords += `${keyName(e.key)}:${hexUnits(e.chordText)}/${hexUnits(e.allModsText)}${up} `;
 	});
 	onText((window: int32, text: string): void => {
 		texts += `${text} `;
