@@ -95,6 +95,7 @@ when (linux) {
 	@compile("./platform/linux/security/content_protect.c");
 	// GTK4 + WebKitGTK 6.0 + libnotify + ayatana-appindicator-glib (GLib-only; the GTK3
 	// appindicator cannot share a process with GTK4) + libsecret, flags via pkg-config.
+	// Parked: msc refuses exec in @comptime, ~/metascript/.inbox/compiler/2026-10-31-a-macro-calling-exec-stops-on-a-missing-host-bridge.md
 	const gtkCflags = @comptime {
 		const r = exec("pkg-config --cflags gtk4 webkitgtk-6.0 libnotify ayatana-appindicator-glib libsecret-1");
 		if (!r.ok) return "";

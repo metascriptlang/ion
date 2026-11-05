@@ -15,6 +15,7 @@ when (macos) {
 }
 
 when (linux) {
+	// Parked: msc refuses exec in @comptime, ~/metascript/.inbox/compiler/2026-10-31-a-macro-calling-exec-stops-on-a-missing-host-bridge.md
 	const gtkCflags = @comptime {
 		const r = exec("pkg-config --cflags gtk4");
 		if (!r.ok) return "";
