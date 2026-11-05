@@ -121,7 +121,14 @@ before `MsMain` (measured 2026-10-22 on the Seeker, msc v0.3.4 `ae54a85be`: a pr
 `bundle/nested/inner.txt` and got `no asset` for a missing one; the emulator lane
 itself is parked on the compiler card
 `2026-10-22-androidlibrary-macro-crashes-the-comptime-vm-across-register-classes`, and
-the shared emulator's system server kept restarting that day). Apart from
+the shared emulator's system server kept restarting that day). Permissions
+declared in `android.permissions` reach the manifest after `INTERNET`, the application
+sets `supportsRtl`, and `MainActivity` forwards permission and activity results to
+`NativeApp.permissionsResult` and `NativeApp.activityResult` (measured 2026-11-05 on m1m's
+Pixel 9 Pro emulator, Android 36: `dumpsys package` requests INTERNET and CAMERA, a
+pre-granted CAMERA request logs `permissionsResult code=41 android.permission.CAMERA=0`,
+an `Echo` activity round trip logs `activityResult code=42 result=-1 data=ionfixture://echo`;
+a dialog-driven grant and RTL layout on device are not run). Apart from
 `readResource` and `resourcePath`, neither ports Ion's runtime APIs or integrates Neon. See
 [PROJECT-GENERATOR.md](docs/PROJECT-GENERATOR.md#verification) for the measured
 tree, command and remaining boundaries.

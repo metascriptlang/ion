@@ -395,8 +395,21 @@ byte for byte. Why the shape is what it is:
   recreates after killing its process; `getIntent()` stays the launch intent.
   The root is focusable in touch mode and takes focus before its children, as
   React Native's root view does, so a field that blurs hands focus to the root
-  instead of the first field. Every app declares `INTERNET`, as Tauri's
-  template does; there is no per-project permission list yet.
+  instead of the first field. It also forwards `onRequestPermissionsResult`
+  as `permissionsResult(int, String[], int[])` and `onActivityResult` as
+  `activityResult(int, int, Intent)`, after `super`, as React Native's
+  `ReactActivity` does; a native caller requests through the activity's own
+  `requestPermissions` and `startActivityForResult`, which a platform
+  `Activity` has, so no AndroidX dependency comes in. The results arrive
+  before `resume`; a request made from a `Fragment` still returns to that
+  fragment. A native library implements each JNI method the activity can
+  reach: an unimplemented one throws `UnsatisfiedLinkError` the first time
+  that result arrives. Every app declares `INTERNET`, as Tauri's template
+  does, and `android.permissions` adds full permission names
+  (`android.permission.CAMERA`) as `<uses-permission>` after it; a bare,
+  malformed or repeated name is refused, and a listed `INTERNET` is written
+  once. The application sets `android:supportsRtl="true"`, as React Native's
+  template does, so a right-to-left locale mirrors the layout direction.
   The fixture's `fixture.c` shows the native half; Neon owns the real one.
 - **Release signing from the environment.** `ION_ANDROID_STORE_FILE`,
   `ION_ANDROID_STORE_PASSWORD`, `ION_ANDROID_KEY_ALIAS` and
@@ -624,7 +637,10 @@ source, header and deliberate compile-failure edits. The fixture declares its
 listener in Debug and Release; an emptied keep rule fails Release with no
 package left; a Java edit changes the tapped tag with no clean; a javac failure
 names the package file and leaves no `app-debug.apk`; removing the declaration
-drops the library and the app reports the listener missing. `ANDROID_SERIAL` selects
+drops the library and the app reports the listener missing. The fixture
+declares `CAMERA`; a live intent makes it request CAMERA (granted beforehand
+through `pm grant`) and start the library's `Echo` activity for result, and
+both results must reach native. `ANDROID_SERIAL` selects
 a device; without it the script boots the AVD named by `ION_ANDROID_AVD`
 (default `Pixel_9_Pro`) when no emulator is attached, and then waits for the
 launcher to hold focus: right after `sys.boot_completed` a cold emulator showed
@@ -690,6 +706,17 @@ just before. Two earlier runs of this tree stopped at the emulator, not
 the build, with the host at load average 40–74: a "System UI isn't responding"
 dialog covered the app, and in the other run task removal left the activity
 `isExiting` with no `destroy`.
+
+Measured 2026-11-05 on branch `wt/ion-android-activity` (the tree of `75f4fe2`,
+m1m's installed `msc` `177f04c27`, Pixel 9 Pro emulator on
+Android 36: `tests/android.py` passed. `dumpsys package` listed `requested
+permissions: android.permission.INTERNET, android.permission.CAMERA` with
+CAMERA ungranted; after `pm grant`, `am start -d ionfixture://permission` made
+the fixture call `requestPermissions` and logged `permissionsResult code=41
+android.permission.CAMERA=0`, and `ionfixture://result` started the library's
+`Echo` activity for result and logged `activityResult code=42 result=-1
+data=ionfixture://echo`, each in the same process with no new `start`. Not
+driven: a permission dialog answered by the user, and a right-to-left locale.
 
 The Recompiler candidate must independently pass its Raiser tests, full compiler
 suite, corpus regression comparison and sanitizer corpus. Ion's test script is
