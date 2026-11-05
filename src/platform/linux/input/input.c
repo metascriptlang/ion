@@ -179,6 +179,18 @@ static void pushLeave(IonLinuxWindowState *st, GtkEventController *controller) {
     pushPointer(st, ION_INPUT_LEAVE, controller, 0, 0, 0, 0, 0);
 }
 
+// xkb_keysym_to_utf8 (libxkbcommon keysym-utf.c): the keypad and the control keysyms carry
+// their ASCII byte, which gdk_keyval_to_unicode leaves out for some of them.
+static gunichar keyvalChar(guint keyval) {
+    if ((keyval >= GDK_KEY_BackSpace && keyval <= GDK_KEY_Clear)
+        || (keyval >= GDK_KEY_KP_Multiply && keyval <= GDK_KEY_KP_9)
+        || keyval == GDK_KEY_Return || keyval == GDK_KEY_Escape || keyval == GDK_KEY_Delete
+        || keyval == GDK_KEY_KP_Tab || keyval == GDK_KEY_KP_Enter || keyval == GDK_KEY_KP_Equal)
+        return keyval & 0x7f;
+    if (keyval == GDK_KEY_KP_Space) return ' ';
+    return gdk_keyval_to_unicode(keyval);
+}
+
 static void onKey(IonLinuxWindowState *st, GdkEvent *ev) {
     int press = gdk_event_get_event_type(ev) == GDK_KEY_PRESS;
     int filtered = gtk_im_context_filter_keypress(st->im, ev);
@@ -211,6 +223,18 @@ static void onKey(IonLinuxWindowState *st, GdkEvent *ev) {
     r.consumedMods = modsFromState(gdk_key_event_get_consumed_modifiers(ev));
     r.unshifted = gdk_keyval_to_unicode(unshiftedKeyval);
     r.text = text;
+
+    // winit's xkb KeyContext: text is the keysym's character, text_with_all_modifiers
+    // applies Control as xkb_state_key_get_utf8 does when Control is active and not consumed.
+    gunichar chord = filtered ? 0 : keyvalChar(gdk_key_event_get_keyval(ev));
+    gunichar all = chord;
+    if ((state & GDK_CONTROL_MASK) && !(gdk_key_event_get_consumed_modifiers(ev) & GDK_CONTROL_MASK))
+        all = ionKeyCtrlChar(all);
+    char chordText[8] = {0}, allModsText[8] = {0};
+    if (press && chord != 0) g_unichar_to_utf8(chord, chordText);
+    if (all != 0) g_unichar_to_utf8(all, allModsText);
+    r.chordText = chordText;
+    r.allModsText = allModsText;
     ion_input_push_record(&r);
 }
 
