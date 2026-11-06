@@ -77,3 +77,4 @@ msString ionInputText(void)         { return cStringToMs(s_current.text); }
 msString ionInputChordText(void)    { return cStringToMs(s_current.chordText); }
 msString ionInputAllModsText(void)  { return cStringToMs(s_current.allModsText); }
 int      ionInputWindowsVirtualKey(void) { return s_current.windowsVirtualKey; }
+int      ionInputImeHandled(void) { return s_current.imeHandled; }

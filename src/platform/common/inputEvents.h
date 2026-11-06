@@ -37,6 +37,7 @@ typedef struct {
     int         consumedMods;
     unsigned    unshifted;
     int         windowsVirtualKey;
+    int         imeHandled;
     const char *text;
     const char *chordText;
     const char *allModsText;

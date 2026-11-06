@@ -341,7 +341,12 @@ int         ionWindowEventType(void);
 //             "[", Enter is "\r"; empty for release); allModsText = winit
 //             text_with_all_modifiers: every modifier applied, Ctrl included
 //             (Ctrl+A is "\x01"), on release and repeat too;
-//             windowsVirtualKey = the Win32 VK of wParam, 0 off Windows
+//             windowsVirtualKey = the Win32 VK of wParam, 0 off Windows;
+//             imeHandled = 1 when the input method took the key (its text, if
+//             any, comes as text and preedit records), so an app that encodes
+//             keys itself, as a terminal does, skips it (Ghostty GTK surface.zig
+//             im_handled); on press and release alike. Windows never pushes such
+//             a key (VK_PROCESSKEY), so it is always 0 there
 //   5 text    text = UTF-8 not tied to a key press (IME commit, injected input)
 //   6 preedit text = the IME composition in progress (empty = cleared);
 //             p1 = caret offset in bytes into text
@@ -383,6 +388,7 @@ msString    ionInputText(void);
 msString    ionInputChordText(void);
 msString    ionInputAllModsText(void);
 int         ionInputWindowsVirtualKey(void);
+int         ionInputImeHandled(void);
 
 // W3C KeyboardEvent.code name of an ION_KEY code ("KeyA", "ArrowUp"); "" when
 // out of range. The table lives in common/keys.c.
