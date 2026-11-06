@@ -48,15 +48,17 @@ function main(): int32 {
 		check(`Informational flashed the minimized window's taskbar button (${wpFlashes(second.id)} HSHELL_FLASH)`,
 			wpFlashes(second.id) >= (1 as int32));
 		requestUserAttention(second, AttentionNone);
+	}, 1800);
+	setTimeout((): void => {
 		stopped = wpFlashes(second.id);
 		requestUserAttention(second, AttentionCritical);
-	}, 1800);
+	}, 2100);
 	setTimeout((): void => {
 		check(`Critical flashed it again after None (${stopped} -> ${wpFlashes(second.id)})`, wpFlashes(second.id) > stopped);
 		requestUserAttention(second, AttentionNone);
 		mainBefore = wpFlashes(main.id);
 		if (wpWindowState(main.id) === (1 as int32)) requestUserAttention(main, AttentionCritical);
-	}, 2400);
+	}, 2700);
 	setTimeout((): void => {
 		if (wpWindowState(main.id) === (1 as int32)) {
 			check(`a request for the active window flashes nothing (${mainBefore} -> ${wpFlashes(main.id)})`,
