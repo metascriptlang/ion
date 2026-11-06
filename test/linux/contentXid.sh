@@ -7,7 +7,8 @@ set -euo pipefail
 # libwayland falls back to wayland-0 when WAYLAND_DISPLAY is unset: name none, so no run reaches a live session.
 export WAYLAND_DISPLAY=ion-probe-no-wayland
 cd "$(dirname "$0")/../.."
-rt=$(dirname "$(dirname "$(readlink -f "$(command -v msc)")")")
+rt=$(dirname "$(readlink -f "$(command -v msc)")")
+[ -d "$rt/runtime" ] || rt=$(dirname "$rt")
 out=$(mktemp -d)
 srcs=$(sed -n 's/^[[:space:]]*@compile("\.\/\(platform\/\(common\|linux\)\/[^"]*\)");/src\/\1/p' src/ipc.ms)
 pkgs="gtk4 webkitgtk-6.0 libnotify ayatana-appindicator-glib libsecret-1 x11"
