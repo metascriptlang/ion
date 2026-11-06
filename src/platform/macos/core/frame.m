@@ -1,7 +1,8 @@
 // Ion macOS — the vsync tick behind the frame clock. One CADisplayLink on the content host of
 // the first visible window (Linux ticks the same way, through GTK's frame clock), running only
 // while some window is due a frame. Its callback runs on the main run loop while it runs,
-// records the time and nudges the wait in ionPollEvent.
+// records the time and nudges the wait in ionPollEvent; during a live resize, which never returns
+// to that wait, it runs ionMacModalPump.
 
 #import "../state.h"
 #import "../internal.h"
@@ -25,6 +26,7 @@ static double         s_tickMs;
 - (void)tick:(CADisplayLink *)link {
     s_tickMs = link.timestamp * 1000.0;
     if (atomic_exchange(&s_tickPending, 1)) return;
+    if (s_driver.window.inLiveResize) ionMacModalPump();
     ionMacNudge();
 }
 @end

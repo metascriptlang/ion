@@ -18,6 +18,9 @@
 // the main run loop without one. Each of them, every other thread, and an SDL event watch call
 // ionMacNudge.
 //
+// A live resize runs AppKit's tracking loop inside step 4's SDL pump until mouse-up; ionMacModalPump
+// runs msc, the records and the frame due there instead.
+//
 // A title-bar close pushes close-requested and leaves the window to the app (ionCloseWindow).
 // Cmd+Q, the Quit item and a quit Apple Event → return 7, the app's call; SIGINT, SIGTERM and
 // the last window gone → return 1, once the queued lifecycle events have been delivered.
@@ -146,9 +149,12 @@ static void *mscWatcher(void *arg) {
 
 // SDL queues events of its own without an NSEvent to end the wait: SDL_EVENT_QUIT from
 // applicationShouldTerminate (an AppleScript quit), display and device changes. A watch runs
-// on every push, from whichever thread pushes.
+// on every push, from whichever thread pushes. During a live resize SDL's 60 Hz timer in
+// NSRunLoopCommonModes sends an exposed event with data1 1 for the app to draw from a watch
+// (SDL_cocoawindow.m windowWillStartLiveResize:, SDL_video.c SDL_OnWindowLiveResizeUpdate).
 static bool nudgeOnSdlEvent(void *userdata, SDL_Event *event) {
-    (void)userdata; (void)event;
+    (void)userdata;
+    if (event->type == SDL_EVENT_WINDOW_EXPOSED && event->window.data1 == 1) ionMacModalPump();
     ionMacNudge();
     return true;
 }
@@ -254,6 +260,25 @@ static int takeWake(void) {
     return s_wakeTaken;
 }
 
+// A live resize runs AppKit's tracking loop inside SDL_PollEvent's dispatch until mouse-up, as the
+// Win32 move/size loop runs inside DispatchMessageW (windows/webview/poll.c ionModalPump), and
+// pumps the same way: from SDL's live-resize exposed event and the display link tick. Pump only
+// while ionPollEvent dispatches, since a handler that runs AppKit's loop is already inside MS.
+static int s_dispatching;
+static int s_inModalTurn;
+
+void ionMacModalPump(void) {
+    if (!s_dispatching || s_inModalTurn || !NSThread.isMainThread) return;
+    s_inModalTurn = 1;
+    @autoreleasepool {
+        double timeMs;
+        if (ionMacFrameTakeTick(&timeMs)) ion_frame_emit(timeMs);
+        ionModalTurn();
+        ionMacFrameSync();
+    }
+    s_inModalTurn = 0;
+}
+
 static int emitDueFrames(void) {
     double timeMs;
     return ionMacFrameTakeTick(&timeMs) && ion_frame_emit(timeMs) > 0 && ion_input_next();
@@ -291,7 +316,9 @@ int ionPollEvent(void) {
     ionMacFrameSync();
     waitForEvent();
     SDL_Event ev;
+    s_dispatching = 1;
     while (SDL_PollEvent(&ev)) handleSdlEvent(&ev);
+    s_dispatching = 0;
     atomic_store(&s_nudgePending, 0);
 
     if (ion_input_next()) return 4;
@@ -325,5 +352,16 @@ int ionWindowPixelHeight(IonWindowId id) {
     return h;
 }
 
-
-int ionPollReady(void) { return 0; }
+// Never pumps AppKit: SDL_PeepEvents takes what SDL already queued, where SDL_PollEvent would pump.
+int ionPollReady(void) {
+    if (s_last_wevt_type == ION_EVT_DESTROYED) {
+        ionMacReleaseDestroyed(s_last_wevt_id);
+        s_last_wevt_type = 0;
+    }
+    SDL_Event ev;
+    while (SDL_PeepEvents(&ev, 1, SDL_GETEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST) == 1) handleSdlEvent(&ev);
+    if (ion_wevt_pop(&s_last_wevt_id, &s_last_wevt_type)) return 3;
+    if (ion_queue_pop()) return 2;
+    if (ion_input_next()) return 4;
+    return atomic_exchange(&s_wakePending, 0) ? 6 : 0;
+}

@@ -241,8 +241,9 @@ function dispatchRecord(evt: int32): void {
 	}
 }
 
-// One non-blocking turn for the Win32 move/size loop, which never returns to runLoop
-// (src/platform/windows/webview/poll.c ionModalPump): msc's loop, then every record ready.
+// One non-blocking turn for the Win32 move/size loop and the macOS live-resize loop, which never
+// return to runLoop (ionModalPump in src/platform/windows/webview/poll.c, ionMacModalPump in
+// src/platform/macos/webview/poll.m): msc's loop, then every record ready.
 @exportName("ionModalTurn")
 function modalTurn(): void {
 	msRunOnce(0 as int32);

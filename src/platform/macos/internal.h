@@ -34,6 +34,10 @@ int        ionMacAllWindowsClosed(void);
 
 // webview/poll.m — wakes the loop's wait; any thread
 void       ionMacNudge(void);
+// webview/poll.m — one MS turn and the frame due, from inside AppKit's live-resize loop
+void       ionMacModalPump(void);
+// src/ipc.ms — msc's loop, then every record ionPollReady has
+void       ionModalTurn(void);
 
 // core/frame.m
 void       ionMacFrameSync(void);

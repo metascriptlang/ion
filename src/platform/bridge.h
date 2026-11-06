@@ -290,7 +290,8 @@ void ionLoopArm(void);
 
 // One record or wake ionPollEvent would return (2, 3, 4 or 6), or 0 when none is ready.
 // Never pumps platform messages and never waits. Windows' move/size loop calls it from the
-// window proc; macOS and Linux have no such loop and return 0.
+// window proc, macOS's live-resize loop from SDL's live-resize event and the display link;
+// Linux has no such loop and returns 0.
 int  ionPollReady(void);
 
 // Makes ionPollEvent return 6 once, so the loop thread runs the onWake
