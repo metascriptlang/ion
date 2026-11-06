@@ -246,6 +246,7 @@ static void onKey(IonLinuxWindowState *st, GdkEvent *ev) {
     if (all != 0) g_unichar_to_utf8(all, allModsText);
     r.chordText = chordText;
     r.allModsText = allModsText;
+    r.imeHandled = filtered;
     ion_input_push_record(&r);
 }
 
