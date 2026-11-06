@@ -258,6 +258,7 @@ static void installPointerMonitor(void) {
 @property (nonatomic) NSRect imeRectPx;
 @property (nonatomic, copy) NSString *marked;
 @property (nonatomic) NSMutableArray<NSString *> *commits;
+@property (nonatomic) NSMutableSet<NSNumber *> *imeKeys;  // keyCodes whose press the input method took
 - (void)pushResize;
 - (void)pushFocus;
 @end
@@ -343,6 +344,7 @@ static void installPointerMonitor(void) {
 
 - (void)keyDown:(NSEvent *)event {
     NSEvent *translated = [self translated:event];
+    BOOL wasMarked = self.hasMarkedText;
     self.commits = [NSMutableArray array];
     [self interpretKeyEvents:@[translated]];
     NSArray<NSString *> *commits = self.commits;
@@ -375,6 +377,9 @@ static void installPointerMonitor(void) {
         r.chordText = chordTextOf(translated, r.key).UTF8String;
         r.allModsText = translated.characters.UTF8String;
     }
+    r.imeHandled = wasMarked || self.hasMarkedText || (typed == nil && commits.count > 0);
+    if (!self.imeKeys) self.imeKeys = [NSMutableSet set];
+    if (r.imeHandled) [self.imeKeys addObject:@(event.keyCode)];
     pushRecord(&r);
 
     for (NSString *s in rest) pushText(ION_INPUT_TEXT, self.win, s, 0);
@@ -390,6 +395,8 @@ static void installPointerMonitor(void) {
     r.scancode = event.keyCode;
     r.mods = modsFromEvent(event);
     r.allModsText = [self translated:event].characters.UTF8String;
+    r.imeHandled = [self.imeKeys containsObject:@(event.keyCode)];
+    [self.imeKeys removeObject:@(event.keyCode)];
     pushRecord(&r);
 }
 
