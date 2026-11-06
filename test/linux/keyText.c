@@ -13,12 +13,13 @@
 
 GtkWidget *ionGetMainWindow(void);
 
-static int s_failures, s_keyText, s_textRecords, s_preedits;
+static int s_failures, s_keyText, s_textRecords, s_preedits, s_imeKeys;
 static char s_keyTexts[64], s_texts[64];
 
 int __real_ion_input_push_record(const IonInputRecord *r);
 int __wrap_ion_input_push_record(const IonInputRecord *r) {
-    if (r->type == ION_INPUT_KEY && r->p1 != 2 && r->text && r->text[0]) { s_keyText++; strncat(s_keyTexts, r->text, 20); }
+    if (r->type == ION_INPUT_KEY && r->p1 == 1 && r->imeHandled) s_imeKeys++;
+    if (r->type == ION_INPUT_KEY && r->p1 != 2 && !r->imeHandled && r->text && r->text[0]) { s_keyText++; strncat(s_keyTexts, r->text, 20); }
     if (r->type == ION_INPUT_TEXT) { s_textRecords++; strncat(s_texts, r->text, 20); }
     if (r->type == ION_INPUT_PREEDIT && r->text && r->text[0]) s_preedits++;
     return __real_ion_input_push_record(r);
@@ -37,7 +38,7 @@ static void pump(int ms) {
     }
 }
 
-static void reset(void) { s_keyText = s_textRecords = s_preedits = 0; s_keyTexts[0] = s_texts[0] = 0; }
+static void reset(void) { s_keyText = s_textRecords = s_preedits = s_imeKeys = 0; s_keyTexts[0] = s_texts[0] = 0; }
 
 static void tap(Display *dpy, KeyCode code) {
     XTestFakeKeyEvent(dpy, code, True, 0);
@@ -57,12 +58,21 @@ int main(void) {
     pump(300);
     (void)id;
 
+    const char *im = getenv("GTK_IM_MODULE") ? getenv("GTK_IM_MODULE") : "";
+    int simple = strcmp(im, "gtk-im-context-simple") == 0;
     reset();
     tap(dpy, XKeysymToKeycode(dpy, XK_a));
     tap(dpy, XKeysymToKeycode(dpy, XK_b));
-    printf("plain: key records with text %d \"%s\", text records %d \"%s\"\n", s_keyText, s_keyTexts, s_textRecords, s_texts);
-    check(s_keyText == 2 && strcmp(s_keyTexts, "ab") == 0, "a and b each carry their text on the key record");
-    check(s_textRecords == 0, "no text record for a plain key");
+    pump(300);
+    char seen[64];
+    snprintf(seen, sizeof seen, "%s%s", s_keyTexts, s_texts);
+    printf("plain (%s): key records with text %d \"%s\", imeHandled presses %d, text records %d \"%s\"\n",
+           im, s_keyText, s_keyTexts, s_imeKeys, s_textRecords, s_texts);
+    check(strcmp(seen, "ab") == 0, "ab reaches the app once: on key records not marked imeHandled, or as text records");
+    check(s_textRecords == 0 || s_imeKeys == 2, "a key whose text comes as a text record is marked imeHandled");
+    if (simple) check(s_keyText == 2 && s_textRecords == 0, "the simple IM's synchronous commit rides the key record");
+    if (!simple) check(s_imeKeys == 2 && s_textRecords == 2, "the input method took both presses and committed after filter_keypress");
+    if (!simple) { printf("%s, %d failure(s)\n", s_failures ? "RED" : "GREEN", s_failures); return s_failures ? 1 : 0; }
 
     // Put dead_acute on a spare keycode, as a layout with dead keys has it.
     int lo, hi;
