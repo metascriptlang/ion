@@ -57,8 +57,19 @@ when (macos) {
 	@compile("./platform/macos/chrome/dialog.m", "-fobjc-arc");
 	@compile("./platform/macos/input/hotkey.m", "-fobjc-arc");
 	@compile("./platform/macos/security/content_protect.m", "-fobjc-arc");
-	@passC("-I/opt/homebrew/opt/sdl3/include");
-	@passL("-L/opt/homebrew/opt/sdl3/lib");
+	// SDL3_PREFIX names an SDL3 install outside Homebrew (a remote Mac without it).
+	const sdl3Cflags = @comptime {
+		const r = exec("sh -c 'printf %s \"-I${SDL3_PREFIX:-/opt/homebrew/opt/sdl3}/include\"'");
+		if (!r.ok) throw new Error("cannot read SDL3_PREFIX: " + r.error.message);
+		return r.value.trim();
+	};
+	const sdl3Libs = @comptime {
+		const r = exec("sh -c 'printf %s \"-L${SDL3_PREFIX:-/opt/homebrew/opt/sdl3}/lib\"'");
+		if (!r.ok) throw new Error("cannot read SDL3_PREFIX: " + r.error.message);
+		return r.value.trim();
+	};
+	@passC(sdl3Cflags);
+	@passL(sdl3Libs);
 	@passL("-lSDL3");
 	// Reserve rpath so consumers can ship libSDL3.0.dylib bundled in their
 	// .app's Contents/Frameworks/. Reserve header padding so make-app.sh can

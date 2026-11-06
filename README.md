@@ -318,9 +318,11 @@ If you ship arbitrary user-installable code in your webview (plugins, third-part
 | macOS arm64 | **v0 shipped** | All v0 capabilities; MyApp's daily driver |
 | macOS x86_64 | Untested | Should work via `--target` cross-compile |
 | Windows x86_64 | **Phase 4** | Window + webview + IPC + Tauri commands + tray + notifications + file dialog + global hotkey all working. NSIS installer + code-signing pending (Phase 5) |
-| Linux | Not started | Estimated ~1.5-2x macOS effort (GTK + WebKitGTK + AppIndicator) |
+| Linux | Builds (GTK4 + WebKitGTK 6.0) | Needs the dev packages listed in `CLAUDE.md`; per-capability state in `TODO.md` |
 
 **Known Windows behavior:** ~1-2 s blank window on cold start (Edge process spawn + WebView2 COM init — standard for WebView2-based apps). A cross-platform splash screen is planned to mask this on both desktop and mobile.
+
+A macOS build takes SDL3 from `/opt/homebrew/opt/sdl3` (`brew install sdl3`); set `SDL3_PREFIX` to an SDL3 install elsewhere (its `include/` and `lib/`).
 
 ### Cross-compile for Windows from macOS
 
