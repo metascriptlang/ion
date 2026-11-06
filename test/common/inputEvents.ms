@@ -13,6 +13,7 @@ import { dispatchInput, onPointer, onKey, PointerEvent, PointerKind, DeltaMode, 
 
 extern function ionTestPushPointer(type: int32, window: int32, x: float64, y: float64, p1: float64, p2: float64, mods: int32): int32;
 extern function ionTestPushWheel(window: int32, dx: float64, dy: float64, unit: int32): int32;
+extern function ionTestPushImeKey(window: int32, action: int32): int32;
 extern function ionTestPushKey(window: int32, action: int32, vk: int32, text: cstring, chordText: cstring, allModsText: cstring): int32;
 extern function ionKeyNamedText(key: int32): int32;
 extern function ionKeyCtrlChar(cp: uint32): uint32;
@@ -188,6 +189,16 @@ test "a Ctrl+[ press reaches KeyEvent with its chord text, its control byte and 
 	assert e.chordText === "[";
 	assert e.allModsText === "\x1b";
 	assert e.windowsVirtualKey === 0xDB as int32;
+}
+
+test "a key the input method took reaches KeyEvent marked imeHandled, and a plain key does not" {
+	drain();
+	_keys.length = 0;
+	ionTestPushImeKey(4 as int32, 1 as int32);
+	if (ion_input_next() === 1 as int32) dispatchInput(ionInputType());
+	assert _keys.length === 1 && _keys[0].imeHandled && _keys[0].text === "";
+	dispatchKeyRecord(1 as int32, 0x41 as int32, "a", "a", "a");
+	assert _keys.length === 1 && !_keys[0].imeHandled;
 }
 
 test "a release record keeps its virtual key and its all-modifier text" {

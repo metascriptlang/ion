@@ -16,6 +16,17 @@ int ionTestPushPointer(int type, int window, double x, double y, double p1, doub
     return ion_input_push_record(&r);
 }
 
+// A key record the input method took, as GTK's filter or AppKit's marked text reports it.
+int ionTestPushImeKey(int window, int action) {
+    IonInputRecord r;
+    memset(&r, 0, sizeof r);
+    r.type = ION_INPUT_KEY;
+    r.window = window;
+    r.p1 = action;
+    r.imeHandled = 1;
+    return ion_input_push_record(&r);
+}
+
 // A wheel record with its unit (ION_WHEEL_PIXEL or ION_WHEEL_LINE) in `key`.
 int ionTestPushWheel(int window, double dx, double dy, int unit) {
     IonInputRecord r;
