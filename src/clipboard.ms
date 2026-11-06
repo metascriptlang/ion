@@ -15,15 +15,14 @@ when (macos) {
 }
 
 when (linux) {
-	// Parked: msc refuses exec in @comptime, ~/metascript/.inbox/compiler/2026-10-31-a-macro-calling-exec-stops-on-a-missing-host-bridge.md
 	const gtkCflags = @comptime {
 		const r = exec("pkg-config --cflags gtk4");
-		if (!r.ok) return "";
+		if (!r.ok) throw new Error("Ion on Linux needs the GTK dev packages listed in ion/CLAUDE.md: " + r.error.message);
 		return r.value.trim();
 	};
 	const gtkLibs = @comptime {
 		const r = exec("pkg-config --libs gtk4");
-		if (!r.ok) return "";
+		if (!r.ok) throw new Error("Ion on Linux needs the GTK dev packages listed in ion/CLAUDE.md: " + r.error.message);
 		return r.value.trim();
 	};
 	@compile("./platform/linux/chrome/clipboard.c");
