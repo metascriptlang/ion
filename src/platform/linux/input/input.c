@@ -191,9 +191,18 @@ static gunichar keyvalChar(guint keyval) {
     return gdk_keyval_to_unicode(keyval);
 }
 
+// A commit the IM fires inside filter_keypress while nothing is being composed is the
+// pressed key's own text: it goes on the key record instead of a separate text record.
+static IonLinuxWindowState *s_keyCommitWindow;
+static char s_keyCommit[64];
+
 static void onKey(IonLinuxWindowState *st, GdkEvent *ev) {
     int press = gdk_event_get_event_type(ev) == GDK_KEY_PRESS;
+    s_keyCommit[0] = 0;
+    s_keyCommitWindow = (press && !st->imComposing) ? st : NULL;
     int filtered = gtk_im_context_filter_keypress(st->im, ev);
+    s_keyCommitWindow = NULL;
+    if (s_keyCommit[0]) filtered = 0;
     unsigned hw = gdk_key_event_get_keycode(ev);
     GdkModifierType state = gdk_event_get_modifier_state(ev);
 
@@ -205,9 +214,11 @@ static void onKey(IonLinuxWindowState *st, GdkEvent *ev) {
     gdk_display_translate_key(gdk_event_get_display(ev), hw, 0, gdk_key_event_get_layout(ev),
                               &unshiftedKeyval, NULL, NULL, NULL);
 
-    char text[8] = {0};
+    char text[64] = {0};
     gunichar ch = gdk_keyval_to_unicode(gdk_key_event_get_keyval(ev));
-    if (press && !filtered && ch >= 0x20 && ch != 0x7f
+    if (s_keyCommit[0]) {
+        g_strlcpy(text, s_keyCommit, sizeof text);
+    } else if (press && !filtered && ch >= 0x20 && ch != 0x7f
         && !(state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK))) {
         g_unichar_to_utf8(ch, text);
     }
@@ -321,6 +332,10 @@ static void onLeave(GtkEventControllerMotion *controller, gpointer data) {
 static void onCommit(GtkIMContext *im, gchar *str, gpointer data) {
     (void)im;
     IonLinuxWindowState *st = (IonLinuxWindowState *)data;
+    if (st == s_keyCommitWindow && strlen(s_keyCommit) + strlen(str) < sizeof s_keyCommit) {
+        strcat(s_keyCommit, str);
+        return;
+    }
     IonInputRecord r;
     memset(&r, 0, sizeof r);
     r.type = ION_INPUT_TEXT;
@@ -334,6 +349,7 @@ static void onPreeditChanged(GtkIMContext *im, gpointer data) {
     gchar *str = NULL;
     gint cursor = 0;
     gtk_im_context_get_preedit_string(im, &str, NULL, &cursor);
+    st->imComposing = str && str[0];
     IonInputRecord r;
     memset(&r, 0, sizeof r);
     r.type = ION_INPUT_PREEDIT;

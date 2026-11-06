@@ -21,6 +21,7 @@ typedef struct {
     GtkWidget    *root;            // GtkFixed filling the window; ionWindowRoot
     unsigned long contentXid;      // ionWindowContentXid, 0 until asked for
     GtkIMContext *im;
+    int           imComposing;     // the IM shows a non-empty preedit
     int           iconified;
     int           wantAbove;       // ionSetWindowAlwaysOnTop, applied once the surface is mapped
     int           contentFocused;  // last focus record pushed
