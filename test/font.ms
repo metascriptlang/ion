@@ -55,7 +55,8 @@ when (macos) {
 		const faces = findSystemFonts(0x23FA as int32, { ...text, presentation: Presentation.Emoji });
 		assert faces.length > 0 && faces[0].path.endsWith("/Apple Color Emoji.ttc");
 	}
-} else {
+}
+when (windows) {
 	test "no backend finds a font" {
 		assert findSystemFonts(0x41 as int32, text).length == 0;
 	}
@@ -72,4 +73,37 @@ test "a surrogate or out-of-range codepoint finds no font" {
 
 test "a missing font file does not register" {
 	assert !registerFont("/nonexistent/ion-font.ttf").ok;
+}
+
+when (linux) {
+	function faceCountLinux(path: string): uint32 {
+		const read = readFile(path);
+		if (!read.ok) return 0 as uint32;
+		const bytes = read.value.asBytes();
+		if (bytes.length < 12 || bytes[0] != 0x74 || bytes[1] != 0x74 || bytes[2] != 0x63 || bytes[3] != 0x66) return 1 as uint32;
+		return (bytes[8] as uint32) << 24 | (bytes[9] as uint32) << 16 | (bytes[10] as uint32) << 8 | (bytes[11] as uint32);
+	}
+	test "an emoji-presentation globe is found first in a colour emoji face" {
+		const faces = findSystemFonts(0x1F310 as int32, { ...text, presentation: Presentation.Emoji, family: "monospace" });
+		assert faces.length > 0 && faces[0].path.includes("Color");
+	}
+	test "a text-presentation snowman is found first in a face without colour" {
+		const faces = findSystemFonts(0x2603 as int32, { ...text, family: "monospace" });
+		assert faces.length > 0 && !faces[0].path.includes("Color");
+	}
+	test "a CJK codepoint lists faces that each draw it, each once, with an index inside the file" {
+		for (const weight of [400, 700]) {
+			const faces = findSystemFonts(0x4E2D as int32, { ...text, family: "monospace", weight: weight as int32 });
+			assert faces.length > 0;
+			for (let i = 0; i < faces.length; i++) {
+				assert (faces[i].index as uint32) < faceCountLinux(faces[i].path);
+				for (let j = i + 1; j < faces.length; j++) {
+					assert faces[i].path != faces[j].path || faces[i].index != faces[j].index;
+				}
+			}
+		}
+	}
+	test "an invalid codepoint finds nothing" {
+		assert findSystemFonts(0xD800 as int32, text).length == 0;
+	}
 }
