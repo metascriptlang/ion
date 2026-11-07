@@ -6,8 +6,11 @@
 #include "../../common/frameClock.h"
 #include "../../common/windowEvents.h"
 #include "../../common/windowRegistry.h"
+#include "../../common/mscLoop.h"
+#include "runtime/promise/dispatch.h"
 
 #include <gtk/gtk.h>
+#include <glib-unix.h>
 
 static IonWindowId s_lastWevtId   = ION_WINDOW_INVALID;
 static int         s_lastWevtType = 0;
@@ -41,20 +44,29 @@ static int takeWake(void) {
     return s_wakeTaken;
 }
 
-static gboolean keepWaking(gpointer data) {
-    (void)data;
-    return G_SOURCE_CONTINUE;
+// msc's work wakes the GLib wait as macOS's watcher wakes Cocoa's (poll.m): its selector fd
+// (epoll) turning readable, and its next timer deadline. Both sources are one-shot and re-armed
+// by ionLoopArm after msRunOnce has run, so a descriptor msc has not drained yet cannot make
+// the non-blocking iterations below spin.
+static guint s_mscFdSource;
+static guint s_mscTimer;
+static int   s_mscDue;   // a source fired since ionLoopArm: msc has work, so do not block
+
+static gboolean onMscFd(gint fd, GIOCondition condition, gpointer data) {
+    (void)fd; (void)condition; (void)data;
+    s_mscFdSource = 0;
+    s_mscDue = 1;
+    return G_SOURCE_REMOVE;
 }
 
-// A 16 ms timer bounds each blocking iteration so msc's loop runs at the macOS cadence;
-// ionWakeLoop ends the wait early.
-int ionPollEvent(void) {
-    static int timerInstalled;
-    if (!timerInstalled) {
-        timerInstalled = 1;
-        g_timeout_add(16, keepWaking, NULL);
-    }
+static gboolean onMscDeadline(gpointer data) {
+    (void)data;
+    s_mscTimer = 0;
+    s_mscDue = 1;
+    return G_SOURCE_REMOVE;
+}
 
+int ionPollEvent(void) {
     ionLinuxReleaseReadDestroyed();
 
     int got = drain();
@@ -70,7 +82,7 @@ int ionPollEvent(void) {
     if (got) return got;
     if (ionLinuxAllWindowsClosed()) return 1;
 
-    if (!g_atomic_int_get(&s_wakePending)) g_main_context_iteration(NULL, TRUE);
+    if (!s_mscDue && !g_atomic_int_get(&s_wakePending)) g_main_context_iteration(NULL, TRUE);
     got = drain();
     if (got) return got;
     if (takeWake()) return 6;
@@ -82,6 +94,14 @@ msString    ionMessagePayload(void)  { return cStringToMs(ion_queue_last_payload
 IonWindowId ionWindowEventId(void)   { return s_lastWevtId; }
 int         ionWindowEventType(void) { return s_lastWevtType; }
 
-void ionLoopArm(void) {}
+void ionLoopArm(void) {
+    s_mscDue = 0;
+    int fd = msGetDispatcherSelectorFd();
+    if (fd >= 0 && s_mscFdSource == 0) s_mscFdSource = g_unix_fd_add(fd, G_IO_IN, onMscFd, NULL);
+    if (s_mscTimer) g_source_remove(s_mscTimer);
+    s_mscTimer = 0;
+    int delay = ion_msc_next_delay_ms();
+    if (delay >= 0) s_mscTimer = g_timeout_add((guint)delay, onMscDeadline, NULL);
+}
 
 int ionPollReady(void) { return 0; }
