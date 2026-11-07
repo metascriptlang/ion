@@ -11,6 +11,7 @@ void msStringFromCStr(void) { unreached("msStringFromCStr"); }
 void msNextTimerDelayMs(void) { unreached("msNextTimerDelayMs"); }
 void msGetDispatcher(void) { unreached("msGetDispatcher"); }
 void msAdjustTimeout(void) { unreached("msAdjustTimeout"); }
+void msGetDispatcherSelectorFd(void) { unreached("msGetDispatcherSelectorFd"); }
 
 #ifdef ION_PROBE_VOID
 // Void's frame timing is implemented in MetaScript; only voidLinuxRun reaches it.
