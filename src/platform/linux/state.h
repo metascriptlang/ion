@@ -22,6 +22,10 @@ typedef struct {
     unsigned long contentXid;      // ionWindowContentXid, 0 until asked for
     GtkIMContext *im;
     int           imComposing;     // the IM shows a non-empty preedit
+    GQueue        keyQueue;        // key, text and preedit records behind a press awaiting the IM's answer
+    guint         keyQueueTimer;   // fires ION_IME_ANSWER_TIMEOUT_MS after the oldest held press
+    GdkEvent     *imAwaited[16];   // events the IM filtered asynchronously and may re-deliver
+    int           imAwaitedNext;
     int           iconified;
     int           wantAbove;       // ionSetWindowAlwaysOnTop, applied once the surface is mapped
     int           contentFocused;  // last focus record pushed

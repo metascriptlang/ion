@@ -191,49 +191,49 @@ static gunichar keyvalChar(guint keyval) {
     return gdk_keyval_to_unicode(keyval);
 }
 
-// A commit the IM fires inside filter_keypress while nothing is being composed is the
-// pressed key's own text: it goes on the key record instead of a separate text record.
-static IonLinuxWindowState *s_keyCommitWindow;
-static char s_keyCommit[64];
+// The last press pushed for a keycode: 0 none seen, PRESS_PASSED, PRESS_IME (imeHandled).
+enum { PRESS_PASSED = 1, PRESS_IME = 2 };
+static unsigned char s_lastPress[256];
 
-static void onKey(IonLinuxWindowState *st, GdkEvent *ev) {
-    int press = gdk_event_get_event_type(ev) == GDK_KEY_PRESS;
-    s_keyCommit[0] = 0;
-    s_keyCommitWindow = (press && !st->imComposing) ? st : NULL;
-    int filtered = gtk_im_context_filter_keypress(st->im, ev);
-    s_keyCommitWindow = NULL;
-    if (s_keyCommit[0]) filtered = 0;
+typedef struct {
+    IonInputRecord r;
+    char text[64], chordText[8], allModsText[8];
+} KeyRecord;
+
+// The key's own character: what an IM that passes the key through commits for it.
+static void ownChar(GdkEvent *ev, char out[8]) {
+    gunichar ch = gdk_keyval_to_unicode(gdk_key_event_get_keyval(ev));
+    memset(out, 0, 8);
+    if (ch >= 0x20 && ch != 0x7f) g_unichar_to_utf8(ch, out);
+}
+
+static void buildKey(IonLinuxWindowState *st, GdkEvent *ev, int kind, int filtered,
+                     const char *commit, KeyRecord *k) {
+    int press = kind != ION_KEY_RELEASE;
     unsigned hw = gdk_key_event_get_keycode(ev);
     GdkModifierType state = gdk_event_get_modifier_state(ev);
-
-    int kind = ION_KEY_RELEASE;
-    if (press) kind = (hw < 256 && s_keyDown[hw]) ? ION_KEY_REPEAT : ION_KEY_PRESS;
-    if (hw < 256) s_keyDown[hw] = press ? 1 : 0;
-
     guint unshiftedKeyval = 0;
     gdk_display_translate_key(gdk_event_get_display(ev), hw, 0, gdk_key_event_get_layout(ev),
                               &unshiftedKeyval, NULL, NULL, NULL);
 
-    char text[64] = {0};
+    memset(k, 0, sizeof *k);
     gunichar ch = gdk_keyval_to_unicode(gdk_key_event_get_keyval(ev));
-    if (s_keyCommit[0]) {
-        g_strlcpy(text, s_keyCommit, sizeof text);
+    if (commit && commit[0]) {
+        g_strlcpy(k->text, commit, sizeof k->text);
     } else if (press && !filtered && ch >= 0x20 && ch != 0x7f
         && !(state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK))) {
-        g_unichar_to_utf8(ch, text);
+        g_unichar_to_utf8(ch, k->text);
     }
 
-    IonInputRecord r;
-    memset(&r, 0, sizeof r);
-    r.type = ION_INPUT_KEY;
-    r.window = st->id;
-    r.p1 = kind;
-    r.key = evdevToKey(hw >= 8 ? hw - 8 : 0);
-    r.scancode = (int)hw;
-    r.mods = modsFromState(state);
-    r.consumedMods = modsFromState(gdk_key_event_get_consumed_modifiers(ev));
-    r.unshifted = gdk_keyval_to_unicode(unshiftedKeyval);
-    r.text = text;
+    k->r.type = ION_INPUT_KEY;
+    k->r.window = st->id;
+    k->r.p1 = kind;
+    k->r.key = evdevToKey(hw >= 8 ? hw - 8 : 0);
+    k->r.scancode = (int)hw;
+    k->r.mods = modsFromState(state);
+    k->r.consumedMods = modsFromState(gdk_key_event_get_consumed_modifiers(ev));
+    k->r.unshifted = gdk_keyval_to_unicode(unshiftedKeyval);
+    k->r.text = k->text;
 
     // winit's xkb KeyContext: text is the keysym's character, text_with_all_modifiers
     // applies Control as xkb_state_key_get_utf8 does when Control is active and not consumed.
@@ -241,13 +241,271 @@ static void onKey(IonLinuxWindowState *st, GdkEvent *ev) {
     gunichar all = chord;
     if ((state & GDK_CONTROL_MASK) && !(gdk_key_event_get_consumed_modifiers(ev) & GDK_CONTROL_MASK))
         all = ionKeyCtrlChar(all);
-    char chordText[8] = {0}, allModsText[8] = {0};
-    if (press && chord != 0) g_unichar_to_utf8(chord, chordText);
-    if (all != 0) g_unichar_to_utf8(all, allModsText);
-    r.chordText = chordText;
-    r.allModsText = allModsText;
-    r.imeHandled = filtered;
-    ion_input_push_record(&r);
+    if (press && chord != 0) g_unichar_to_utf8(chord, k->chordText);
+    if (all != 0) g_unichar_to_utf8(all, k->allModsText);
+    k->r.chordText = k->chordText;
+    k->r.allModsText = k->allModsText;
+    k->r.imeHandled = filtered;
+}
+
+// An asynchronous IM answers for a press after filter_keypress returned TRUE, so the press is
+// held (ION_IME_ANSWER_TIMEOUT_MS in bridge.h) and every later key, text and preedit record of
+// its window waits behind it. passed is the record the press gets when the IM lets it through;
+// the records the IM's answer produces go after the press (last), in the order macOS gives.
+typedef struct QueuedRecord {
+    IonInputRecord r;
+    int held;
+    gint64 deadline;
+    GdkEvent *event;
+    char own[8];
+    KeyRecord passed;
+    struct QueuedRecord *release;
+    GList *link, *last;
+} QueuedRecord;
+
+static void setRecord(QueuedRecord *q, const IonInputRecord *r) {
+    g_free((char *)q->r.text);
+    g_free((char *)q->r.chordText);
+    g_free((char *)q->r.allModsText);
+    q->r = *r;
+    q->r.text = g_strdup(r->text);
+    q->r.chordText = g_strdup(r->chordText);
+    q->r.allModsText = g_strdup(r->allModsText);
+}
+
+static void freeQueued(QueuedRecord *q) {
+    IonInputRecord none = {0};
+    setRecord(q, &none);
+    if (q->event) gdk_event_unref(q->event);
+    g_free(q);
+}
+
+static void pushNow(const IonInputRecord *r) {
+    if (r->type == ION_INPUT_KEY && r->p1 != ION_KEY_RELEASE && r->scancode < 256)
+        s_lastPress[r->scancode] = r->imeHandled ? PRESS_IME : PRESS_PASSED;
+    ion_input_push_record(r);
+}
+
+static QueuedRecord *newQueued(const IonInputRecord *r) {
+    QueuedRecord *q = g_new0(QueuedRecord, 1);
+    setRecord(q, r);
+    return q;
+}
+
+static QueuedRecord *queueRecord(IonLinuxWindowState *st, const IonInputRecord *r) {
+    QueuedRecord *q = newQueued(r);
+    g_queue_push_tail(&st->keyQueue, q);
+    q->link = q->last = st->keyQueue.tail;
+    return q;
+}
+
+static QueuedRecord *oldestHeld(IonLinuxWindowState *st) {
+    for (GList *l = st->keyQueue.head; l; l = l->next)
+        if (((QueuedRecord *)l->data)->held) return l->data;
+    return NULL;
+}
+
+static void emit(IonLinuxWindowState *st, const IonInputRecord *r) {
+    if (g_queue_is_empty(&st->keyQueue)) pushNow(r);
+    else queueRecord(st, r);
+}
+
+// A record of the IM's own (a preedit, a commit no press is waiting for) goes before the
+// oldest press still waiting, since the IM answers presses in order.
+static void emitFromIm(IonLinuxWindowState *st, const IonInputRecord *r) {
+    QueuedRecord *q = oldestHeld(st);
+    if (!q) { emit(st, r); return; }
+    g_queue_insert_before(&st->keyQueue, q->link, newQueued(r));
+}
+
+static void emitAfter(IonLinuxWindowState *st, QueuedRecord *q, const IonInputRecord *r) {
+    g_queue_insert_after(&st->keyQueue, q->last, newQueued(r));
+    q->last = q->last->next;
+}
+
+static void flushKeyQueue(IonLinuxWindowState *st) {
+    QueuedRecord *q;
+    while ((q = g_queue_peek_head(&st->keyQueue)) && !q->held) {
+        g_queue_pop_head(&st->keyQueue);
+        pushNow(&q->r);
+        freeQueued(q);
+    }
+}
+
+static QueuedRecord *heldFor(IonLinuxWindowState *st, GdkEvent *ev) {
+    for (GList *l = st->keyQueue.head; l; l = l->next) {
+        QueuedRecord *q = l->data;
+        if (q->held && q->event == ev) return q;
+    }
+    return NULL;
+}
+
+// passed NULL: the IM took the press, which stays imeHandled.
+static void answer(QueuedRecord *q, const KeyRecord *passed) {
+    q->held = 0;
+    if (passed) setRecord(q, &passed->r);
+    if (q->release) q->release->r.imeHandled = q->r.imeHandled;
+}
+
+static gboolean onAnswerTimeout(gpointer data);
+
+static void armAnswerTimer(IonLinuxWindowState *st) {
+    QueuedRecord *q = oldestHeld(st);
+    if (st->keyQueueTimer || !q) return;
+    gint64 left = (q->deadline - g_get_monotonic_time() + 999) / 1000;
+    st->keyQueueTimer = g_timeout_add(left > 0 ? (guint)left : 0, onAnswerTimeout, st);
+}
+
+static gboolean onAnswerTimeout(gpointer data) {
+    IonLinuxWindowState *st = (IonLinuxWindowState *)data;
+    st->keyQueueTimer = 0;
+    gint64 now = g_get_monotonic_time();
+    for (GList *l = st->keyQueue.head; l; l = l->next) {
+        QueuedRecord *q = l->data;
+        if (q->held && q->deadline <= now) answer(q, NULL);
+    }
+    flushKeyQueue(st);
+    armAnswerTimer(st);
+    return G_SOURCE_REMOVE;
+}
+
+// fcitx5-gtk puts an event it did not handle back on the display (gdk_display_put_event), and
+// the controller sees that same GdkEvent a second time.
+static void awaitEvent(IonLinuxWindowState *st, GdkEvent *ev) {
+    GdkEvent **slot = &st->imAwaited[st->imAwaitedNext];
+    if (*slot) gdk_event_unref(*slot);
+    *slot = gdk_event_ref(ev);
+    st->imAwaitedNext = (st->imAwaitedNext + 1) % (int)G_N_ELEMENTS(st->imAwaited);
+}
+
+static int takeAwaited(IonLinuxWindowState *st, GdkEvent *ev) {
+    for (size_t i = 0; i < G_N_ELEMENTS(st->imAwaited); i++) {
+        if (st->imAwaited[i] != ev) continue;
+        gdk_event_unref(ev);
+        st->imAwaited[i] = NULL;
+        return 1;
+    }
+    return 0;
+}
+
+// Commits the IM fires inside filter_keypress are collected here; the caller decides whether
+// they are the key's own text.
+static IonLinuxWindowState *s_filterWindow;
+static QueuedRecord *s_answering;
+static GString *s_filterCommit;
+static int s_filterPreedit;   // the IM changed its preedit inside filter_keypress
+
+static int filterKey(IonLinuxWindowState *st, GdkEvent *ev) {
+    if (!s_filterCommit) s_filterCommit = g_string_new(NULL);
+    g_string_truncate(s_filterCommit, 0);
+    s_filterPreedit = 0;
+    s_filterWindow = st;
+    int filtered = gtk_im_context_filter_keypress(st->im, ev);
+    s_filterWindow = NULL;
+    return filtered;
+}
+
+static void textRecord(IonLinuxWindowState *st, const char *text, IonInputRecord *r) {
+    memset(r, 0, sizeof *r);
+    r->type = ION_INPUT_TEXT;
+    r->window = st->id;
+    r->text = text;
+}
+
+// As macOS keyDown: a commit of exactly the key's own character with nothing composed is the
+// key's text; any other commit makes the key imeHandled and follows it as a text record,
+// which is returned.
+static const char *settlePress(IonLinuxWindowState *st, GdkEvent *ev, int kind, int filtered,
+                               int wasComposing, KeyRecord *k) {
+    char own[8];
+    ownChar(ev, own);
+    const char *c = s_filterCommit->str;
+    if (c[0] && !wasComposing && !st->imComposing && strcmp(c, own) == 0) {
+        buildKey(st, ev, kind, 0, c, k);
+        return NULL;
+    }
+    buildKey(st, ev, kind, filtered || c[0], NULL, k);
+    return c[0] ? c : NULL;
+}
+
+// The re-delivered event goes through the IM once more, which now answers synchronously.
+static void onRedelivered(IonLinuxWindowState *st, GdkEvent *ev) {
+    QueuedRecord *q = heldFor(st, ev);
+    int wasComposing = st->imComposing;
+    s_answering = q;
+    int filtered = filterKey(st, ev);
+    s_answering = NULL;
+    IonInputRecord t;
+    if (!q) {
+        textRecord(st, s_filterCommit->str, &t);
+        if (t.text[0]) emitFromIm(st, &t);
+        flushKeyQueue(st);
+        return;
+    }
+    KeyRecord k;
+    const char *other = settlePress(st, ev, (int)q->r.p1, filtered, wasComposing, &k);
+    answer(q, &k);
+    if (other) {
+        textRecord(st, other, &t);
+        emitAfter(st, q, &t);
+    }
+    flushKeyQueue(st);
+}
+
+static QueuedRecord *queuedPress(IonLinuxWindowState *st, int scancode) {
+    for (GList *l = st->keyQueue.tail; l; l = l->prev) {
+        QueuedRecord *q = l->data;
+        if (q->r.type == ION_INPUT_KEY && q->r.p1 != ION_KEY_RELEASE && q->r.scancode == scancode) return q;
+    }
+    return NULL;
+}
+
+static void onKey(IonLinuxWindowState *st, GdkEvent *ev) {
+    int press = gdk_event_get_event_type(ev) == GDK_KEY_PRESS;
+    if (takeAwaited(st, ev)) {
+        onRedelivered(st, ev);
+        return;
+    }
+    int wasComposing = st->imComposing;
+    int filtered = filterKey(st, ev);
+    unsigned hw = gdk_key_event_get_keycode(ev);
+
+    int kind = ION_KEY_RELEASE;
+    if (press) kind = (hw < 256 && s_keyDown[hw]) ? ION_KEY_REPEAT : ION_KEY_PRESS;
+    if (hw < 256) s_keyDown[hw] = press ? 1 : 0;
+
+    KeyRecord k;
+    IonInputRecord t;
+    if (!press) {
+        // A release is imeHandled when its press was, as macOS keyUp does.
+        buildKey(st, ev, kind, filtered, NULL, &k);
+        QueuedRecord *p = queuedPress(st, (int)hw);
+        int last = hw < 256 ? s_lastPress[hw] : 0;
+        k.r.imeHandled = p ? p->held || p->r.imeHandled : last ? last == PRESS_IME : filtered;
+        if (filtered) awaitEvent(st, ev);
+        if (p) p->release = queueRecord(st, &k.r);
+        else emit(st, &k.r);
+        textRecord(st, s_filterCommit->str, &t);
+        if (t.text[0]) emit(st, &t);
+        return;
+    }
+    const char *other = settlePress(st, ev, kind, filtered, wasComposing, &k);
+    if (other || !k.r.imeHandled || s_filterPreedit) {
+        emit(st, &k.r);
+        if (other) {
+            textRecord(st, other, &t);
+            emit(st, &t);
+        }
+        return;
+    }
+    QueuedRecord *q = queueRecord(st, &k.r);
+    q->held = 1;
+    q->deadline = g_get_monotonic_time() + ION_IME_ANSWER_TIMEOUT_MS * 1000;
+    q->event = gdk_event_ref(ev);
+    ownChar(ev, q->own);
+    buildKey(st, ev, kind, 0, q->own, &q->passed);
+    awaitEvent(st, ev);
+    armAnswerTimer(st);
 }
 
 static void onPointer(IonLinuxWindowState *st, GtkEventController *controller, GdkEvent *ev) {
@@ -330,21 +588,30 @@ static void onLeave(GtkEventControllerMotion *controller, gpointer data) {
     pushLeave((IonLinuxWindowState *)data, GTK_EVENT_CONTROLLER(controller));
 }
 
+// Outside filter_keypress a commit answers the oldest held press: exactly that key's own
+// character with nothing composed is a pass-through (IBus commits it from gtk_im_context_filter_key).
 static void onCommit(GtkIMContext *im, gchar *str, gpointer data) {
     (void)im;
     IonLinuxWindowState *st = (IonLinuxWindowState *)data;
-    if (st == s_keyCommitWindow && strlen(s_keyCommit) + strlen(str) < sizeof s_keyCommit) {
-        strcat(s_keyCommit, str);
+    if (st == s_filterWindow) {
+        g_string_append(s_filterCommit, str);
         return;
     }
     IonInputRecord r;
-    memset(&r, 0, sizeof r);
-    r.type = ION_INPUT_TEXT;
-    r.window = st->id;
-    r.text = str;
-    ion_input_push_record(&r);
+    textRecord(st, str, &r);
+    QueuedRecord *q = oldestHeld(st);
+    if (!q) {
+        emit(st, &r);
+    } else if (!st->imComposing && q->own[0] && strcmp(str, q->own) == 0) {
+        answer(q, &q->passed);
+    } else {
+        answer(q, NULL);
+        emitAfter(st, q, &r);
+    }
+    flushKeyQueue(st);
 }
 
+// A preedit that shows text answers the oldest held press: the IM composes with it.
 static void onPreeditChanged(GtkIMContext *im, gpointer data) {
     IonLinuxWindowState *st = (IonLinuxWindowState *)data;
     gchar *str = NULL;
@@ -357,7 +624,15 @@ static void onPreeditChanged(GtkIMContext *im, gpointer data) {
     r.window = st->id;
     r.text = str ? str : "";
     r.p1 = str ? (double)ion_utf16_units(str, cursor) : 0;
-    ion_input_push_record(&r);
+    if (st == s_filterWindow) s_filterPreedit = 1;
+    QueuedRecord *q = st == s_filterWindow ? s_answering : oldestHeld(st);
+    if (q) {
+        g_queue_insert_before(&st->keyQueue, q->link, newQueued(&r));
+        if (st != s_filterWindow && st->imComposing) answer(q, NULL);
+    } else {
+        emit(st, &r);
+    }
+    if (st != s_filterWindow) flushKeyQueue(st);
     g_free(str);
 }
 
@@ -384,6 +659,11 @@ void ionLinuxDetachInput(IonLinuxWindowState *st) {
     g_signal_handlers_disconnect_by_data(st->im, st);
     g_object_unref(st->im);
     st->im = NULL;
+    if (st->keyQueueTimer) g_source_remove(st->keyQueueTimer);
+    st->keyQueueTimer = 0;
+    g_queue_clear_full(&st->keyQueue, (GDestroyNotify)freeQueued);
+    for (size_t i = 0; i < G_N_ELEMENTS(st->imAwaited); i++)
+        if (st->imAwaited[i]) gdk_event_unref(st->imAwaited[i]);
 }
 
 void ionWindowSetOptionAsAlt(IonWindowId id, int sides) {

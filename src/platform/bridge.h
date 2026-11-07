@@ -345,8 +345,11 @@ int         ionWindowEventType(void);
 //             imeHandled = 1 when the input method took the key (its text, if
 //             any, comes as text and preedit records), so an app that encodes
 //             keys itself, as a terminal does, skips it (Ghostty GTK surface.zig
-//             im_handled); on press and release alike. Windows never pushes such
-//             a key (VK_PROCESSKEY), so it is always 0 there
+//             im_handled); on press and release alike, and 0 for a press the
+//             method only passed through (it committed exactly the key's own
+//             text, nothing composed), which carries that text as macOS does.
+//             Windows never pushes such a key (VK_PROCESSKEY), so it is always
+//             0 there
 //   5 text    text = UTF-8 not tied to a key press (IME commit, injected input)
 //   6 preedit text = the IME composition in progress (empty = cleared);
 //             p1 = caret offset in bytes into text
@@ -357,6 +360,17 @@ int         ionWindowEventType(void);
 // The W3C WheelEvent.deltaMode values.
 #define ION_WHEEL_PIXEL 0
 #define ION_WHEEL_LINE  1
+
+// Linux: an asynchronous input method (fcitx5, IBus with IBUS_ENABLE_SYNC_MODE=0)
+// answers for a key after GTK's filter_keypress returned: it re-delivers the event
+// it passed through (fcitx5-gtk), commits the key's own text (IBus), commits other
+// text or composes. The press's key record, and every later key, text and preedit
+// record of its window, waits for that answer; a press with none after this many
+// ms is pushed imeHandled, so a method that swallows a key silently, or IBus
+// passing through a key without text (an arrow, Ctrl+C), delays it this long.
+// IBus answered a pass-through within 0.6 ms of the X event on rtx, the simple
+// IM 0.25 ms (test/linux/keyText.sh, 2026-11-07); 50 leaves a slow engine room.
+#define ION_IME_ANSWER_TIMEOUT_MS 50
 
 #define ION_KEY_RELEASE 0
 #define ION_KEY_PRESS   1
