@@ -4,7 +4,7 @@
 //   // [{ path: "/System/Library/Fonts/Supplemental/STIXTwoMath.otf", index: 0 }, …], or []
 //
 // A face's outline format is not checked: the renderer skips the files it cannot draw. macOS asks
-// CoreText; Windows and Linux find none yet (TODO.md).
+// CoreText, Linux fontconfig; Windows finds none yet (TODO.md).
 when (macos) {
 	@compile("./platform/macos/core/font.m", "-fobjc-arc");
 	@passL("-framework CoreText");
@@ -25,11 +25,23 @@ when (windows) {
 }
 
 when (linux) {
-	@compile("./platform/common/noFont.c");
 	@compile("./platform/linux/core/font.c");
+	const fontconfigCflags = @comptime {
+		const r = exec("pkg-config --cflags fontconfig");
+		if (!r.ok) throw new Error("Ion on Linux needs fontconfig's dev package (libfontconfig-dev): " + r.error.message);
+		return r.value.trim();
+	};
+	const fontconfigLibs = @comptime {
+		const r = exec("pkg-config --libs fontconfig");
+		if (!r.ok) throw new Error("Ion on Linux needs fontconfig's dev package (libfontconfig-dev): " + r.error.message);
+		return r.value.trim();
+	};
+	@passC(fontconfigCflags);
+	@passL(fontconfigLibs);
 }
 
 import { ionFindSystemFonts, ionSystemFontIndex, ionSystemFontPath, ionRegisterFont } from "./platform/bridge.h";
+import { exec } from "std/process";
 
 export enum Presentation { Text, Emoji }
 
